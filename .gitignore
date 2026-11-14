@@ -1,6 +1,3 @@
-node_modules/
-dist/
-.sdk/
-wasm/target/
-*.tgz
+/target/
+/.sdk/
 .build/

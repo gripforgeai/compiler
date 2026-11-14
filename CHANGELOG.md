@@ -2,7 +2,8 @@
 
 ## [0.1.0]
 
-- `gripforge-build` / `build()`: `project.gripforge` checked strictly by the common core of the kits, the game's
-  `game.json`, the Rust of each scene (`init_scene.rs`), the crate of the game's module, compiled native and wasm.
-- Errors for an AI: stable codes, file › scene › element › property, what is expected; `--json` report.
-- `kits_incompatible`: kits or an SDK this compiler was not made for are refused with what was found and expected.
+- `gripforge-build`: one native binary. Reads `project.gripforge` and the `kit.api.json` of the kits of the project,
+  checks it strictly, generates `game.json`, `init_scene.rs` per scene, `index.rs` and the crate of the game's module.
+  Compiles nothing.
+- Errors for an AI: stable codes, file › scene › element › property, what is expected; `--check`, `--json`.
+- A kit missing from the project says which one (and its version) and how to install the kits.

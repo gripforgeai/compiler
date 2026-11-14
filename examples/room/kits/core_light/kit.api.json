@@ -1,0 +1,270 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "core.light",
+  "version": "1.0.0",
+  "requires": [],
+  "dependencies": [],
+  "provides": [
+    {
+      "id": "core.light",
+      "version": "1.0.0",
+      "description": "A tool to handle the lights of a game by handle: directional, point and spot lights, the ambient light, the fog and the sky, made or adopted from the engine's own, enabled, attached, blended, set by a preset the game picks; applied at the render by each engine's own lights and environment. Nothing lights without a declaration of the game."
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "lights": {
+        "type": "array",
+        "default": [],
+        "description": "The lights the game declares, made or adopted at start, in order: [{ name, kind, params, adopt: { path, tag }, attach, main, active, enabled, group }]. Empty (the default): the kit lights nothing.",
+        "items": {"type": "object"}
+      },
+      "preset": {"type": "string", "default": "", "description": "The preset applied at start to the lights the game declared (empty: none)."},
+      "presets": {
+        "type": "object",
+        "description": "The presets a game may pick (proposed, never imposed): each sets the main directional light, the active ambient, sky and fog, and the exposure, on the handles that exist (it makes none). A scene or a mod changes them (moddable, live).",
+        "additionalProperties": {"type": "object"}
+      },
+      "kinds": {
+        "type": "object",
+        "description": "The default params of each kind of light, under what create, adopt and set give. Units: lux for a directional light, lumens for a point or spot light, cd/m² for the ambient light and the sky (1000 is one unit of the former Three.js looks).",
+        "properties": {
+          "directional": {"type": "object"},
+          "point": {"type": "object"},
+          "spot": {"type": "object"},
+          "ambient": {"type": "object"},
+          "fog": {"type": "object"},
+          "sky": {"type": "object"}
+        },
+        "additionalProperties": false
+      },
+      "exposure": {"type": "number", "default": 1, "minimum": 0.01, "maximum": 100, "description": "The exposure of the frame, a multiplier over the engine's own (1: as the engine)."},
+      "tonemapping": {"type": "string", "enum": ["engine", "aces", "agx", "filmic", "neutral", "none"], "default": "engine", "description": "The tone curve of the frame (engine: left as the engine has it)."},
+      "shadows": {
+        "type": "object",
+        "description": "The shadows of the lights: how far the main light's shadows reach, its cascades and bias, the size of a shadow map, and at most how many lights cast shadows at once (the nearest to the camera keep them).",
+        "properties": {
+          "distance": {"type": "number", "default": 110, "minimum": 1, "maximum": 2000},
+          "cascades": {"type": "integer", "default": 4, "minimum": 1, "maximum": 4},
+          "bias": {"type": "number", "default": 0.02, "minimum": 0, "maximum": 1},
+          "mapSize": {"type": "integer", "enum": [512, 1024, 2048, 4096], "default": 2048},
+          "maxShadowed": {"type": "integer", "default": 4, "minimum": 0, "maximum": 64}
+        },
+        "additionalProperties": false
+      },
+      "budget": {
+        "description": "Off by default (null). On: at most maxPoint point lights and maxSpot spot lights draw, the nearest to the camera within activation metres, faded out over fade metres (the web's WebGL2 bounds the lights it draws).",
+        "default": null,
+        "oneOf": [
+          {"type": "null"},
+          {
+            "type": "object",
+            "properties": {
+              "maxPoint": {"type": "integer", "default": 8, "minimum": 0, "maximum": 256},
+              "maxSpot": {"type": "integer", "default": 4, "minimum": 0, "maximum": 256},
+              "activation": {"type": "number", "default": 45, "minimum": 1, "maximum": 2000},
+              "fade": {"type": "number", "default": 17, "minimum": 0, "maximum": 500}
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "maxLights": {"type": "integer", "default": 1024, "minimum": 1, "maximum": 65536, "description": "At most how many handles the kit keeps."},
+      "rootNode": {"type": "string", "default": "", "description": "Where the lights the kit makes go (a path in the game's tree); empty: the current scene."},
+      "adoptScene": {"default": false, "oneOf": [{"type": "boolean"}, {"type": "string"}], "description": "true: every native light of the scenes the game loads is adopted as it enters (a text: only those tagged with it); false (the default): only what the game names."},
+      "nativeClass": {
+        "type": "object",
+        "description": "The class of a native light or environment each engine makes when nothing is adopted, by kind then engine.",
+        "additionalProperties": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "additionalProperties": false
+  },
+  "defaults": {
+    "lights": [],
+    "preset": "",
+    "presets": {
+      "daylight": {"directional": {"color": "#fff1d4", "intensity": 2200, "azimuth": -110, "elevation": 42}, "ambient": {"color": "#e4edff", "ground": "#566079", "intensity": 1000}, "sky": {"color": "#e4edff", "intensity": 1000, "lighting": 0.55}, "exposure": 1.05},
+      "golden_hour": {"directional": {"color": "#ffe5b9", "intensity": 3100, "azimuth": -110.556, "elevation": 28.298}, "ambient": {"color": "#d5e3fc", "ground": "#8b8071", "intensity": 720}, "sky": {"color": "#d5e3fc", "intensity": 1000, "lighting": 0.52}, "exposure": 0.98},
+      "overcast": {"directional": {"color": "#e9f0ff", "intensity": 900, "azimuth": -110, "elevation": 58}, "ambient": {"color": "#d9e4ef", "ground": "#8b8d90", "intensity": 1150}, "sky": {"color": "#d9e4ef", "intensity": 800, "lighting": 0.65}, "exposure": 1.05},
+      "night": {"directional": {"color": "#a3bdff", "intensity": 300, "azimuth": -45, "elevation": 38}, "ambient": {"color": "#a7bfff", "ground": "#404658", "intensity": 220}, "sky": {"color": "#a7bfff", "intensity": 35, "lighting": 0.1}, "exposure": 1.1},
+      "arid": {"directional": {"color": "#ffe3bd", "intensity": 2600, "azimuth": -110, "elevation": 38}, "ambient": {"color": "#f2d6b3", "ground": "#8a5d3f", "intensity": 1250}, "sky": {"color": "#f2d6b3", "intensity": 1000, "lighting": 0.6}, "fog": {"color": "#d9ab80", "mode": "exponential", "density": 0.006}, "exposure": 1.02},
+      "frozen": {"directional": {"color": "#eef3ff", "intensity": 2200, "azimuth": -120, "elevation": 24}, "ambient": {"color": "#d3e2ff", "ground": "#8b98ad", "intensity": 1350}, "sky": {"color": "#d3e2ff", "intensity": 1000, "lighting": 0.65}, "fog": {"color": "#dfe8f4", "mode": "exponential", "density": 0.008}, "exposure": 1},
+      "studio": {"directional": {"color": "#ffffff", "intensity": 2000, "azimuth": -135, "elevation": 50}, "ambient": {"color": "#ffffff", "ground": "#808080", "intensity": 800}, "sky": {"color": "#bfc4c9", "intensity": 1000, "lighting": 0}, "exposure": 1},
+      "evening_house": {"description": "Warm low evening sun on a house, soft grey-violet fill, a hazy amber horizon. Place the sun and the camera so the facade is lit from the side.", "tags": ["warm", "evening", "outdoor", "long-shadows"], "directional": {"color": "#ffc280", "intensity": 4500, "azimuth": -110, "elevation": 9}, "ambient": {"color": "#9a9aa8", "ground": "#76805a", "intensity": 350}, "sky": {"color": "#9a9aa8", "intensity": 450, "lighting": 0.3}, "fog": {"color": "#cfa57f", "mode": "linear", "near": 40, "far": 320}, "exposure": 0.66},
+      "night_torch": {"description": "Dark blue night, a faint moon and a dark ground: the player's own light does the work. The preset makes no lamp: declare a point light (about 12000 lumens, range 8 to 10 m, warm #ff9a48) and attach it to the player or the torch.", "tags": ["dark", "night", "outdoor", "torch"], "directional": {"color": "#8fa8ee", "intensity": 120, "azimuth": -45, "elevation": 30}, "ambient": {"color": "#8fa5e0", "ground": "#2a2f3d", "intensity": 110}, "sky": {"color": "#8fa5e0", "intensity": 20, "lighting": 0.06}, "fog": {"color": "#1c2236", "mode": "exponential", "density": 0.012}, "exposure": 1.25},
+      "misty_morning": {"description": "Cool low sun behind a thick pale mist: short sight lines, soft flat light, almost no contrast.", "tags": ["cool", "morning", "outdoor", "fog"], "directional": {"color": "#ffe0b0", "intensity": 900, "azimuth": 80, "elevation": 12}, "ambient": {"color": "#cfd8e4", "ground": "#7d8590", "intensity": 1000}, "sky": {"color": "#cfd8e4", "intensity": 700, "lighting": 0.6}, "fog": {"color": "#cfd8e0", "mode": "exponential", "density": 0.02}, "exposure": 1}
+    },
+    "kinds": {
+      "directional": {"color": "#ffffff", "intensity": 2000, "azimuth": -110, "elevation": 42, "shadows": true},
+      "point": {"color": "#ffffff", "intensity": 12566, "range": 10, "shadows": false},
+      "spot": {"color": "#ffffff", "intensity": 12566, "range": 10, "outer": 30, "inner": 24, "shadows": false},
+      "ambient": {"color": "#ffffff", "intensity": 1000},
+      "fog": {"color": "#c8d2dc", "mode": "linear", "near": 30, "far": 300, "density": 0.01},
+      "sky": {"color": "#9cc3e6", "image": "", "rotation": 0, "intensity": 1000, "lighting": 1}
+    },
+    "exposure": 1,
+    "tonemapping": "engine",
+    "shadows": {"distance": 110, "cascades": 4, "bias": 0.02, "mapSize": 2048, "maxShadowed": 4},
+    "budget": null,
+    "maxLights": 1024,
+    "rootNode": "",
+    "adoptScene": false,
+    "nativeClass": {
+      "directional": {"godot": "DirectionalLight3D", "unity": "Light", "unreal": "DirectionalLight", "bevy": "DirectionalLight"},
+      "point": {"godot": "OmniLight3D", "unity": "Light", "unreal": "PointLight", "bevy": "PointLight"},
+      "spot": {"godot": "SpotLight3D", "unity": "Light", "unreal": "SpotLight", "bevy": "SpotLight"},
+      "ambient": {"godot": "WorldEnvironment", "unity": "RenderSettings", "unreal": "SkyLight", "bevy": "GlobalAmbientLight"},
+      "fog": {"godot": "WorldEnvironment", "unity": "RenderSettings", "unreal": "ExponentialHeightFog", "bevy": "DistanceFog"},
+      "sky": {"godot": "WorldEnvironment", "unity": "RenderSettings", "unreal": "SkyAtmosphere", "bevy": "Skybox"}
+    }
+  },
+  "events": {
+    "emits": [
+      {"topic": "core.light.created", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "name": {"type": "string"}, "kind": {"type": "string"}, "node": {"type": "integer"}}}, "description": "A light was made (create, or adopt that found none)."},
+      {"topic": "core.light.adopted", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "name": {"type": "string"}, "kind": {"type": "string"}, "node": {"type": "integer"}}}, "description": "A light or an environment of the game was adopted."},
+      {"topic": "core.light.removed", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}}}, "description": "A light was let go (freed when the kit made it, given back its own values when it was adopted)."},
+      {"topic": "core.light.enabled", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "enabled": {"type": "boolean"}}}, "description": "A light was turned on or off."},
+      {"topic": "core.light.activated", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "kind": {"type": "string"}, "previous": {"type": "integer"}}}, "description": "Another ambient light, fog or sky draws."},
+      {"topic": "core.light.main", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "previous": {"type": "integer"}}}, "description": "Another directional light is the main one (the one the other kits drive as the sun)."},
+      {"topic": "core.light.preset", "payload": {"type": "object", "properties": {"name": {"type": "string"}, "seconds": {"type": "number"}}}, "description": "A preset was applied."},
+      {"topic": "core.light.failed", "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "reason": {"type": "string"}}}, "description": "The render side could not do what a light asks (an image of the sky missing, a kind or a setting this engine does not have): said once, with its reason."}
+    ],
+    "listens": []
+  },
+  "engine": {
+    "role": "service",
+    "hooks": {
+      "core.light.choose_main": {
+        "payload": {"type": "object", "properties": {"handle": {"type": "integer"}, "previous": {"type": "integer"}}, "additionalProperties": false},
+        "mutable": ["handle"],
+        "cancellable": true,
+        "targets": ["web", "rust"],
+        "description": "A directional light is about to become the main one: a game or a mod names another one (handle) or keeps the current one (cancel).",
+        "example": {"id": "keep_sun", "hook": "core.light.choose_main", "match": {"previous": 1}, "cancel": true}
+      },
+      "core.light.apply_preset": {
+        "payload": {"type": "object", "properties": {"name": {"type": "string"}, "seconds": {"type": "number"}}, "additionalProperties": false},
+        "mutable": ["name", "seconds"],
+        "cancellable": true,
+        "targets": ["web", "rust"],
+        "description": "A preset is about to be applied: a game or a mod picks another one, changes the blend time, or cancels.",
+        "example": {"id": "slow_night", "hook": "core.light.apply_preset", "match": {"name": "night"}, "set": {"seconds": 4}}
+      },
+      "core.light.adopt": {
+        "payload": {"type": "object", "properties": {"node": {"type": "integer"}, "kind": {"type": "string"}, "name": {"type": "string"}}, "additionalProperties": false},
+        "mutable": [],
+        "cancellable": true,
+        "targets": ["web", "rust"],
+        "description": "A native light of the game is about to be adopted by adoptAll or adoptScene: a game or a mod keeps it out of the kit (cancel).",
+        "example": {"id": "keep_candles", "hook": "core.light.adopt", "match": {"name": "Candle"}, "cancel": true}
+      }
+    },
+    "moddable": {
+      "collections": [],
+      "config": ["lights", "preset", "presets", "kinds", "exposure", "tonemapping", "shadows", "budget", "maxLights", "rootNode", "adoptScene", "nativeClass"],
+      "live": ["presets", "kinds", "exposure", "tonemapping", "shadows", "budget"]
+    },
+    "registries": {
+      "presets": {"of": "light preset", "inherit": false, "description": "The presets a game may pick, by name; a game or a mod changes one (config presets.<name>)."}
+    },
+    "sceneConfig": ["preset", "lights", "exposure", "tonemapping", "shadows", "budget"]
+  },
+  "services": {
+    "core.light": {
+      "description": "The lights of the game by handle. Each method can be served by the game in its language (provide_<method>); the lights themselves are posed at the render by each engine's own lights and environment, never at the tick.",
+      "methods": [
+        {"name": "create", "args": ["kind", "name", "params"], "description": "Makes a light of kind (directional, point, spot, ambient, fog, sky) in the current scene or under rootNode, the engine's own (nativeClass), params over the kind's defaults. Returns its handle. The first ambient, fog or sky made becomes the active one."},
+        {"name": "adopt", "args": ["path", "tag", "kind", "name"], "description": "Takes the light or environment the game already put in its scene (by path, else the first tagged tag), else makes one there: never replaced, never freed; its own values are given back when the kit lets it go. Returns its handle."},
+        {"name": "adoptAll", "args": ["tag", "kinds"], "description": "Adopts at once the native lights present of the given kinds (all when empty), only those tagged tag when it is not empty; the hook core.light.adopt may keep one out. Returns their handles."},
+        {"name": "remove", "args": ["handle"], "description": "Lets a light go: freed when the kit made it, given back its own values when it was adopted. An active ambient, fog or sky removed hands back to the one active before it."},
+        {"name": "removeGroup", "args": ["group"], "description": "Lets go every light made with this group (the lamps an owner registered). Returns how many."},
+        {"name": "list", "args": [], "description": "The lights: [{ handle, name, kind, enabled, active, main, adopted, node, group }] (rare; JSON)."},
+        {"name": "get", "args": ["handle"], "description": "One light: its name, kind, node, params, attach, state (rare; JSON)."},
+        {"name": "set", "args": ["handle", "params", "seconds"], "description": "Changes params of a light (rare; JSON), blended at the render over seconds (0 or none: at once)."},
+        {"name": "setValue", "args": ["handle", "prop", "value", "seconds"], "description": "Changes one live value of a light (a number or three numbers): prop is intensity, color, range, inner, outer, azimuth, elevation, direction, near, far, density, rotation or lighting. At once, it is written in place in the light's typed record of the shared memory (gripforge.light.live/1, published in core.light.lights: live.offset, the light's slot), which the render side reads in place; a game or a kit that drives a light each tick writes that record itself, without calling. With seconds, it is a set (blended)."},
+        {"name": "enable", "args": ["handle", "enabled"], "description": "Turns a light on or off: a light off is neither posed nor drawn."},
+        {"name": "enabled", "args": ["handle"], "description": "Whether the light is on."},
+        {"name": "attach", "args": ["handle", "target"], "description": "What the light follows, designated by the game: { entity }, { node }, { path } or { tag }; null: nothing (it stays where it is). A node of the engine: the light is put under it in the real tree; an entity of the kits: the light is posed at the render on the entity as it is drawn."},
+        {"name": "setMain", "args": ["handle"], "description": "Makes a directional light the main one (the hook core.light.choose_main may change or refuse it); 0 gives back the one the game declared main. Returns the main handle."},
+        {"name": "main", "args": [], "description": "The handle of the main directional light, 0 when none."},
+        {"name": "activate", "args": ["handle", "seconds"], "description": "Makes an ambient light, fog or sky the one of its kind that draws, blended over seconds. Returns whether it is active."},
+        {"name": "active", "args": ["kind"], "description": "The handle of the active ambient light, fog or sky, 0 when none."},
+        {"name": "presets", "args": [], "description": "The names of the presets the game may pick."},
+        {"name": "applyPreset", "args": ["name", "seconds"], "description": "Applies a preset to the main directional light, the active ambient, sky and fog and the exposure, blended over seconds (the hook core.light.apply_preset may change or refuse it). It makes no light. Returns whether it was applied."},
+        {"name": "setExposure", "args": ["exposure", "seconds"], "description": "The exposure of the frame, a multiplier over the engine's own, blended over seconds."},
+        {"name": "exposure", "args": [], "description": "The exposure of the frame."},
+        {"name": "setShadows", "args": ["settings"], "description": "The shadows (settings over the shadows defaults): distance, cascades, bias, mapSize, maxShadowed."},
+        {"name": "setBudget", "args": ["settings"], "description": "Turns the budget of point and spot lights on (settings over the budget defaults) or off (null, the default)."},
+        {"name": "failed", "args": ["handle", "reason"], "description": "The render side tells, once, that it could not do what a light asks (an image of the sky missing, a kind or a setting this engine does not have): announced as the event core.light.failed, never in silence."},
+        {"name": "debugView", "args": [], "description": "What the debug inspector shows of the lights (null when it is not loaded): each light, the main one, the active environment, the preset, the exposure. Built when the panel asks, never per frame."},
+        {"name": "debugEpoch", "args": [], "description": "A number that changes with the lights: the debug inspector reads debugView again only then."},
+        {"name": "elementCreate", "args": ["spec"], "description": "Makes an element of a scene (docs/design/dev-builder-sections.md): spec { element: \"ambience\", scene, node, props: { preset, exposure, tonemapping, seconds } }; applies the preset, then the exposure and the tone curve; answers its handle. The same call from code, from dev.builder (kits.core.light of a scene file) and from the editor."},
+        {"name": "elementSet", "args": ["handle", "props"], "description": "Changes the properties given of an ambience (the others stay)."},
+        {"name": "elementRemove", "args": ["handle"], "description": "Lets an ambience go: the last one in force gives the frame back as it was before it."},
+        {"name": "elementGet", "args": ["handle"], "description": "The properties in force of an ambience: { preset, exposure, tonemapping }, null for an unknown handle (rare; JSON)."}
+      ]
+    }
+  },
+  "site": "site",
+  "expose": [
+    {
+      "id": "core.light.lights",
+      "for": ["debug"],
+      "label": "Light",
+      "category": "info",
+      "call": "core.light.debugView",
+      "epoch": "core.light.debugEpoch",
+      "actions": {"exposure":{"label":"Exposure","kind":"number","call":"core.light.setExposure","args":["$value",0]}}
+    },
+    {
+      "id": "core.light.counts",
+      "for": ["debug"],
+      "label": "Lights",
+      "category": "counters",
+      "values": [
+        {"name":"lights"},
+        {"name":"adopted"},
+        {"name":"enabled"},
+        {"name":"main"},
+        {"name":"ambient"},
+        {"name":"fog"},
+        {"name":"sky"}
+      ]
+    },
+    {
+      "id": "core.light.events",
+      "for": ["debug"],
+      "label": "Light events",
+      "category": "events",
+      "topics": [
+        "core.light.created",
+        "core.light.adopted",
+        "core.light.removed",
+        "core.light.enabled",
+        "core.light.activated",
+        "core.light.main",
+        "core.light.preset",
+        "core.light.failed"
+      ]
+    },
+    {
+      "id": "core.light.ambience",
+      "for": ["scene"],
+      "label": "Ambience",
+      "at": "scene",
+      "description": "The light ambience of a scene: a preset of core.light, the exposure and the tone curve, given back when the scene is left.",
+      "props": {
+        "preset": { "type": "string", "default": "", "description": "A preset of the config presets (daylight, golden_hour...); empty: none." },
+        "exposure": { "type": "f64", "default": 0, "min": 0, "description": "A multiplier over the engine's own exposure; 0: left as the preset or the game has it." },
+        "tonemapping": { "type": "string", "default": "", "description": "engine, aces, agx, filmic, neutral or none; empty: left as it is." },
+        "seconds": { "type": "f64", "default": 0, "min": 0, "description": "The seconds over which the preset and the exposure are reached." }
+      },
+      "create": "core.light.elementCreate",
+      "set": "core.light.elementSet",
+      "remove": "core.light.elementRemove",
+      "get": "core.light.elementGet"
+    }
+  ]
+}

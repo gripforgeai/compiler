@@ -1,68 +1,95 @@
-# @gripforge/compiler
+# gripforge-build
 
-**`gripforge project build`: compile a GripForge game.**
+**`gripforge project build`: generate the Rust of a GripForge game.**
 
-The compiler reads a GripForge project (`project.gripforge`), checks it strictly with the same core as the GripForge
-kits, writes one Rust `init_scene.rs` per scene that calls the kits through their typed façades, and compiles the
-game's own module **native** and **wasm**. The kits are not linked into the game: they stay modules the player loads.
-What a compiled game does is what the development mode (`dev.builder`) shows.
+`gripforge-build` reads a GripForge project (`project.gripforge`) and the `kit.api.json` of the kits installed in it,
+checks it strictly with the common core of the project format, and **generates** the Rust of the game: one
+`init_scene.rs` per scene that calls the kits through their typed façades, `index.rs`, and the crate around them. It
+compiles nothing: the game's own build does. What the generated game does is what the development mode (`dev.builder`)
+shows.
 
 ## Install
 
-Each version is a [GitHub release](https://github.com/gripforgeai/compiler/releases) of this repository (the
-GripForge site lists them too). Its archive installs with npm by its URL:
+`gripforge-build` is one native binary, with no runtime to install. Download the archive of your platform from the
+[latest release](https://github.com/gripforgeai/compiler/releases/latest) (the GripForge page
+[gripforge.ai/compiler](https://gripforge.ai/compiler) lists them too), check it against `SHA256SUMS`, unpack it and put
+`gripforge-build` in your `PATH`:
+
+| Platform | Archive |
+|---|---|
+| Linux x64 | `gripforge-build-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux arm64 | `gripforge-build-X.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `gripforge-build-X.Y.Z-x86_64-pc-windows-msvc.zip` |
+| macOS x64 (Intel) | `gripforge-build-X.Y.Z-x86_64-apple-darwin.tar.gz` |
+| macOS arm64 (Apple silicon) | `gripforge-build-X.Y.Z-aarch64-apple-darwin.tar.gz` |
 
 ```sh
-npm install -g https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz
-gripforge-build --version
+v=0.1.0; t=x86_64-unknown-linux-gnu        # your version and platform
+curl -LO https://github.com/gripforgeai/compiler/releases/download/v$v/gripforge-build-$v-$t.tar.gz
+curl -LO https://github.com/gripforgeai/compiler/releases/download/v$v/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
+tar -xzf gripforge-build-$v-$t.tar.gz && ./gripforge-build-$v-$t/gripforge-build --version
 ```
 
-It needs Node.js 20 or newer. To compile (not only to check), it also needs Rust (`rustup`), with the target
-`wasm32-unknown-unknown` and the component `rust-src` for the web build, and the GripForge kits SDK (below).
+On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 
 ## Use
 
 ```sh
-gripforge-build path/to/my-game                      # check, generate, compile native and wasm into my-game/.build/
-gripforge-build path/to/my-game --check --json       # the strict check only, a JSON report for a tool or an AI
-gripforge-build path/to/my-game --target native --sdk path/to/module-kits
+gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
+gripforge-build path/to/my-game --check      # the strict check only, nothing written
+gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
 ```
 
 | Option | What it does |
 |---|---|
-| `<project>` | `project.gripforge`, or its folder (`project.gripforge`, else the only `*.gripforge`) |
-| `--out <dir>` | where the build goes (default `.build/` beside the project) |
-| `--kits <dir>` | the catalog of the kits (`<kit>/kit.api.json`); default the `kits/` of a kits SDK checkout above the project, else the catalog the package carries |
-| `--sdk <dir>` | a kits SDK checkout (crates `core/kit-guest`, `core/kit-facade`, the wasm recipe); default the one above the project |
-| `--sdk-rev <commit or branch>` | without a checkout: the revision of the kits SDK the game's crate takes by git (default: the one this compiler is made for) |
-| `--target native\|wasm\|all` | what is compiled (default `all`); wasm needs `--sdk` (its recipe) |
-| `--no-compile` | writes `game.json` and the crate, no cargo |
-| `--check` | the strict check only, nothing written |
+| `<project>` | `project.gripforge`, or its folder (`project.gripforge`, else the only `*.gripforge`); default the current folder |
+| `--out <dir>` | where the generated files go (default `.build/` beside the project) |
+| `--kits <dir>` | the kits of the project (`<kit>/kit.api.json`); default: found in the project (below) |
+| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-facade`) by path |
+| `--sdk-rev <commit or branch>` | without `--sdk`: the revision of the kits SDK the generated crate takes by git |
+| `--check` | the strict check only |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
-| `--jobs <n>`, `--target-dir <dir>` | cargo `-j` (default 4, always at low priority) and its build folder, to keep between builds |
-| `--json` | the report `gripforge.build-report/1` on the standard output |
+| `--json` | the JSON report instead of lines |
+| `--version`, `--help` | the version, the usage |
 
-Exit code: `0` built (or checked), `1` the project has errors (nothing is built), `2` wrong command line.
+Exit code: `0` generated (or checked), `1` the project has errors (nothing is generated), `2` wrong command line.
 
-From JavaScript (the GripForge CLI and MCP call it this way):
+**It compiles nothing.** It generates Rust; the game's own build compiles it (`cargo build` in `.build/game`, native or
+`wasm32-unknown-unknown`, like any kit module).
 
-```js
-import { build } from '@gripforge/compiler';
-const result = await build({ project: 'my-game', targets: ['native'], sdk: '../module-kits' });
-if (!result.ok) for (const issue of result.issues) console.error(issue.code, issue.message, issue.fix);
+## The kits of a project
+
+The compiler reads the `kit.api.json` of each kit the project uses, **from the project itself**: the kits are
+downloaded into the project by the GripForge CLI (`gripforge game-attach <project folder>`), at the version
+`project.gripforge` declares. It looks, in this order:
+
+1. `--kits <dir>`;
+2. `<project folder>/kits/<kit>/kit.api.json`;
+3. `<project folder>/.gripforge/kits/<kit>/kit.api.json`;
+4. a `kits/` folder above the project (a workspace holding several games).
+
+The folder of a kit can have any name: the compiler reads the id and the version in its `kit.api.json`. It never
+downloads anything. A kit the project installs or requires that is not there is an error that says which one and how to
+install it:
+
+```text
+error kit_unknown — project.gripforge › property installed: the kit world.nowhere version 1.0.0 is not in the project: no kit.api.json for it among the kits of the project, so no façade to call it. Expected: install the kits of the project (gripforge game-attach <project folder>), or give the folder of the kits with --kits <dir> (<kit>/kit.api.json); …
 ```
+
+A `kit.api.json` of another schema than `gripforge.kit-api/1` is refused with `kits_incompatible`.
+
+[`examples/room`](examples/room) is a project laid out this way: `project.gripforge` and its `kits/`.
 
 ## What it writes
 
 | File | Content |
 |---|---|
-| `.build/game.json` | what the player loads: the project packed, its scenes lowered for `game.engine` at build time (no scene file read at run time), `dev.builder` left out, the game's module `game.main` last in the lock |
+| `.build/game.json` | what the player loads: the project packed, its scenes lowered for `game.engine` (no scene file read at run time), `dev.builder` left out, the game's module `game.main` last in the lock |
 | `.build/game/` | the crate of the game's module: `Cargo.toml`, `kit.api.json`, `module.json`, `src/lib.rs`, `src/index.rs`, `src/init_scene.rs` and `src/init_scene/<scene>.rs` |
-| `.build/native/` | `libgfkit_game_main.so` (`.dll`, `.dylib`) and its `kit-modules-native.json`: put them with the kits' modules |
-| `.build/web/` | `game.main.wasm`, relocatable for the kits' common memory |
-| `.build/build.json` | the report: issues, steps and their times, files produced |
+| `.build/build.json` | the report: issues, steps and their times, files written |
 
-Never edit `.build/` by hand: change `project.gripforge` and build again.
+Never edit `.build/` by hand: change `project.gripforge` and generate again.
 
 ## Errors
 
@@ -72,106 +99,86 @@ that are only read (`sound_not_placed`, `hud_not_placed`, `light_not_placed`, `c
 
 ```text
 error section_field_unknown — project.gripforge › scene level › property kits.core.light.brightness: core.light.ambience has no property brightness: … Expected: use one of exposure, preset, seconds, tonemapping
-error kit_unknown — project.gripforge › property installed: the kit world.nowhere is not in the catalog of kits … Expected: check the id …
+error prop_out_of_range — project.gripforge › scene level › property kits.core.light.exposure: … Expected: …
 ```
-
-The codes are those of the project format, plus the build's:
 
 | Code | When |
 |---|---|
-| `kit_unknown` | an installed or required kit has no `kit.api.json` in the catalog |
-| `kits_incompatible` | the kits or the SDK are not those this compiler is made for (another `kit.api.json` schema, another project format, a checkout missing what the build uses): use the version of the compiler made for them |
-| `file_not_json`, `project_missing`, `kits_missing` | the project or the catalog cannot be read, with the faulty line |
-| `generator_missing`, `generator_failed` | the core has no generator, or it refuses the project |
-| `sdk_missing` | the crates of the SDK cannot be found (give `--sdk` or `--sdk-rev`) |
-| `rust_build_failed` | the generated code does not compile: a bug of the generator or of a kit's façade, to report |
-| `wasm_recipe_missing`, `cargo_missing` | the wasm recipe (a local `--sdk`) or cargo are missing |
-
-## The kits SDK and compatibility
-
-The validator, the packing and the generator of `init_scene.rs` are not in this repository: they are the common core of
-the GripForge kits (`core/scene-format` of [gripforgeai/module-kits](https://github.com/gripforgeai/module-kits)). The
-compiler takes it at one fixed revision, written in [`sdk.json`](sdk.json), and compiles it into the wasm the package
-carries (`dist/gripforge_compiler.wasm`, no WASI, no wasm-bindgen). The package also carries the kits' catalog of that
-revision (`dist/kits.json`) and what it needs of the kits (`dist/sdk.json`): before a build it checks the kits and the
-SDK it is given, and refuses those it was not made for with `kits_incompatible`.
-
-Following the kits: change `rev` in `sdk.json`, run `npm run sdk` and `npm test`; when the generated code changes on
-purpose (a kit renamed an event, a property…), `UPDATE_GOLDEN=1 npm test` rewrites the golden files and the diff of
-`test/golden/` is reviewed in the pull request. The workflow **Compatibility with the latest kits** builds the
-`dev.builder` room of the latest kits on each push to `main` and each night, and checks with the kits' own test that the
-compiled game reaches the same state as the development mode.
+| `kit_unknown` | an installed or required kit has no `kit.api.json` in the project |
+| `kits_missing` | the project has no kits folder, or `--kits` names none |
+| `kits_incompatible` | a `kit.api.json` of another schema |
+| `file_not_json`, `project_missing` | the project or a file cannot be read, with the line and column |
+| `generator_missing`, `generator_failed` | the generator refuses the project |
+| `write_failed` | the output folder cannot be written |
+| the codes of the project format | `section_field_unknown`, `prop_invalid`, `prop_out_of_range`, `scene_unknown`, `scene_file_missing`, `scene_cycle`, `scene_empty`, `kit_required_missing`, `kit_version_mismatch`, `name_duplicate`, `node_type_unknown`… |
 
 ## Develop
 
 ```sh
-npm run sdk              # the kits SDK at the revision of sdk.json, in .sdk/module-kits (git; read access needed)
-npm run sdk -- --link ../module-kits   # or use a checkout you already have
-npm test                 # unit and golden tests (builds the wasm core first if missing); no network, no AI call
-npm run coverage         # line coverage of lib/, bin/ and the release script: fails under 90 %
-npm run coverage:rust    # line coverage of the Rust core (llvm-tools): fails under 90 %
-npm run lint             # JavaScript; cargo fmt --check and cargo clippy -D warnings for wasm/
+cargo test --workspace                 # unit, golden and example-room tests; no network
+UPDATE_GOLDEN=1 cargo test --test build   # rewrites tests/golden/ when the generated code changes on purpose
+cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all --check
 ```
 
 | Part | Role |
 |---|---|
-| `wasm/` | the Rust core: strict check, packing, call of the generator, compiled to `dist/gripforge_compiler.wasm` |
-| `lib/core.mjs` | loads the wasm, hands it a JSON request |
-| `lib/project.mjs` | reads the project, the scene files it still names, the catalog of the kits |
-| `lib/compat.mjs` | what the compiler needs of the kits, `kits_incompatible` |
-| `lib/build.mjs` | the command as a function (`build()`) |
-| `lib/crate.mjs`, `lib/cargo.mjs` | the crate of the game's module, cargo native and wasm |
-| `lib/report.mjs`, `lib/cli.mjs`, `bin/` | the lines and the JSON report, the command line |
-| `test/` | one suite per step (reading, check, generation, crate, compilation, messages, command line, compatibility, release) and the golden tests (`test/golden/`: the crate and code of the room, the messages of a broken project) |
-
-The tests replace cargo by a fake that records its arguments; `GF_COMPILER_CARGO=1 npm test` compiles for real. The CI
-also compiles an example project (the `dev.builder` room of the SDK) native and wasm on Linux, and native on Windows
-and macOS, on each pull request from a branch of this repository (a fork's pull request gets the lint only: the
-other jobs read the kits SDK with a secret).
+| `crates/scene-format` | the common core of the project format: tolerant reading, validator, sub-scenes, lowering for game.engine, packing, the generator of `init_scene.rs` (`code.rs`) and the `gfscene` tool |
+| `src/core.rs`, `src/strict.rs` | the core of a build: the strict rules, the packing of the built game, the call of the generator |
+| `src/project.rs` | reads the project, the scene files it still names, the kits of the project |
+| `src/crate_gen.rs` | the crate of the game's module |
+| `src/build.rs`, `src/cli.rs`, `src/report.rs`, `src/json.rs` | the command, its lines and its JSON report |
+| `tests/` | `check.rs` (each way to break the room, one located error), `build.rs` (golden files, messages of a broken project, reading, command line), `core.rs` (the ops and the strict rules) |
+| `examples/room` | the example project and the `kit.api.json` of its kits, frozen |
 
 ## Releases
 
-A tag `vX.Y.Z` (the version of `package.json`, on `main`) releases that version: the CI checks it, packs it
-(`npm pack`) and creates the GitHub release `vX.Y.Z` with these files attached. Nothing is published to the npm
-registry, and a version is never rewritten.
+A tag `vX.Y.Z` (the version of `Cargo.toml`, on `main`) releases that version. The workflow builds `gripforge-build` on
+a runner of each OS (Linux x64 and arm64, Windows x64, macOS x64 and arm64), runs each binary on its own runner
+(`--version`, then `--check` on the example room), and creates the GitHub release with the `GITHUB_TOKEN` alone: no
+secret, no registry. An existing release stops the job: a version is never rewritten.
 
 | File | Content |
 |---|---|
-| `compiler-X.Y.Z.tgz` | the package: the command, the library, the Rust core in wasm, the kits' catalog (`npm install <its URL>`) |
-| `SHA256SUMS` | the sha256 of `compiler-X.Y.Z.tgz` and `release.json` |
+| `gripforge-build-X.Y.Z-<target>.tar.gz` / `.zip` | the binary, `LICENSE`, `README.md`, one archive per platform |
+| `SHA256SUMS` | the sha256 of the archives and of `release.json` |
 | `release.json` | what the release holds (below) |
 
-The release notes are the message of the annotated tag (else the version's section of `CHANGELOG.md`), then the install
-line and the sums. Tools and download pages list the versions with the public releases API
-(`GET https://api.github.com/repos/gripforgeai/compiler/releases`, newest first; `…/releases/latest` for the newest) and
-read `release.json` of a release for the details.
+The notes are the message of the annotated tag (else the version's section of `CHANGELOG.md`), then the sums. Tools and
+download pages list the versions with the public releases API (`GET https://api.github.com/repos/gripforgeai/compiler/releases`,
+newest first; `…/releases/latest` for the newest) and read the `release.json` asset of a release for the details.
 
 ### `release.json`
 
 ```json
 {
- "schema": "gripforge.compiler-release/1",
+ "schema": "gripforge.compiler-release/2",
  "version": "0.1.0",
  "tag": "v0.1.0",
- "date": "2026-11-20T09:58:12.000Z",
+ "date": "2026-11-20T09:58:12Z",
  "commit": "<commit of the tag>",
  "source": "https://github.com/gripforgeai/compiler/tree/v0.1.0",
- "sdk": { "repository": "https://github.com/gripforgeai/module-kits", "rev": "<kits SDK revision>" },
- "files": [
-  { "name": "compiler-0.1.0.tgz", "size": 295295, "sha256": "<hex>", "url": "https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz" }
- ],
- "install": "npm install https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz"
+ "binary": "gripforge-build",
+ "platforms": [
+  {
+   "platform": "linux-x64", "os": "linux", "arch": "x64", "target": "x86_64-unknown-linux-gnu",
+   "name": "gripforge-build-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+   "url": "https://github.com/gripforgeai/compiler/releases/download/v0.1.0/gripforge-build-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+   "size": 2951234,
+   "sha256": "<hex>"
+  }
+ ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `schema` | `gripforge.compiler-release/1`; a breaking change of this format changes the number |
+| `schema` | `gripforge.compiler-release/2`; a breaking change of this format changes the number |
 | `version`, `tag`, `commit`, `source` | the version, its git tag, its commit and its source tree |
-| `date` | the date of the tag (ISO 8601, UTC) |
-| `sdk` | the kits SDK revision the version is made for |
-| `files[]` | the package archive: `name`, `size` in bytes, `sha256`, download `url` |
-| `install` | the install command |
+| `date` | the date of the tag's commit (ISO 8601, UTC) |
+| `binary` | the name of the command in each archive (`gripforge-build`, `gripforge-build.exe` on Windows) |
+| `platforms[]` | one entry per platform, five in all: `linux-x64`, `linux-arm64`, `windows-x64`, `macos-x64`, `macos-arm64` |
+| `platforms[].name`, `url`, `size`, `sha256` | the archive: file name, download URL, size in bytes, sha256 |
+| `platforms[].os`, `arch`, `target` | the platform (`linux`, `windows`, `macos`; `x64`, `arm64`) and its Rust target triple |
 
 ## License
 

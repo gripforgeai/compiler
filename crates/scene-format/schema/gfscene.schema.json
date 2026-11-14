@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gripforge.gfscene",
+  "title": "A GripForge scene file (<name>.gfscene)",
+  "description": "A scene of a GripForge project: a tree of typed nodes, its sub-scenes, the kits' sections, its bindings. JSON, owned by the game, without a version field: read with tolerance (docs/dev-builder.md, docs/ecrire-un-projet.md).",
+  "type": "object",
+  "properties": {
+    "requires": {
+      "$ref": "#/$defs/requires"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      },
+      "default": [],
+      "description": "The top-level nodes, in order."
+    },
+    "kits": {
+      "$ref": "#/$defs/sections"
+    },
+    "on": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/binding"
+      },
+      "default": [],
+      "description": "The bindings of the scene itself: entered, left, event."
+    },
+    "meta": {
+      "type": "object",
+      "default": {},
+      "description": "Free, for the editor; never read by a kit."
+    }
+  },
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "[x, y, z]"
+    },
+    "kitId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+      "description": "A kit id, domain.name: core.physics"
+    },
+    "requires": {
+      "type": "array",
+      "default": [],
+      "description": "The kits this whole file needs (never per node). Not an installation: a missing kit refuses the scene with what to install; the build, the CLI and the MCP read it to propose the kits.",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/kitId"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/kitId"
+              },
+              "version": {
+                "type": "string",
+                "description": "A range: ^1, ~1.2, >=1.4.0, 1.2.3, *"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "when",
+        "do"
+      ],
+      "description": "Interactivity without code: when something happens, run game.engine verbs.",
+      "properties": {
+        "when": {
+          "enum": [
+            "enter",
+            "leave",
+            "interact",
+            "entered",
+            "left",
+            "event"
+          ],
+          "description": "enter/leave: a trigger; interact: a model or shape; entered/left: the scene (its own on); event: a named event (event)."
+        },
+        "event": {
+          "type": "string",
+          "description": "The event that runs the binding, with when: event."
+        },
+        "do": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object"
+          },
+          "description": "game.engine verbs: emit, call, set_var, inc_var, load_scene, push_scene, show, hide... A verb's \"on\" may name a node by path (../Crate)."
+        },
+        "if": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "once": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "default": {},
+      "description": "The sections of the kits, by kit id: what each kit reads or places on this node or scene (declared by its expose entries for scene).",
+      "propertyNames": {
+        "$ref": "#/$defs/kitId"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "props_model": {
+      "type": "object",
+      "description": "A 3D model file of the project, given to game.engine as an instance (its archetype, or one made from these properties).",
+      "properties": {
+        "asset": {
+          "description": "Path of the model file in the project (models/crate.glb); its passport in asset.meta stays its identity.",
+          "type": "string",
+          "default": ""
+        },
+        "material": {
+          "description": "A material name of the game, or { color, metallic, roughness, ... } laid over the file's materials."
+        }
+      }
+    },
+    "props_shape": {
+      "type": "object",
+      "description": "A simple shape drawn natively by each engine, given to game.engine as an instance.",
+      "properties": {
+        "shape": {
+          "description": "The kind of shape.",
+          "enum": [
+            "box",
+            "sphere",
+            "plane",
+            "capsule",
+            "cylinder",
+            "cone",
+            "torus"
+          ],
+          "default": "box"
+        },
+        "size": {
+          "description": "box: [x, y, z] or one number; plane: [x, z]."
+        },
+        "radius": {
+          "description": "sphere, capsule, cylinder, cone, torus.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "height": {
+          "description": "capsule (total), cylinder, cone.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tube": {
+          "description": "torus: the radius of the tube.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "color": {
+          "description": "A shortcut of material.color: #rgb, #rrggbb or #rrggbbaa.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "material": {
+          "description": "A material name of the game, or { color, metallic, roughness, ... }."
+        }
+      }
+    },
+    "props_light": {
+      "type": "object",
+      "description": "A light declared by the game, placed by dev.builder through core.light (adopted at its path in the engine's tree, else made there).",
+      "properties": {
+        "kind": {
+          "description": "The kind of light; a directional light shines along its -Z axis.",
+          "enum": [
+            "point",
+            "spot",
+            "directional"
+          ],
+          "default": "point"
+        },
+        "color": {
+          "description": "The colour of the light.",
+          "type": "string",
+          "default": "#ffffff"
+        },
+        "intensity": {
+          "description": "In the units of core.light, which places the light: lux for a directional light, lumens for a point or spot light; unset: core.light's default for the kind.",
+          "type": "number"
+        },
+        "range": {
+          "description": "point and spot: the distance where the light ends, in metres.",
+          "type": "number",
+          "default": 20
+        },
+        "angle": {
+          "description": "spot: the outer angle of the cone, in degrees.",
+          "type": "number",
+          "default": 45
+        },
+        "shadows": {
+          "description": "Whether the light casts shadows.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "props_camera": {
+      "type": "object",
+      "description": "A camera of the scene, placed by dev.builder through core.camera (adopted at its path, else made), with the fixed preset looking along its -Z axis.",
+      "properties": {
+        "fov": {
+          "description": "The vertical field of view, in degrees.",
+          "type": "number",
+          "default": 60
+        },
+        "near": {
+          "description": "The near plane, in metres.",
+          "type": "number",
+          "default": 0.1
+        },
+        "far": {
+          "description": "The far plane, in metres.",
+          "type": "number",
+          "default": 1000
+        },
+        "current": {
+          "description": "Whether this camera draws when the scene is entered.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "props_trigger": {
+      "type": "object",
+      "description": "A trigger zone (game.engine zones): bindings run when something enters or leaves it.",
+      "properties": {
+        "shape": {
+          "description": "The shape of the zone.",
+          "enum": [
+            "box",
+            "sphere"
+          ],
+          "default": "sphere"
+        },
+        "size": {
+          "description": "box: its size in metres.",
+          "$ref": "#/$defs/vec3",
+          "default": [
+            10,
+            4,
+            10
+          ]
+        },
+        "radius": {
+          "description": "sphere: its radius in metres.",
+          "type": "number",
+          "default": 5
+        },
+        "tags": {
+          "description": "Tags of the zone.",
+          "default": []
+        },
+        "watch": {
+          "description": "The tags of the entities the zone watches (empty: the player).",
+          "default": []
+        }
+      }
+    },
+    "props_sound": {
+      "type": "object",
+      "description": "A sound of the scene, played by the sound kit when there is one.",
+      "properties": {
+        "asset": {
+          "description": "Path of the sound file in the project.",
+          "type": "string",
+          "default": ""
+        },
+        "volume": {
+          "description": "From 0 to 1.",
+          "type": "number",
+          "default": 1
+        },
+        "loop": {
+          "description": "Whether it loops.",
+          "type": "boolean",
+          "default": false
+        },
+        "spatial": {
+          "description": "A 3D voice placed at the node.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "props_hud": {
+      "type": "object",
+      "description": "A HUD slot of core.webui (<kit>/<slot>) and the HUD asset it shows.",
+      "properties": {
+        "slot": {
+          "description": "The core.webui slot, <kit>/<slot>.",
+          "type": "string",
+          "default": ""
+        },
+        "asset": {
+          "description": "Path of the HUD asset package in the project; empty: the asset the kit recommends.",
+          "type": "string",
+          "default": ""
+        },
+        "props": {
+          "description": "The properties given to the asset.",
+          "default": {}
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "description": "A node of the scene. Unknown keys are kept and reported; a value that does not fit warns and takes its default, never an error.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "Unique among its siblings: the link of the node's path (Hall/Door)."
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Optional stable identifier, unique in the scene: it survives renames and moves, a binding, an override or a command may name the node by it, and it is the id game.engine receives (prefixed by the instance node inside a sub-scene)."
+        },
+        "type": {
+          "enum": [
+            "group",
+            "model",
+            "shape",
+            "light",
+            "camera",
+            "entry",
+            "trigger",
+            "sound",
+            "hud",
+            "scene"
+          ],
+          "default": "group",
+          "description": "The node type (registry nodeTypes)."
+        },
+        "position": {
+          "$ref": "#/$defs/vec3",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "description": "Metres, relative to the parent; right-handed, +Y up."
+        },
+        "rotation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/vec3"
+            },
+            {
+              "$ref": "#/$defs/quat"
+            }
+          ],
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "description": "By default Euler angles in degrees [x, y, z], applied Y, X, Z (yaw, pitch, roll), relative to the parent; a quaternion { x, y, z, w } is accepted too."
+        },
+        "scale": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/vec3"
+            }
+          ],
+          "default": [
+            1,
+            1,
+            1
+          ],
+          "description": "Per axis, or one number for all three."
+        },
+        "visible": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hidden with its children when false."
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          },
+          "default": [],
+          "description": "The children, in order."
+        },
+        "kits": {
+          "$ref": "#/$defs/sections"
+        },
+        "on": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/binding"
+          },
+          "default": [],
+          "description": "The bindings of the node."
+        },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "description": "scene nodes: { \"<path in the sub-scene>\": { <keys to merge> } }; name and children cannot be overridden."
+        },
+        "model": {
+          "$ref": "#/$defs/props_model"
+        },
+        "shape": {
+          "$ref": "#/$defs/props_shape"
+        },
+        "light": {
+          "$ref": "#/$defs/props_light"
+        },
+        "camera": {
+          "$ref": "#/$defs/props_camera"
+        },
+        "trigger": {
+          "$ref": "#/$defs/props_trigger"
+        },
+        "sound": {
+          "$ref": "#/$defs/props_sound"
+        },
+        "hud": {
+          "$ref": "#/$defs/props_hud"
+        },
+        "scene": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "scene nodes: the path of the instanced scene file (`<name>.gfscene`) in the project."
+        },
+        "entity": {
+          "type": "object",
+          "description": "The entity of the element (docs/entites-et-rendu.md, the writing of game.engine): its states (kept in the game.engine entity, or derived) and the render values bound to a state. A node with states counts for the game: it gets an entity (a group too: a light entity holding the states), and it can be used (on: interact).",
+          "properties": {
+            "states": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/state"
+              },
+              "default": {},
+              "description": "The states, as a game.engine archetype declares them (given to it as written): { values, default? } (an enumeration, default the first), { default } (a stored value) or { derived: { var | component | expr | hook } } (computed, never stored)."
+            },
+            "bind": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/state_bind"
+              },
+              "default": [],
+              "description": "Render values of nodes of the element's subtree that follow a number state, after the rules (game.engine's bind, plus node)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "reflect": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reflect_rule"
+          },
+          "default": [],
+          "description": "The table state → reflection (game.engine's reflect, per node of the subtree): rules that act on any node of the element's subtree (its children: models, sounds, lights, particles, HUD slots, sub-scenes), resolved by game.engine's resolver and posed by dev.builder in the engine's tree. What has no way yet (a model change, a clip, a sound, spin, on, the tween of a transition) is listed in dev.builder.reflect's pending."
+        },
+        "bind": {
+          "type": "object",
+          "description": "Which values of the render the entity drives (position, yaw), property by property: bound, an edit changes the entity and the render follows; free, the value is the render's own. Default: position bound, rotation and scale free. A render value that follows a state goes in entity.bind of its element.",
+          "properties": {
+            "position": {
+              "oneOf": [
+                {
+                  "const": "entity"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "entity",
+              "description": "The node's position ↔ the entity's x, y, z; null: free."
+            },
+            "yaw": {
+              "oneOf": [
+                {
+                  "const": "entity"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "The node's heading (its -Z axis around Y) ↔ the entity's yaw; null (the default): free."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "quat": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "z",
+        "w"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number"
+        }
+      },
+      "description": "A rotation as a unit quaternion { x, y, z, w } (the form of the editor and of the site's commands); normalised when read."
+    },
+    "state": {
+      "type": "object",
+      "description": "A state of the element besides its default one (the first, « no change », which every entity has), written as a game.engine archetype declares it: an enumeration (values, default), a stored value (default), or derived, never stored (derived).",
+      "properties": {
+        "default": {
+          "description": "The value when the game has not set it; the first of values when left out."
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "description": "The enumeration of the values (a bool is [false, true])."
+        },
+        "derived": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "description": "Computed from one source, never stored, saved nor synchronized (its source is): var (a game variable path), component (a component of the entity, or { name, field }), expr ({ var, op?, value? }, { all }, { any }, { not }, a constant), hook (true: game.engine's hook engine.state.derive answers).",
+          "properties": {
+            "var": {
+              "type": "string"
+            },
+            "component": {
+              "type": [
+                "string",
+                "object"
+              ]
+            },
+            "expr": {},
+            "hook": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "state_bind": {
+      "type": "object",
+      "required": [
+        "property",
+        "from"
+      ],
+      "description": "A render value bound to a number state (game.engine's bind, plus node).",
+      "properties": {
+        "node": {
+          "type": "string",
+          "default": "",
+          "description": "The path of the node under the element; empty or left out: the element itself."
+        },
+        "property": {
+          "enum": [
+            "rotation.x",
+            "rotation.y",
+            "rotation.z",
+            "scale",
+            "scale.x",
+            "scale.y",
+            "scale.z",
+            "offset.x",
+            "offset.y",
+            "offset.z"
+          ],
+          "description": "Degrees for a rotation axis, a factor for a scale, metres for an offset; laid under the node's pose in the file."
+        },
+        "from": {
+          "type": "string",
+          "description": "The state it follows (declared in entity.states)."
+        },
+        "factor": {
+          "type": "number",
+          "default": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "reflect_rule": {
+      "type": "object",
+      "required": [
+        "set"
+      ],
+      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property.",
+      "properties": {
+        "when": {
+          "type": "object",
+          "default": {},
+          "description": "{ state: value }; empty: always."
+        },
+        "set": {
+          "type": "object",
+          "description": "{ <path relative to the element, \"\" the element itself>: { visible, rotation, scale, offset, material, anim, slot, shape, morphs, fade, light, play, playing, spin, on } }: game.engine's fields (a pose laid under the node's pose in the file, as game.engine lays a rule under a root's base pose: rotation in degrees, scale, offset in metres), plus the props of that node's type, play (a sound once), playing (a sound in a loop), spin ({ rpm, clockwise }: a turn that never stops), on (bindings active)."
+        },
+        "transition": {
+          "type": "object",
+          "description": "Optional: { duration (s, 0 to 60), ease, play (a sound at its start) }, played at the render, never at the first reflection.",
+          "properties": {
+            "duration": {
+              "type": "number",
+              "default": 0
+            },
+            "ease": {
+              "enum": [
+                "linear",
+                "in",
+                "out",
+                "inOut"
+              ],
+              "default": "linear"
+            },
+            "play": {
+              "type": "string",
+              "description": "The sound node played at its start."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,159 @@
+//! `gripforge project build` as a function: project.gripforge → strict check by the common core → the game.json of the
+//! built game (scenes lowered for game.engine, dev.builder left out, the game's module in the lock) → the Rust of each
+//! scene by the generator (`init_scene.rs`) → the crate (`index.rs`, `lib.rs`, `Cargo.toml`). Everything lands in
+//! `<out>` (default `.build/` beside the project); nothing is compiled here.
+//!
+//!   .build/game.json        what the players load (no scene file read at run time)
+//!   .build/game/            the crate of the game's module, compiled by the game's own build
+//!   .build/build.json       the report (gripforge.build-report/1): issues, steps, times, files
+//!
+//! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
+//! property, what is expected).
+
+use crate::crate_gen::{sdk_of, write_crate};
+use crate::json::pretty;
+use crate::project::{
+    find_kits_dir, kit_catalog, project_file, read_json, scene_files, BuildError,
+};
+use serde_json::{json, Map, Value as Json};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+/// What a build is asked.
+#[derive(Debug, Clone, Default)]
+pub struct BuildOptions {
+    /// The project file or its folder (default: the current folder).
+    pub project: Option<PathBuf>,
+    /// The output folder (default `.build/` beside the project).
+    pub out: Option<PathBuf>,
+    /// The folder of the kits (`<kit>/kit.api.json`); default the project's (`kits/`, `.gripforge/kits/`).
+    pub kits: Option<PathBuf>,
+    /// A kits SDK checkout the generated crate takes its SDK crates from (else git at `sdk_rev`).
+    pub sdk: Option<PathBuf>,
+    /// The revision of the kits SDK the generated crate takes by git.
+    pub sdk_rev: Option<String>,
+    /// The tolerant validator's warnings stay warnings (like the development mode).
+    pub lenient: bool,
+    /// Only the strict check: nothing written.
+    pub check: bool,
+}
+
+/// What a build answers.
+#[derive(Debug, Clone, Default)]
+pub struct BuildResult {
+    pub ok: bool,
+    pub issues: Vec<Json>,
+    pub steps: Vec<Json>,
+    pub artifacts: Map<String, Json>,
+    pub project_name: Option<String>,
+    pub project: Option<PathBuf>,
+    pub out: Option<PathBuf>,
+}
+
+fn failed(issues: Vec<Json>, steps: Vec<Json>, file: Option<&Path>) -> BuildResult {
+    BuildResult {
+        ok: false,
+        issues,
+        steps,
+        project_name: file
+            .and_then(|f| f.file_name())
+            .map(|n| n.to_string_lossy().into_owned()),
+        project: file.map(Path::to_path_buf),
+        ..Default::default()
+    }
+}
+
+/// Builds (or only checks) a project.
+pub fn build(o: &BuildOptions) -> BuildResult {
+    let mut steps = Vec::new();
+    let file = match project_file(o.project.as_deref()) {
+        Ok(f) => f,
+        Err(BuildError(i)) => return failed(vec![i], steps, None),
+    };
+    let dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let t0 = Instant::now();
+    let read = (|| -> Result<_, BuildError> {
+        let project = read_json(&file, "file_not_json")?;
+        let files = scene_files(&project, &dir)?;
+        let kits_dir = o.kits.clone().or_else(|| find_kits_dir(&dir));
+        let kits = kit_catalog(kits_dir.as_deref())?;
+        Ok((project, files, kits))
+    })();
+    let (project, files, kits) = match read {
+        Ok(r) => r,
+        Err(BuildError(i)) => return failed(vec![i], steps, Some(&file)),
+    };
+    steps.push(json!({ "name": "read", "ms": t0.elapsed().as_millis() as u64, "kits": kits.len(), "files": files.len() }));
+    let incompatible: Vec<Json> = kits.iter().filter(|k| k["schema"] != "gripforge.kit-api/1").map(|k| json!({
+        "level": "error", "code": "kits_incompatible", "field": format!("kits.{}.schema", k["id"].as_str().unwrap_or("?")),
+        "message": format!("the kit {} describes itself with {}, this compiler reads gripforge.kit-api/1", k["id"].as_str().unwrap_or("(no id)"), k["schema"]),
+        "fix": "use kits made for gripforge.kit-api/1, or a version of gripforge-build made for these kits" })).collect();
+    if !incompatible.is_empty() {
+        return failed(incompatible, steps, Some(&file));
+    }
+
+    let t0 = Instant::now();
+    let op = if o.check { "check" } else { "code" };
+    let answer = crate::core::run(
+        &json!({ "op": op, "project": project, "files": files, "kits": kits, "lenient": o.lenient }),
+    );
+    steps.push(json!({ "name": if o.check { "check" } else { "check+generate" }, "ms": t0.elapsed().as_millis() as u64, "errors": answer["errors"].as_u64().unwrap_or(0) }));
+    let issues: Vec<Json> = answer["issues"].as_array().cloned().unwrap_or_default();
+    let mut r = failed(issues, steps, Some(&file));
+    if answer["ok"] != true {
+        return r;
+    }
+    r.ok = true;
+    if o.check {
+        return r;
+    }
+
+    let out = crate::project::absolute(&o.out.clone().unwrap_or_else(|| dir.join(".build")));
+    let written = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(&out)?;
+        std::fs::write(
+            out.join("game.json"),
+            format!("{}\n", pretty(&answer["game"])),
+        )?;
+        r.artifacts.insert(
+            "game".into(),
+            json!(out.join("game.json").to_string_lossy()),
+        );
+        let generated: Vec<(String, String)> = answer["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|f| {
+                (
+                    f["path"].as_str().unwrap_or("").to_string(),
+                    f["text"].as_str().unwrap_or("").to_string(),
+                )
+            })
+            .collect();
+        let sdk = sdk_of(o.sdk.as_deref(), o.sdk_rev.as_deref());
+        let id = project["id"].as_str().unwrap_or("game");
+        let version = project["version"].as_str().unwrap_or("0.1.0");
+        let files = write_crate(
+            &out.join("game"),
+            id,
+            version,
+            &sdk,
+            &generated,
+            answer["entry"].as_str().unwrap_or("init_scene::enter"),
+        )?;
+        r.artifacts
+            .insert("crate".into(), json!(out.join("game").to_string_lossy()));
+        r.artifacts.insert("files".into(), json!(files));
+        Ok(())
+    })();
+    if let Err(e) = written {
+        r.ok = false;
+        r.issues.push(json!({ "level": "error", "code": "write_failed", "file": out.to_string_lossy(),
+            "message": format!("the build cannot be written in {}: {e}", out.display()), "fix": "check the folder given by --out and its rights" }));
+        return r;
+    }
+    r.out = Some(out.clone());
+    let report = crate::report::report(&r);
+    let _ = std::fs::write(out.join("build.json"), format!("{}\n", pretty(&report)));
+    r
+}

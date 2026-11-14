@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gripforge.project",
+  "title": "A GripForge project (project.gripforge by default)",
+  "description": "The entry point of a game, like project.godot: the kits it needs and installs, their settings, its data, and the list and flow of its scenes, each one inline or in its scene file (<name>.gfscene). Optional: a game may use the kits from its code alone. JSON, owned by the game, without a version field. This schema is the reference of the syntax.",
+  "type": "object",
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "The project id."
+    },
+    "name": {
+      "type": "string",
+      "description": "The name shown to people."
+    },
+    "requires": {
+      "$ref": "gripforge.gfscene#/$defs/requires"
+    },
+    "installed": {
+      "type": "array",
+      "default": [],
+      "description": "The kits installed, in order, with their settings.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Exact version; read from the kit when packing in the repository."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "config": {
+            "type": "object",
+            "default": {},
+            "description": "The kit's settings (its configSchema)."
+          }
+        }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "default": {},
+      "description": "The game's variables and their start values."
+    },
+    "bindings": {
+      "type": "object",
+      "default": {},
+      "description": "Asset slots bound to files of the Library."
+    },
+    "data": {
+      "type": "object",
+      "default": {},
+      "description": "The game's documents by collection (archetypes, scenes, scripts, hooks, mods...).",
+      "properties": {
+        "scenes": {
+          "type": "array",
+          "default": [],
+          "description": "The scenes and their flow (game.engine). The content of a scene is either in its file (file) or written inline (requires, nodes, kits, on, meta: the keys of a scene file <name>.gfscene).",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "file": {
+                "type": "string",
+                "description": "Path of the scene file (<name>.gfscene) in the project (relative to the project file). Without it, the scene is written inline (nodes)."
+              },
+              "title": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "interface",
+                  "2d",
+                  "3d",
+                  "loading",
+                  "cinematic"
+                ],
+                "default": "3d"
+              },
+              "role": {
+                "enum": [
+                  "menu",
+                  "level",
+                  "credits",
+                  "other"
+                ]
+              },
+              "next": {
+                "type": "string",
+                "description": "The scene that comes after."
+              },
+              "loading": {
+                "type": "string"
+              },
+              "background": {
+                "type": "object"
+              },
+              "unload": {
+                "enum": [
+                  "release",
+                  "keep"
+                ]
+              },
+              "transition": {
+                "enum": [
+                  "replace",
+                  "add"
+                ]
+              },
+              "below": {
+                "enum": [
+                  "run",
+                  "pause",
+                  "hide"
+                ]
+              },
+              "requires": {
+                "$ref": "gripforge.gfscene#/properties/requires"
+              },
+              "nodes": {
+                "$ref": "gripforge.gfscene#/properties/nodes"
+              },
+              "kits": {
+                "$ref": "gripforge.gfscene#/properties/kits"
+              },
+              "on": {
+                "$ref": "gripforge.gfscene#/properties/on"
+              },
+              "meta": {
+                "$ref": "gripforge.gfscene#/properties/meta"
+              }
+            }
+          }
+        },
+        "scene_files": {
+          "type": "object",
+          "default": {},
+          "description": "The scene files a project in one file carries, by project path (sub-scenes; written by gfscene bundle and pack).",
+          "additionalProperties": {
+            "$ref": "gripforge.gfscene"
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "description": "What the packer puts in the game.json: seed, fixedHz, physics.",
+      "properties": {
+        "seed": {
+          "type": "integer",
+          "default": 7
+        },
+        "fixedHz": {
+          "type": "number",
+          "default": 60
+        },
+        "physics": {
+          "type": "string",
+          "default": "none"
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "default": {},
+      "description": "Free meta-information of the project (author, description, notes of the tool that wrote it); kept as written, never read by a kit."
+    }
+  }
+}

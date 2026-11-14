@@ -1,0 +1,536 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "core.camera",
+  "version": "1.1.0",
+  "requires": [],
+  "dependencies": [],
+  "provides": [
+    {
+      "id": "core.camera",
+      "version": "1.1.0",
+      "description": "A tool to handle the cameras of a game: several cameras by handle, made or adopted from the engine's own, activated and enabled, posed at the render by a preset the game picks (follow, third person, first person, orbit, top down, fixed, free, custom) with options it turns on (look from the pointer, walls, free look, smoothing). No game case built in."
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "fov": {
+        "type": "number",
+        "default": 60,
+        "minimum": 1,
+        "maximum": 170,
+        "description": "Vertical field of view of a new camera, degrees."
+      },
+      "near": {
+        "type": "number",
+        "default": 0.1,
+        "minimum": 0.001,
+        "maximum": 100,
+        "description": "Near clip plane of a new camera, metres: nothing closer is drawn. Applied natively by each engine with the pose (Bevy PerspectiveProjection.near, Godot Camera3D.near, Unity Camera.nearClipPlane, Unreal the camera's custom near clipping plane, the player's lens); setClip changes it on a running camera."
+      },
+      "far": {
+        "type": "number",
+        "default": 1000,
+        "minimum": 0.01,
+        "maximum": 1000000,
+        "description": "Far clip plane of a new camera, metres: nothing farther is drawn (beyond near). Applied natively by each engine with the pose (Bevy PerspectiveProjection.far, Godot Camera3D.far, Unity Camera.farClipPlane, the player's lens; Unreal draws to infinity in perspective and has no far plane per view: not applied there, a known limit of the README); setClip changes it on a running camera."
+      },
+      "presets": {
+        "type": "object",
+        "description": "The presets a game may pick, each with its default params (proposed, never imposed); a scene or a mod changes them (moddable, live).",
+        "properties": {
+          "custom": {"type":"object"},
+          "fixed": {"type":"object"},
+          "free": {"type":"object"},
+          "follow": {"type":"object"},
+          "thirdPerson": {"type":"object","description":"Behind the target, on its look. height: the pivot above its feet; distance: the arm; shoulder: sideways offset. yawFrom: look (the camera's own look, the default) or target (the heading of the target as drawn: the camera comes back behind it by itself once the look has not moved for followDelay seconds, at followSpeed per second; the mouse and setLook always come first). followDelay and followSpeed only count with yawFrom target (followSpeed 0 never follows)."},
+          "firstPerson": {"type":"object","description":"At the eyes of the target. eyeHeight: metres above its feet in the axes of the world (no attach). point: a named point under the target (node, bone, socket of the engine) the camera rides; offset: [x, y, z] in the frame of the point (or of the target); yawFrom: look (the camera's own look, the default) or target (the yaw of the target as drawn, only the pitch from the look: the look's yaw turns the character, read from core.input). All off by default: nothing read or computed."},
+          "orbit": {"type":"object"},
+          "topDown": {"type":"object"}
+        },
+        "additionalProperties": true
+      },
+      "walls": {
+        "type": "object",
+        "description": "The defaults of the walls option (off on every camera until the game turns it on with setWalls): clearance, minimum arm, return rate, five rays or one, eye view under eyeBelow and back above eyeBelow + hysteresis, eye drop, glide seconds, what to hide (designated by the game; empty: nothing).",
+        "properties": {
+          "clearance": {"type":"number","default":0.3},
+          "minArm": {"type":"number","default":0.15},
+          "returnRate": {"type":"number","default":3},
+          "fiveRays": {"type":"boolean","default":true},
+          "eyeBelow": {"type":"number","default":0.6},
+          "hysteresis": {"type":"number","default":0.1},
+          "eyeView": {"type":"boolean","default":true},
+          "eyeDrop": {"type":"number","default":0.14},
+          "transition": {"type":"number","default":0.2},
+          "hide": {"type":"array","default":[]},
+          "hideByDistance": {"type":"boolean","default":true},
+          "rays": {"type":"string","enum":["auto","physics","mesh","combined"],"default":"auto","description":"Where the rays come from (auto by default): auto = the physics (core.physics, asynchronous) when it is loaded, else a ray on the drawn meshes or shapes, bounding boxes first, stopping at the first wall; physics; mesh = a ray on the drawn meshes by the engine's own way, no physics; combined = both, the nearer wall kept."}
+        },
+        "additionalProperties": true
+      },
+      "fadeNear": {
+        "type": "object",
+        "description": "The defaults of the fadeNear option (off on every camera until the game turns it on with setFadeNear): the general fade of a drawn object (model.fade, applied natively by each engine) posed on what the camera follows, whole beyond start, gone at end (metres from the camera to the object's bounds); targets: followed, between (also the objects between the camera and its target, faded out over fadeTime seconds) or a list of targets (designated by the game); mode: alpha (a true opacity, 0 at end, the default) or dither (the engine's dithered crossfade).",
+        "properties": {
+          "start": {"type":"number","default":0.7},
+          "end": {"type":"number","default":0.6},
+          "targets": {"default":"followed","oneOf":[{"enum":["followed","between"]},{"type":"array"}]},
+          "fadeTime": {"type":"number","default":0.2},
+          "mode": {"type":"string","enum":["alpha","dither"],"default":"alpha"}
+        },
+        "additionalProperties": false
+      },
+      "freeLook": {
+        "type": "object",
+        "description": "The defaults of the free look offset and the zoom of a third person camera (setFreeLook).",
+        "properties": {
+          "sensitivity": {"type":"number","default":0.0022},
+          "returnTime": {"type":"number","default":0.35},
+          "minDistance": {"type":"number","default":0.45},
+          "maxFactor": {"type":"number","default":1.6},
+          "wheelStep": {"type":"number","default":0.0015},
+          "pitchLimit": {"type":"number","default":1.35}
+        },
+        "additionalProperties": true
+      },
+      "lookInput": {
+        "type": "object",
+        "description": "The defaults of the look read from the pointer or a stick (setLookInput).",
+        "properties": {
+          "sensitivity": {"type":"number","default":0.0022},
+          "pitchLimit": {"type":"number","default":1.5533},
+          "invertY": {"type":"boolean","default":false},
+          "input": {"type":"string","enum":["auto","actions","raw"],"default":"auto","description":"Where the look comes from: auto = the actions of core.input when that kit is loaded, else the engine's own pointer; actions; raw = the engine's own pointer or stick. core.input is recommended, never required."}
+        },
+        "additionalProperties": true
+      },
+      "zoomSpeed": {
+        "type": "number",
+        "default": 0.12,
+        "minimum": 0.01,
+        "maximum": 1,
+        "description": "Zoom of the topDown preset per unit (exp(delta x zoomSpeed))."
+      },
+      "cameras": {
+        "type": "array",
+        "default": [],
+        "description": "Cameras made (or adopted) at start: [{ name, preset, params, target, adopt: { path, tag }, active, enabled }].",
+        "items": {"type":"object"}
+      },
+      "nativeClass": {
+        "type": "object",
+        "description": "The class of a native camera each engine makes when nothing is adopted.",
+        "properties": {"godot":{"type":"string"},"unity":{"type":"string"},"unreal":{"type":"string"},"bevy":{"type":"string"}},
+        "additionalProperties": {"type":"string"}
+      }
+    },
+    "additionalProperties": false
+  },
+  "defaults": {
+    "fov": 60,
+    "near": 0.1,
+    "far": 1000,
+    "presets": {
+      "custom": {},
+      "fixed": {"position":[0,5,-10],"lookAt":[0,0,0]},
+      "free": {"position":[0,2,-5]},
+      "follow": {"offset":[0,3,-6]},
+      "thirdPerson": {"height":1.7,"distance":4,"shoulder":0,"yawFrom":"look","followDelay":1,"followSpeed":3},
+      "firstPerson": {"eyeHeight":1.62,"point":null,"offset":null,"yawFrom":"look"},
+      "orbit": {"distance":6,"height":1,"center":null},
+      "topDown": {"distance":22,"minDistance":5,"maxDistance":60,"focus":null,"yaw":0.7854,"pitch":0.9599}
+    },
+    "walls": {
+      "clearance": 0.3,
+      "minArm": 0.15,
+      "returnRate": 3,
+      "fiveRays": true,
+      "eyeBelow": 0.6,
+      "hysteresis": 0.1,
+      "eyeView": true,
+      "eyeDrop": 0.14,
+      "transition": 0.2,
+      "hide": [],
+      "hideByDistance": true,
+      "rays": "auto"
+    },
+    "fadeNear": {"start":0.7,"end":0.6,"targets":"followed","fadeTime":0.2,"mode":"alpha"},
+    "freeLook": {"sensitivity":0.0022,"returnTime":0.35,"minDistance":0.45,"maxFactor":1.6,"wheelStep":0.0015,"pitchLimit":1.35},
+    "lookInput": {"sensitivity":0.0022,"pitchLimit":1.5533,"invertY":false,"input":"auto"},
+    "cameras": [],
+    "zoomSpeed": 0.12,
+    "nativeClass": {"godot":"Camera3D","unity":"Camera","unreal":"CameraActor","bevy":"Camera3d"}
+  },
+  "events": {
+    "emits": [
+      {
+        "topic": "core.camera.created",
+        "payload": {
+          "type": "object",
+          "properties": {"handle":{"type":"integer"},"name":{"type":"string"},"node":{"type":"integer"}}
+        },
+        "description": "A camera was made (create, or adopt that found none)."
+      },
+      {
+        "topic": "core.camera.adopted",
+        "payload": {
+          "type": "object",
+          "properties": {"handle":{"type":"integer"},"name":{"type":"string"},"node":{"type":"integer"}}
+        },
+        "description": "A camera of the game was adopted."
+      },
+      {
+        "topic": "core.camera.removed",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"}}},
+        "description": "A camera was let go."
+      },
+      {
+        "topic": "core.camera.activated",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"previous":{"type":"integer"}}},
+        "description": "Another camera draws."
+      },
+      {
+        "topic": "core.camera.enabled",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"enabled":{"type":"boolean"}}},
+        "description": "A camera was enabled or disabled."
+      },
+      {
+        "topic": "core.camera.path.started",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"seconds":{"type":"number"}}},
+        "description": "A camera path was started (playPath)."
+      },
+      {
+        "topic": "core.camera.path.ended",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"why":{"type":"string","description":"end: the last key was reached; stop: the game stopped it."}}},
+        "description": "A camera path ended."
+      },
+      {
+        "topic": "core.camera.wall",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"eye":{"type":"boolean"},"arm":{"type":"number"}}},
+        "description": "The camera went to the eyes against a wall, or came back (only with the walls option)."
+      },
+      {
+        "topic": "core.camera.failed",
+        "payload": {"type":"object","properties":{"handle":{"type":"integer"},"reason":{"type":"string"}}},
+        "description": "The walls option is on and there is no source of rays at all: said once, with its reason."
+      }
+    ],
+    "listens": []
+  },
+  "engine": {
+    "role": "service",
+    "hooks": {
+      "core.camera.activate": {
+        "payload": {
+          "type": "object",
+          "properties": {"handle":{"type":"integer"},"previous":{"type":"integer"}},
+          "additionalProperties": false
+        },
+        "mutable": ["handle"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "A camera is about to draw: a game or a mod draws another one (handle) or keeps the current one (cancel).",
+        "example": {"id":"keep_intro","hook":"core.camera.activate","match":{"previous":1},"cancel":true}
+      },
+      "core.camera.look": {
+        "payload": {
+          "type": "object",
+          "properties": {"handle":{"type":"integer"},"dx":{"type":"number"},"dy":{"type":"number"},"source":{"type":"string","enum":["raw","actions"]},"stage":{"type":"string","enum":["render","tick"],"description":"render: the look of the drawn camera (the default, absent); tick: the same look for the logical aim (core.camera.aim@1), source actions."}},
+          "additionalProperties": false
+        },
+        "mutable": ["dx","dy"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "The look read for a camera this frame is about to turn it (dx, dy: pixels of the pointer or units of the actions), whatever the source: a game or a mod changes or replaces it before it is applied (invert an axis, scale the sensitivity, block it during a menu: cancel drops it). A hook of the RENDER: asked by the render side of the engine right before the pose, only when a tap listens to it (nothing is built otherwise). The kit asks it ALSO at the tick (stage tick, source actions, only when the look input of core.input moved) for the logical aim published in core.camera.aim@1: the drawn camera and the aim go through the same hook, so a game that flips an axis or blocks the look in a menu changes both, and nothing drawn comes back to the logic.",
+        "example": {"id":"flip_x","hook":"core.camera.look","set":{"dx":-1}}
+      },
+      "core.camera.avoid_wall": {
+        "payload": {
+          "type": "object",
+          "properties": {"handle":{"type":"integer"},"arm":{"type":"number"},"wanted":{"type":"number"},"eye":{"type":"boolean"}},
+          "additionalProperties": false
+        },
+        "mutable": ["arm","eye"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "The camera touches a wall and the eye view is about to change: a game or a mod keeps the third person (eye false), sets the arm, or cancels (nothing changes). Asked by the render side through wallDecision, only when the eye view would change (never per frame); the event core.camera.wall tells what was decided.",
+        "example": {"id":"never_eyes","hook":"core.camera.avoid_wall","set":{"eye":false}}
+      }
+    },
+    "moddable": {
+      "collections": [],
+      "config": ["fov","near","far","presets","walls","fadeNear","freeLook","lookInput","zoomSpeed","cameras","nativeClass"],
+      "live": ["presets","walls","fadeNear","freeLook","lookInput","zoomSpeed"]
+    },
+    "registries": {
+      "presets": {
+        "of": "camera preset",
+        "inherit": false,
+        "description": "The presets a game may pick, by name; a game or a mod changes the params of one (config presets.<name>)."
+      }
+    }
+  },
+  "services": {
+    "core.camera": {
+      "description": "The cameras of the game. Each method can be served by the game in its language (provide_<method>); the pose itself is made at the render by the target's render side, never at the tick.",
+      "methods": [
+        {
+          "name": "create",
+          "args": ["name","preset","params"],
+          "description": "Makes a camera in the current scene (or under the root the game set): a native one of the engine (Camera3D, Camera, CameraActor, Camera3d) with the preset (one of presets(), its params merged over the defaults). Returns its handle. The first camera becomes the active one."
+        },
+        {
+          "name": "adopt",
+          "args": ["path","tag","name"],
+          "description": "Takes the camera the game already put in its scene (by path, else the first tagged tag), else makes one there: the native camera is never replaced and never freed by the kit. Returns its handle, custom until a preset is set."
+        },
+        {
+          "name": "remove",
+          "args": ["handle"],
+          "description": "Lets the camera go: frees it when the kit made it, leaves it as it is when it was adopted. When it was drawing, the camera active before it draws again (else the first enabled one)."
+        },
+        {
+          "name": "list",
+          "args": [],
+          "description": "The cameras: [{ handle, name, preset, enabled, active, adopted, node }] (rare; JSON)."
+        },
+        {
+          "name": "get",
+          "args": ["handle"],
+          "description": "One camera: its name, node, preset and params, target, look, options (rare; JSON)."
+        },
+        {
+          "name": "activate",
+          "args": ["handle","seconds"],
+          "description": "Makes handle the camera that draws (and enables it). The hook core.camera.activate may change or refuse it. Returns whether it is active. seconds (optional, 0 = at once, the default): the pose fades from the camera that leaves to the one that arrives over that time (position, rotation by slerp, field of view), at the render; a later activate, setPreset or a 0 interrupts it from where the camera is."
+        },
+        {"name":"active","args":[],"description":"The handle of the camera that draws, 0 when none of the kit's."},
+        {
+          "name": "enable",
+          "args": ["handle","enabled"],
+          "description": "Enables or disables a camera: a disabled camera is neither posed nor drawn; the active one disabled hands back to the camera active before it (else the first enabled one)."
+        },
+        {"name":"enabled","args":["handle"],"description":"Whether the camera is enabled."},
+        {
+          "name": "presets",
+          "args": [],
+          "description": "The names of the presets the game may pick (custom, fixed, free, follow, thirdPerson, firstPerson, orbit, topDown)."
+        },
+        {
+          "name": "setPreset",
+          "args": ["handle","preset","params","seconds"],
+          "description": "Gives a camera a preset (params merged over its defaults); custom hands the pose to the game. seconds (optional, 0 = at once, the default): the pose fades from the one drawn to the new preset's over that time (position, rotation by slerp, field of view), at the render; a later call interrupts it from where the camera is."
+        },
+        {
+          "name": "recenter",
+          "args": ["handle","seconds","pitch"],
+          "description": "Brings a third person camera back behind its target (the heading of the target as drawn) in seconds (optional, 0 = at once). The mouse moving cancels it. Option `pitch` (boolean, off by default): the pitch comes back to the default view (level) over the same time; off, the pitch is left as it is. One call is enough: the soft return is the render side's, frame by frame. Returns whether the camera exists."
+        },
+        {
+          "name": "playPath",
+          "args": ["handle","path"],
+          "description": "Plays a camera path on a camera (it draws it while it plays; activate it first). path = { keys: [...], handover }: each key is { t (seconds from the start), position or positionRel (from the target as drawn), lookAt or lookAtRel, fov (degrees), focus (metres), ease (linear | smoothstep | easeInOutSine | easeInOutCubic: the time to the next key), cut (reached at once at t) }. The position and the look-at point go through the keys on a spline. handover: the last key carries only t (and a focus): it is the pose of the camera's own preset at that moment, so the path ends on the player's camera with no cut. Returns the duration in seconds; a path that is not one is refused with the reason. The clock is the render's (each frame's dt); the event core.camera.path.ended tells the end."
+        },
+        {
+          "name": "stopPath",
+          "args": ["handle"],
+          "description": "Ends the path of a camera at once: the camera is its own again from the next frame. Returns whether one was playing."
+        },
+        {
+          "name": "pathEnded",
+          "args": ["handle"],
+          "description": "Told by the render side when a path reached its last key (once per play): the path leaves the rig and core.camera.path.ended is told. Returns whether one was playing. A game does not call it."
+        },
+        {
+          "name": "setTarget",
+          "args": ["handle","target"],
+          "description": "What the camera follows, designated by the game: { entity }, { node }, { path } or { tag }; null: nothing (a following preset stays where it is)."
+        },
+        {
+          "name": "setLook",
+          "args": ["handle","yaw","pitch"],
+          "description": "The look of the camera (radians; yaw 0 along +Z, pitch up): the start of the look read from the counters."
+        },
+        {
+          "name": "setPose",
+          "args": ["handle","position","yaw","pitch"],
+          "description": "Puts a custom, fixed or free camera at position, looking at yaw and pitch."
+        },
+        {
+          "name": "move",
+          "args": ["handle","forward","right","up"],
+          "description": "Moves a free or fixed camera along its own look (the rig's yaw): forward, right and up, metres. With setLook, what a tool needs to fly a camera (the debug inspector's free camera)."
+        },
+        {"name":"setFov","args":["handle","fov"],"description":"The vertical field of view, degrees."},
+        {
+          "name": "setClip",
+          "args": ["handle","near","far"],
+          "description": "The clip planes of a camera, metres: nothing closer than near nor farther than far is drawn. null keeps the camera's own; each is held within the bounds of the config near and far; refused, with the reason, when one is not a number or far is not beyond near. Applied natively by each engine with the pose, live (seen in the debug view)."
+        },
+        {
+          "name": "zoom",
+          "args": ["handle","delta"],
+          "description": "Zooms a topDown or orbit camera by exp(delta x zoomSpeed), within its bounds."
+        },
+        {
+          "name": "setSmoothing",
+          "args": ["handle","seconds"],
+          "description": "The time constant of a follow; 0 (the default) poses it directly."
+        },
+        {
+          "name": "setLookInput",
+          "args": ["handle","settings"],
+          "description": "Turns on the look from the pointer or a stick (settings over the lookInput defaults), read in place on the render thread right before the draw; null turns it off."
+        },
+        {
+          "name": "setWalls",
+          "args": ["handle","settings"],
+          "description": "Turns on the walls option (settings over the walls defaults): rays of the engine's physics shorten the arm, a short arm moves the camera to the eyes and hides what the game designated; null turns it off (the default)."
+        },
+        {
+          "name": "setFadeNear",
+          "args": ["handle","settings"],
+          "description": "Turns on the fadeNear option (settings over the fadeNear defaults): the camera fades what it follows as it comes near (the general fade of a drawn object, applied natively by the engine) and, with targets between, the objects between it and its target; null turns it off (the default) and gives every object its own fade back. Nothing is computed while it is off."
+        },
+        {
+          "name": "setFreeLook",
+          "args": ["handle","settings"],
+          "description": "Turns on the free look offset and the zoom of a third person camera (settings over the freeLook defaults); null turns it off."
+        },
+        {
+          "name": "wallDecision",
+          "args": ["handle","arm","wanted","eye"],
+          "description": "What to do when the camera touches a wall, asked by the render side only when the eye view would change: answers { arm, eye }. The default keeps the decision and runs the hook core.camera.avoid_wall; a game replaces it in its language (provide_wall_decision)."
+        },
+        {
+          "name": "debugView",
+          "args": [],
+          "description": "What the debug inspector shows of the cameras (null when it is not loaded): each camera, the active one, its preset, target and options, the last wall decision. Built when the panel asks, never per frame."
+        },
+        {
+          "name": "debugEpoch",
+          "args": [],
+          "description": "A number that changes with the cameras: the debug inspector reads debugView again only then."
+        },
+        {
+          "name": "debugFreeCamera",
+          "args": ["on"],
+          "description": "The free camera of the debug inspector: made only when asked (on), where the active camera stands, flown with the pointer and move, and active; off removes it and the camera active before it draws again. Answers its handle (0 when off)."
+        },
+        {
+          "name": "debugWalls",
+          "args": ["on"],
+          "description": "Turns the walls option of the active camera on (its defaults) or off, from the debug inspector."
+        },
+        {
+          "name": "debugClip",
+          "args": ["plane", "value"],
+          "description": "Sets the near or the far clip plane (plane: near | far, value: metres) of the active camera from the debug inspector, through setClip (the other plane kept)."
+        },
+        {
+          "name": "failed",
+          "args": ["handle", "reason"],
+          "description": "The render side tells that it could not do what a camera asks, once (the walls option is on and there is no source of rays at all): announced as the event core.camera.failed, never in silence."
+        },
+        {
+          "name": "debugFree",
+          "args": [],
+          "description": "The real state of the free camera action of the debug inspector: { free, handle, fov } (read again when the panel asks)."
+        },
+        {
+          "name": "debugFreeFov",
+          "args": ["fov"],
+          "description": "The field of view, in degrees, of the free camera of the debug inspector (nothing while it is not on)."
+        },
+        {
+          "name": "debugFrame",
+          "args": ["frames", "moving", "frozen", "lagFrames", "yaw", "pitch"],
+          "description": "The totals of the camera rule that the render side measured from what it drew (frames, frames where the look moved, of them frozen, frames late, drawn angle). Written in place in the debugger's counters, only while someone looks (the var core.camera.watched); answers whether it was written."
+        }
+      ]
+    }
+  },
+  "gameSchema": {
+    "columns": [
+      {
+        "name": "core.camera.aim@1",
+        "type": "f64x3",
+        "default": [0,0,0],
+        "read": ["*"],
+        "write": ["core.camera"],
+        "description": "The AIM of the camera that follows this entity, as LOGIC, published at each tick: [yaw, pitch, camera handle] (radians, yaw 0 along +Z, pitch up; handle 0: no camera follows it). It is the look the game set (setLook, setPose) turned by the look input of core.input (after the hook core.camera.look, stage tick), the follow of the body (yawFrom target) and the recenter: the laws of the render, run at the tick's step. Never read from the camera that is drawn (rule R5: one source per value, nothing comes back from the render). Written only when it changes; read in place by the kits that walk relative to the camera. Zeroed when no camera follows the entity any more."
+      }
+    ],
+    "uses": {
+      "columns": {
+        "core.rotation@1": "r"
+      }
+    }
+  },
+  "site": "site",
+  "expose": [
+    {
+      "id": "core.camera.cameras",
+      "for": ["debug"],
+      "label": "Camera",
+      "category": "info",
+      "call": "core.camera.debugView",
+      "epoch": "core.camera.debugEpoch",
+      "actions": {
+        "activate": {"label":"Activate camera (handle)","kind":"number","call":"core.camera.activate","args":["$value"]},
+        "walls": {"label":"Walls option (active camera)","kind":"toggle","call":"core.camera.debugWalls","args":["$value"]},
+        "near": {"label":"Near plane, m (active camera)","kind":"number","call":"core.camera.debugClip","args":["near","$value"]},
+        "far": {"label":"Far plane, m (active camera)","kind":"number","call":"core.camera.debugClip","args":["far","$value"]}
+      }
+    },
+    {
+      "id": "core.camera.free",
+      "for": ["debug"],
+      "label": "Free camera",
+      "category": "settings",
+      "kind": "info",
+      "call": "core.camera.debugFree",
+      "state": "core.camera.debugFree",
+      "actions": {
+        "free": {"label":"Free camera","kind":"toggle","call":"core.camera.debugFreeCamera","args":["$value"]},
+        "fov": {"label":"Field of view","kind":"number","call":"core.camera.debugFreeFov","args":["$value"]}
+      }
+    },
+    {
+      "id": "core.camera.counts",
+      "for": ["debug"],
+      "label": "Cameras",
+      "category": "counters",
+      "values": [
+        {"name":"cameras"},
+        {"name":"active"},
+        {"name":"adopted"},
+        {"name":"walls"},
+        {"name":"frames"},
+        {"name":"moving"},
+        {"name":"frozen"},
+        {"name":"lagFrames"},
+        {"name":"yaw"},
+        {"name":"pitch"}
+      ]
+    },
+    {
+      "id": "core.camera.events",
+      "for": ["debug"],
+      "label": "Camera events",
+      "category": "events",
+      "topics": [
+        "core.camera.activated",
+        "core.camera.enabled",
+        "core.camera.wall",
+        "core.camera.path.started",
+        "core.camera.path.ended",
+        "core.camera.created",
+        "core.camera.adopted",
+        "core.camera.removed",
+        "core.camera.failed"
+      ]
+    }
+  ]
+}
