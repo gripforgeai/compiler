@@ -1,14 +1,15 @@
 name: Compatibility with the latest kits
-# Each pull request and each night: this compiler (its core built from the pinned SDK of sdk.json) builds the
+# Each push to main and each night (never on a pull request: it reads the private kits SDK): this compiler (its core built from the pinned SDK of sdk.json) builds the
 # dev.builder room of the LATEST kits (gripforgeai/module-kits, the branch `track` of sdk.json, or the ref given by
 # hand), then the kits' own end-to-end test (kits/dev_builder/tests/compiled.rs) loads the compiled game and checks it
 # reaches the same state as the dev mode (same gripforge.debug/1 snapshot, same engine tree). Red here: the kits moved
 # and the compiler must follow (update sdk.json, then the golden files).
 #
-# Our self-hosted runners only; a pull request from a fork never runs here. No demo game, no paid AI call.
+# GitHub-hosted runner; contents: read; actions pinned by SHA. No demo game, no paid AI call.
 # Secret: GF_SPLIT_READ_TOKEN (read access to gripforgeai/module-kits).
 on:
-  pull_request:
+  push:
+    branches: [main]
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
@@ -30,11 +31,10 @@ env:
 
 jobs:
   compat:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON(vars.GF_LIGHT_RUNNER || '["self-hosted","Linux","X64","gf-qa"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Revisions
@@ -47,7 +47,7 @@ jobs:
           echo "latest=${REF:-$(node -p "require('./sdk.json').track")}" >> "$GITHUB_OUTPUT"
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: The pinned SDK (the core of the compiler is built from it)
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: gripforgeai/module-kits
           ref: ${{ steps.sdk.outputs.rev }}
@@ -55,27 +55,28 @@ jobs:
           path: .sdk/module-kits
           persist-credentials: false
       - name: The latest kits
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: gripforgeai/module-kits
           ref: ${{ steps.sdk.outputs.latest }}
           token: ${{ secrets.GF_SPLIT_READ_TOKEN }}
           path: kits-latest
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
         with:
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
           components: rust-src
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             wasm
             kits-latest
           shared-key: compat
-          save-if: ${{ github.event_name == 'schedule' }}
+          save-if: ${{ github.event_name != 'workflow_dispatch' }}
       - name: The core of the compiler (pinned SDK)
         run: node scripts/prepare.mjs
       - name: The room of the latest kits, checked and built (native and wasm)

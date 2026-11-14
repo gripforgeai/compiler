@@ -99,7 +99,7 @@ SDK it is given, and refuses those it was not made for with `kits_incompatible`.
 Following the kits: change `rev` in `sdk.json`, run `npm run sdk` and `npm test`; when the generated code changes on
 purpose (a kit renamed an event, a property…), `UPDATE_GOLDEN=1 npm test` rewrites the golden files and the diff of
 `test/golden/` is reviewed in the pull request. The workflow **Compatibility with the latest kits** builds the
-`dev.builder` room of the latest kits on each pull request and each night, and checks with the kits' own test that the
+`dev.builder` room of the latest kits on each push to `main` and each night, and checks with the kits' own test that the
 compiled game reaches the same state as the development mode.
 
 ## Develop
@@ -125,7 +125,9 @@ npm run lint             # JavaScript; cargo fmt --check and cargo clippy -D war
 | `test/` | one suite per step (reading, check, generation, crate, compilation, messages, command line, compatibility, release) and the golden tests (`test/golden/`: the crate and code of the room, the messages of a broken project) |
 
 The tests replace cargo by a fake that records its arguments; `GF_COMPILER_CARGO=1 npm test` compiles for real. The CI
-also compiles an example project (the `dev.builder` room of the SDK) native and wasm on each pull request.
+also compiles an example project (the `dev.builder` room of the SDK) native and wasm on Linux, and native on Windows
+and macOS, on each pull request from a branch of this repository (a fork's pull request gets the lint only: the
+other jobs read the kits SDK with a secret).
 
 ## Releases
 

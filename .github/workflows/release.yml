@@ -8,7 +8,8 @@ name: Release
 # registry: the archive installs by its URL. A version is never rewritten.
 # workflow_dispatch: a dry run only (builds and checks, writes nothing).
 #
-# Our release runner only (GF_RELEASE_RUNNER, default ["self-hosted","Linux","X64","gf-release"]); no Actions artifact.
+# GitHub-hosted runner; contents: read; actions pinned by SHA. The archive goes straight from the job to the storage:
+# never an Actions artifact.
 # Variables: GF_S3_ENDPOINT, GF_S3_BUCKET, GF_S3_REGION (default garage), GF_COMPILER_PUBLIC_URL (optional).
 # Secrets: GF_S3_ACCESS_KEY_ID, GF_S3_SECRET_ACCESS_KEY (write on the bucket), GF_SPLIT_READ_TOKEN (read module-kits).
 on:
@@ -33,13 +34,13 @@ env:
 
 jobs:
   release:
-    runs-on: ${{ fromJSON(vars.GF_RELEASE_RUNNER || '["self-hosted","Linux","X64","gf-release"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
       PUBLISH: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -58,18 +59,19 @@ jobs:
           echo "V=$v" >> "$GITHUB_ENV"
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "rev=$(node -p "require('./sdk.json').rev")" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: gripforgeai/module-kits
           ref: ${{ steps.sdk.outputs.rev }}
           token: ${{ secrets.GF_SPLIT_READ_TOKEN }}
           path: .sdk/module-kits
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
         with:
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
           components: rust-src,rustfmt,clippy,llvm-tools
       - name: Checks (lint, tests, coverage)
