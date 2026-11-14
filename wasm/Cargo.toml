@@ -1,0 +1,31 @@
+# The Rust heart of @gripforge/compiler: the strict check of a project.gripforge, its packing into the game.json of a
+# built game, and the call of the generator of init_scene.rs, as one wasm (wasm32-unknown-unknown, no WASI) the
+# package carries. JSON in, JSON out: no host, no kit, no engine.
+#
+# The common core (gripforge-scene-format) is NOT copied here: it is read from the kits SDK (module-kits) at the
+# revision of ../sdk.json, which `npm run sdk` puts in ../.sdk/module-kits.
+[package]
+name = "gripforge-compiler-wasm"
+description = "The core of `gripforge project build` (@gripforge/compiler): strict check, packing and Rust generation of a project.gripforge, as a wasm."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
+gripforge-scene-format = { path = "../.sdk/module-kits/core/scene-format" }
+
+# Its own workspace: never a member of the SDK's.
+[workspace]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

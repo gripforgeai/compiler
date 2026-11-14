@@ -1,0 +1,104 @@
+name: Release
+# A tag vX.Y.Z (the version of package.json at that commit, on main) publishes that version of the compiler for
+# download: the CI checks it (lint, tests, coverage), packs it (npm pack: the package, its Rust core in wasm and the
+# kits' catalog), then puts it on the download storage (an S3-compatible bucket) with scripts/release.mjs:
+#   compiler/<version>/compiler-<version>.tgz, SHA256SUMS, release.json
+#   compiler/versions.json (every version, newest first) and compiler/latest.json
+# The format of versions.json is in the README; the GripForge site lists the versions from it. Nothing goes to the npm
+# registry: the archive installs by its URL. A version is never rewritten.
+# workflow_dispatch: a dry run only (builds and checks, writes nothing).
+#
+# Our release runner only (GF_RELEASE_RUNNER, default ["self-hosted","Linux","X64","gf-release"]); no Actions artifact.
+# Variables: GF_S3_ENDPOINT, GF_S3_BUCKET, GF_S3_REGION (default garage), GF_COMPILER_PUBLIC_URL (optional).
+# Secrets: GF_S3_ACCESS_KEY_ID, GF_S3_SECRET_ACCESS_KEY (write on the bucket), GF_SPLIT_READ_TOKEN (read module-kits).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to try, e.g. 0.1.0 (dry run, nothing published)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: never
+  GF_JOBS: '4'
+
+jobs:
+  release:
+    runs-on: ${{ fromJSON(vars.GF_RELEASE_RUNNER || '["self-hosted","Linux","X64","gf-release"]') }}
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+      PUBLISH: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Version, tag on main
+        id: sdk
+        run: |
+          set -eu
+          v="${VERSION#v}"
+          [[ $v =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || { echo "::error::not a version vX.Y.Z: $VERSION"; exit 1; }
+          [ "$(node -p "require('./package.json').version")" = "$v" ] || { echo "::error::the tag says $v, package.json says $(node -p "require('./package.json').version")"; exit 1; }
+          if [ "$PUBLISH" = true ]; then
+            git fetch -q --force origin "+refs/tags/v$v:refs/tags/v$v" +refs/heads/main:refs/remotes/origin/main
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::v$v ($GITHUB_SHA) is not on main: only main is released"; exit 1; }
+          fi
+          [ -n "${{ secrets.GF_SPLIT_READ_TOKEN != '' && 'set' || '' }}" ] || { echo "::error::secret GF_SPLIT_READ_TOKEN missing (read access to gripforgeai/module-kits)"; exit 1; }
+          echo "V=$v" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "rev=$(node -p "require('./sdk.json').rev")" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: gripforgeai/module-kits
+          ref: ${{ steps.sdk.outputs.rev }}
+          token: ${{ secrets.GF_SPLIT_READ_TOKEN }}
+          path: .sdk/module-kits
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-src,rustfmt,clippy,llvm-tools
+      - name: Checks (lint, tests, coverage)
+        env:
+          CI: '1'
+        run: |
+          set -eu
+          npm run lint
+          npm test
+          npm run coverage
+          npm run coverage:rust
+      - name: Pack
+        run: |
+          set -eu
+          rm -rf dist
+          file=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].filename))')
+          echo "TGZ=$RUNNER_TEMP/$file" >> "$GITHUB_ENV"
+          sha256sum "$RUNNER_TEMP/$file"
+      - name: Publish for download (S3)
+        env:
+          GF_S3_ENDPOINT: ${{ vars.GF_S3_ENDPOINT }}
+          GF_S3_BUCKET: ${{ vars.GF_S3_BUCKET }}
+          GF_S3_REGION: ${{ vars.GF_S3_REGION || 'garage' }}
+          GF_COMPILER_PUBLIC_URL: ${{ vars.GF_COMPILER_PUBLIC_URL }}
+          GF_S3_ACCESS_KEY_ID: ${{ secrets.GF_S3_ACCESS_KEY_ID }}
+          GF_S3_SECRET_ACCESS_KEY: ${{ secrets.GF_S3_SECRET_ACCESS_KEY }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/release.mjs "$V" --tgz "$TGZ"
+          else
+            node scripts/release.mjs "$V" --tgz "$TGZ" --dry-run
+          fi

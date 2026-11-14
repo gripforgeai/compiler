@@ -1,0 +1,44 @@
+{
+  "name": "@gripforge/compiler",
+  "version": "0.1.0",
+  "description": "gripforge project build: compiles a GripForge project (project.gripforge) into a game whose scenes are posed by generated Rust (init_scene.rs per scene, index.rs), checked strictly, built native and wasm.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/gripforgeai/compiler#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gripforgeai/compiler.git"
+  },
+  "bin": {
+    "gripforge-build": "bin/gripforge-build.mjs"
+  },
+  "exports": {
+    ".": "./lib/build.mjs",
+    "./core": "./lib/core.mjs",
+    "./report": "./lib/report.mjs",
+    "./compat": "./lib/compat.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "dist/gripforge_compiler.wasm",
+    "dist/kits.json",
+    "dist/sdk.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "sdk": "node scripts/sdk.mjs",
+    "prepack": "node scripts/prepare.mjs --release",
+    "pretest": "node scripts/prepare.mjs --if-missing",
+    "test": "node --test test/*.test.mjs",
+    "precoverage": "node scripts/prepare.mjs --if-missing",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include=lib/** --test-coverage-include=bin/** --test-coverage-include=scripts/release.mjs --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 test/*.test.mjs",
+    "coverage:rust": "node scripts/coverage-rust.mjs --min 90",
+    "lint": "node scripts/lint.mjs"
+  },
+  "dependencies": {}
+}

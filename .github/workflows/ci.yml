@@ -1,0 +1,94 @@
+name: CI
+# Each pull request and each push to main: lint (JS and Rust), npm test (unit and golden tests), the coverage of the
+# lines (90 % at least, JS and Rust core: under it the job fails), and the real compilation of an example project
+# (the dev.builder room of the kits SDK at the revision of sdk.json), native and wasm. No demo game, no paid AI call.
+#
+# Our self-hosted runners only (GF_LIGHT_RUNNER, default ["self-hosted","Linux","X64","gf-qa"]). The repository is
+# public: a pull request from a fork never runs on them (the jobs run only for branches of this repository), and no
+# workflow here uses pull_request_target.
+# Secret: GF_SPLIT_READ_TOKEN (read access to the kits SDK, gripforgeai/module-kits).
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  GF_JOBS: '4'
+
+jobs:
+  test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.GF_LIGHT_RUNNER || '["self-hosted","Linux","X64","gf-qa"]') }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: The kits SDK revision (sdk.json)
+        id: sdk
+        run: |
+          [ -n "${{ secrets.GF_SPLIT_READ_TOKEN != '' && 'set' || '' }}" ] || { echo "::error::secret GF_SPLIT_READ_TOKEN missing (read access to gripforgeai/module-kits)"; exit 1; }
+          echo "rev=$(node -p "require('./sdk.json').rev")" >> "$GITHUB_OUTPUT"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: gripforgeai/module-kits
+          ref: ${{ steps.sdk.outputs.rev }}
+          token: ${{ secrets.GF_SPLIT_READ_TOKEN }}
+          path: .sdk/module-kits
+          persist-credentials: false
+      - run: node scripts/sdk.mjs --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-src,rustfmt,clippy,llvm-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wasm
+          shared-key: compiler
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Lint
+        run: |
+          npm run lint
+          cargo fmt --manifest-path wasm/Cargo.toml --check
+          nice -n 15 cargo clippy --manifest-path wasm/Cargo.toml --all-targets -j 4 -- -D warnings
+      - name: Tests (unit and golden)
+        env:
+          CI: '1'
+        run: npm test
+      - name: Coverage of the JavaScript (90 % of the lines at least)
+        run: npm run coverage
+      - name: Coverage of the Rust core (90 % of the lines at least)
+        run: npm run coverage:rust
+      - name: Example project compiled, native and wasm (the dev.builder room of the SDK)
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/example"
+          node bin/gripforge-build.mjs .sdk/module-kits/kits/dev_builder/tests/testbed/room \
+            --sdk .sdk/module-kits --kits .sdk/module-kits/kits --target all --out "$out" --target-dir "$RUNNER_TEMP/example-target"
+          for f in game.json build.json native/libgfkit_game_main.so native/kit-modules-native.json web/game.main.wasm; do
+            [ -s "$out/$f" ] || { echo "::error::$f was not built"; exit 1; }
+          done
+          ls -l "$out/native" "$out/web"
+      - name: The package (what npm pack puts in it)
+        run: |
+          set -eu
+          npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
+          node -e '
+            const files = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))[0].files.map((f) => f.path);
+            for (const f of ["bin/gripforge-build.mjs", "lib/build.mjs", "dist/gripforge_compiler.wasm", "dist/kits.json", "dist/sdk.json", "README.md", "LICENSE"])
+              if (!files.includes(f)) { console.error(`::error::${f} missing from the package`); process.exit(1); }
+            if (files.some((f) => f.startsWith("test/") || f.startsWith(".sdk/") || f.startsWith("wasm/"))) { console.error("::error::the package carries tests, the SDK or the Rust sources"); process.exit(1); }
+            console.log(files.join("\n"));' "$RUNNER_TEMP/pack.json"

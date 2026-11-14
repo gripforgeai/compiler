@@ -1,0 +1,7 @@
+# The Rust of the kits SDK (module-kits rust-toolchain.toml at the revision of sdk.json): the core of the compiler is
+# built with the same compiler as core/scene-format. wasm32 is the target of the core the package carries.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rust-src", "rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
