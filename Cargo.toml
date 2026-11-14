@@ -20,6 +20,9 @@ path = "src/main.rs"
 [dependencies]
 serde_json = { workspace = true }
 gripforge-scene-format = { path = "crates/scene-format", version = "0.1.0" }
+ureq = "2"
+sha2 = "0.10"
+base64 = "0.22"
 
 [workspace]
 members = [".", "crates/scene-format"]

@@ -51,6 +51,9 @@ gripforge-build path/to/my-game --json       # the report gripforge.build-report
 | `--check` | the strict check only |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
+| `--compress-textures` | sends the GLB without a compressed copy to the public texture route (see below); off by default |
+| `--no-compress-textures` | no texture compression (the default; cancels an earlier `--compress-textures`) |
+| `--compress-textures-url <url>` | the route (default `https://gripforge.ai/api/v1/public/textures/compress`) |
 | `--version`, `--help` | the version, the usage |
 
 Exit code: `0` generated (or checked), `1` the project has errors (nothing is generated), `2` wrong command line.
@@ -183,3 +186,21 @@ newest first; `…/releases/latest` for the newest) and read the `release.json` 
 ## License
 
 MIT
+
+## Texture compression (`--compress-textures`)
+
+The compiler only CALLS the public route of GripForge (no key); the compression itself (KTX2 / Basis) is done by the
+service, nothing of it is in this repository. A local integration may come later.
+
+During the build, each `*.glb` of the project (hidden folders, `target`, `node_modules` and the output folder left out)
+that does not declare `KHR_texture_basisu` is sent as `{ glbBase64 }`; the answer's `glbBase64` is written as
+`<out>/textures/<path>.ktx2.glb`. The original is never touched. The copy is also kept by the sha256 of the original in
+`<out>/textures/.cache/`: a GLB already compressed is not sent again.
+
+The report (`build.json`, `--json`) gets a `textures` object (`gripforge.texture-compress/1`): per file the status, the
+file gain (`bytesBefore/After`) and the GPU memory gain (`gpuBytesBefore/After`), and the totals. A network or server
+failure, a file over 32 MB or `applied:false` is a warning (`textures_service_failed`, `textures_too_big`,
+`textures_not_applied`, `textures_write_failed`): the build goes on with the original GLB.
+
+It is off by default: the build is otherwise offline and deterministic, and sending the files of a project to a service
+is a choice to make, not a surprise. HTTP client: `ureq` (rustls).

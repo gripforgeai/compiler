@@ -36,6 +36,10 @@ pub struct BuildOptions {
     pub lenient: bool,
     /// Only the strict check: nothing written.
     pub check: bool,
+    /// Sends the GLB without a compressed copy to the public texture route (off by default: the build stays offline).
+    pub compress_textures: bool,
+    /// The route (default [`crate::textures::DEFAULT_URL`]).
+    pub compress_textures_url: Option<String>,
 }
 
 /// What a build answers.
@@ -48,6 +52,8 @@ pub struct BuildResult {
     pub project_name: Option<String>,
     pub project: Option<PathBuf>,
     pub out: Option<PathBuf>,
+    /// The texture compression report (`--compress-textures`).
+    pub textures: Option<Json>,
 }
 
 fn failed(issues: Vec<Json>, steps: Vec<Json>, file: Option<&Path>) -> BuildResult {
@@ -151,6 +157,17 @@ pub fn build(o: &BuildOptions) -> BuildResult {
         r.issues.push(json!({ "level": "error", "code": "write_failed", "file": out.to_string_lossy(),
             "message": format!("the build cannot be written in {}: {e}", out.display()), "fix": "check the folder given by --out and its rights" }));
         return r;
+    }
+    if o.compress_textures {
+        let t0 = Instant::now();
+        let url = o
+            .compress_textures_url
+            .as_deref()
+            .unwrap_or(crate::textures::DEFAULT_URL);
+        let (rep, issues) = crate::textures::compress(&dir, &out, url);
+        r.steps.push(json!({ "name": "textures", "ms": t0.elapsed().as_millis() as u64, "compressed": rep["compressed"] }));
+        r.issues.extend(issues);
+        r.textures = Some(rep);
     }
     r.out = Some(out.clone());
     let report = crate::report::report(&r);
