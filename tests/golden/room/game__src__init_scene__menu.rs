@@ -3,7 +3,8 @@
 
 #![allow(unused_imports, unused_variables, clippy::all)]
 
-use gripforge_kit_facade::kits::{core_camera, core_light};
+use gripforge_kit_facade_core_camera as core_camera;
+use gripforge_kit_facade_core_light as core_light;
 use gripforge_kit_facade::{json, Host, Json, Posed, Spec};
 
 /// Poses the scene `menu`; `Posed::leave` gives it back.

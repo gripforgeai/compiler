@@ -10,10 +10,11 @@
 //! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
 //! property, what is expected).
 
-use crate::crate_gen::{sdk_of, write_crate};
+use crate::crate_gen::{sdk_of, write_crate, GAME_MODULE};
+use crate::facades::resolve;
 use crate::json::pretty;
 use crate::project::{
-    find_kits_dir, kit_catalog, project_file, read_json, scene_files, BuildError,
+    find_kits_dir, kit_folders, project_file, read_json, scene_files, BuildError,
 };
 use serde_json::{json, Map, Value as Json};
 use std::path::{Path, PathBuf};
@@ -26,8 +27,9 @@ pub struct BuildOptions {
     pub project: Option<PathBuf>,
     /// The output folder (default `.build/` beside the project).
     pub out: Option<PathBuf>,
-    /// The folder of the kits (`<kit>/kit.api.json`); default the project's (`kits/`, `.gripforge/kits/`).
-    pub kits: Option<PathBuf>,
+    /// The folder of the kits (`<kit>/kit.api.json` and its façade `<kit>/facade`), instead of the kits downloaded
+    /// into the project (`kits/`, `.gripforge/kits/`): the kits of the sources, for the demos of the kits repository.
+    pub kits_path: Option<PathBuf>,
     /// A kits SDK checkout the generated crate takes its SDK crates from (else git at `sdk_rev`).
     pub sdk: Option<PathBuf>,
     /// The revision of the kits SDK the generated crate takes by git.
@@ -75,11 +77,12 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let read = (|| -> Result<_, BuildError> {
         let project = read_json(&file, "file_not_json")?;
         let files = scene_files(&project, &dir)?;
-        let kits_dir = o.kits.clone().or_else(|| find_kits_dir(&dir));
-        let kits = kit_catalog(kits_dir.as_deref())?;
-        Ok((project, files, kits))
+        let kits_dir = o.kits_path.clone().or_else(|| find_kits_dir(&dir));
+        let folders = kit_folders(kits_dir.as_deref())?;
+        let kits: Vec<Json> = folders.iter().map(|(_, k)| k.clone()).collect();
+        Ok((project, files, kits, folders))
     })();
-    let (project, files, kits) = match read {
+    let (project, files, kits, folders) = match read {
         Ok(r) => r,
         Err(BuildError(i)) => return failed(vec![i], steps, Some(&file)),
     };
@@ -103,6 +106,29 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     if answer["ok"] != true {
         return r;
     }
+    // The façade of each kit of the built game: its lock (a build), else the kits the project installs (a check);
+    // the development kits are left out of the game, game.main is this crate.
+    let ids = |v: Option<&Json>| -> Vec<String> {
+        v.and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|k| k.as_str().or_else(|| k["id"].as_str()))
+            .filter(|k| *k != GAME_MODULE && !crate::core::DEV_KITS.contains(k))
+            .map(String::from)
+            .collect()
+    };
+    let wanted = match answer.pointer("/game/lock/order") {
+        Some(order) => ids(Some(order)),
+        None => ids(project.get("installed")),
+    };
+    let facades = match resolve(&folders, &wanted) {
+        Ok(f) => f,
+        Err(mut i) => {
+            r.issues.append(&mut i);
+            return r;
+        }
+    };
+    steps_facades(&mut r, &facades);
     r.ok = true;
     if o.check {
         return r;
@@ -138,6 +164,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
             id,
             version,
             &sdk,
+            &facades,
             &generated,
             answer["entry"].as_str().unwrap_or("init_scene::enter"),
         )?;
@@ -156,4 +183,10 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let report = crate::report::report(&r);
     let _ = std::fs::write(out.join("build.json"), format!("{}\n", pretty(&report)));
     r
+}
+
+/// The façades found, in the steps of the report (kit, version, folder).
+fn steps_facades(r: &mut BuildResult, facades: &[crate::facades::Facade]) {
+    r.steps.push(json!({ "name": "facades", "ms": 0, "facades": facades.iter().map(|f| json!({
+        "kit": f.kit, "version": f.version, "crate": f.krate, "path": f.dir.to_string_lossy() })).collect::<Vec<_>>() }));
 }

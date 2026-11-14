@@ -183,7 +183,7 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
         if !known.contains(&id.as_str()) {
             out.push(json!({ "level": "error", "code": "kit_unknown", "field": field,
                 "message": format!("the kit {id}{} is not in the project: no kit.api.json for it among the kits of the project, so no façade to call it", version_of(&id)),
-                "fix": format!("install the kits of the project ({}), or give the folder of the kits with --kits <dir> (<kit>/kit.api.json); check the id {id} (the kits are named like core.light)", crate::project::INSTALL_KITS) }));
+                "fix": format!("install the kits of the project ({}), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); check the id {id} (the kits are named like core.light)", crate::project::INSTALL_KITS) }));
         }
     }
     (out, scenes)

@@ -2,8 +2,9 @@
 //! that poses it, `init_scene.rs` and one `init_scene/<scene>.rs` per scene. The code does what the dev.builder kit
 //! does when the scene is entered (nodes of the engine's tree, light and camera nodes, the kits' sections in their
 //! order), decided ahead of time from the same resolution (`build::resolve_scene`) and the same rules
-//! ([`crate::place`]); it calls the kits through their Rust façades (`gripforge-kit-facade`, generated from each
-//! `kit.api.json` by tools/kit-api), never through a line of a kit: the kits stay modules loaded apart.
+//! ([`crate::place`]); it calls the kits through their Rust façades (one crate per kit, `gripforge-kit-facade-<kit>`,
+//! shipped in the kit's folder and generated from its `kit.api.json` by tools/kit-api), never through a line of a kit:
+//! the kits stay modules loaded apart.
 //!
 //! The same writer serves the build of a game (`gfscene code`, `gripforge project build`) and the templates (a
 //! template is a `project.gripforge` and this `init_scene.rs`, beside its own `index.rs`).
@@ -213,12 +214,9 @@ impl Writer<'_> {
         uses.sort();
         uses.dedup();
         s.push_str("#![allow(unused_imports, unused_variables, clippy::all)]\n\n");
-        if !uses.is_empty() {
-            let _ = writeln!(
-                s,
-                "use gripforge_kit_facade::kits::{{{}}};",
-                uses.join(", ")
-            );
+        // One crate per kit: the façade the kit ships in its own folder (`<kit>/facade`, gripforge-kit-facade-<kit>).
+        for u in &uses {
+            let _ = writeln!(s, "use gripforge_kit_facade_{u} as {u};");
         }
         s.push_str("use gripforge_kit_facade::{json, Host, Json, Posed, Spec};\n\n");
         let _ = writeln!(

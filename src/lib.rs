@@ -7,6 +7,7 @@ pub mod build;
 pub mod cli;
 pub mod core;
 pub mod crate_gen;
+pub mod facades;
 pub mod json;
 pub mod project;
 pub mod report;

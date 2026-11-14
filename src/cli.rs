@@ -2,20 +2,20 @@
 //! checked, 1 the project has errors, 2 a wrong command line) and writes through `out` / `err`, so that the tests run
 //! it in process.
 //!
-//!   gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits <dir>] [--sdk <dir>] [--sdk-rev <rev>]
+//!   gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>]
 //!                   [--check] [--lenient] [--json]
 
 use crate::build::{build, BuildOptions};
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check] [--lenient] [--json]";
+pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check] [--lenient] [--json]";
 
 /// What a command line asks.
 #[derive(Debug, Default, PartialEq)]
 pub struct Args {
     pub project: Option<String>,
     pub out: Option<String>,
-    pub kits: Option<String>,
+    pub kits_path: Option<String>,
     pub sdk: Option<String>,
     pub sdk_rev: Option<String>,
     pub check: bool,
@@ -33,7 +33,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
         match x.as_str() {
             "--out" => a.out = Some(value(x)?),
-            "--kits" => a.kits = Some(value(x)?),
+            "--kits-path" => a.kits_path = Some(value(x)?),
             "--sdk" => a.sdk = Some(value(x)?),
             "--sdk-rev" => a.sdk_rev = Some(value(x)?),
             "--check" => a.check = true,
@@ -72,7 +72,7 @@ pub fn main(argv: &[String], out: &mut dyn FnMut(&str), err: &mut dyn FnMut(&str
     let r = build(&BuildOptions {
         project: a.project.map(PathBuf::from),
         out: a.out.map(PathBuf::from),
-        kits: a.kits.map(PathBuf::from),
+        kits_path: a.kits_path.map(PathBuf::from),
         sdk: a.sdk.map(PathBuf::from),
         sdk_rev: a.sdk_rev,
         lenient: a.lenient,

@@ -2,7 +2,8 @@
 //! any other (the kits SDK's `core/kit-guest`), loaded by the player beside the kits (wasm on the web, a native library
 //! elsewhere).
 //!
-//!   game/Cargo.toml            its own workspace; the SDK crates (core/kit-guest, core/kit-facade) by path or git
+//!   game/Cargo.toml            its own workspace; the SDK crates (core/kit-guest, core/kit-facade) by path or git;
+//!                              the façade of each kit (`<kit>/facade`) by path, at the kit's version
 //!   game/rust-toolchain.toml   the SDK's toolchain (the same Rust as the kits), with a local SDK
 //!   game/kit.api.json          the module's card (id game.main, its version), what the hosts read to load it
 //!   game/module.json           its implementations (native library, wasm), like a kit's logic/module.json
@@ -10,6 +11,7 @@
 //!   game/src/index.rs          the module: enters a scene by calling its init_scene, gives it back at the exit
 //!   game/src/init_scene/...    written by the generator (one init_scene.rs per scene), as is
 
+use crate::facades::{relative, Facade};
 use crate::json::pretty;
 use serde_json::{json, Value as Json};
 use std::path::{Path, PathBuf};
@@ -80,12 +82,31 @@ fn dep(sdk: &Sdk, krate: &str, dir: &str, extra: &str) -> String {
     }
 }
 
-/// The Cargo.toml of the game's crate.
-pub fn cargo_toml(project_id: &str, version: &str, sdk: &Sdk) -> String {
+/// The dependency lines of the kits' façades: each by its path relative to the game's crate (`crate_dir`), at the
+/// exact version of its kit.
+pub fn facade_deps(crate_dir: &Path, facades: &[Facade]) -> String {
+    facades
+        .iter()
+        .map(|f| {
+            let path = relative(crate_dir, &f.dir)
+                .to_string_lossy()
+                .replace('\\', "/");
+            format!(
+                "{} = {{ path = {}, version = {} }}\n",
+                f.krate,
+                Json::String(path),
+                Json::String(format!("={}", f.version))
+            )
+        })
+        .collect()
+}
+
+/// The Cargo.toml of the game's crate. `facades`: the lines of [`facade_deps`].
+pub fn cargo_toml(project_id: &str, version: &str, sdk: &Sdk, facades: &str) -> String {
     format!(
         r#"{header}
 # The game's own module ({GAME_MODULE}) of the project {project_id}: its scenes posed by compiled code, its kits called
-# through their façades (core/kit-facade), never linked.
+# through their façades (one crate per kit, in the kit's folder), never linked.
 [package]
 name = "gripforge-game-{name}"
 version = {version}
@@ -106,6 +127,11 @@ common-memory = ["gripforge-kit-guest/common-memory"]
 serde_json = "1"
 {guest}
 {facade}
+# The façade of each kit, shipped in the kit's folder at the kit's version (gripforge-build never writes one).
+{facades}
+# The façades ask for gripforge-kit-facade by version: it is the SDK's, the same crate as above.
+[patch.crates-io]
+{patched}
 
 # Its own workspace: never a member of the SDK's or of the game's folder.
 [workspace]
@@ -130,6 +156,7 @@ strip = true
             "core/kit-facade",
             ", features = [\"guest\"]"
         ),
+        patched = dep(sdk, "gripforge-kit-facade", "core/kit-facade", ""),
     )
 }
 
@@ -238,14 +265,16 @@ pub fn write_crate(
     project_id: &str,
     version: &str,
     sdk: &Sdk,
+    facades: &[Facade],
     generated: &[(String, String)],
     entry: &str,
 ) -> std::io::Result<Vec<String>> {
+    std::fs::create_dir_all(dir)?;
     let _ = std::fs::remove_dir_all(dir.join("src/init_scene"));
     let _ = std::fs::remove_file(dir.join("src/init_scene.rs"));
     write(
         &dir.join("Cargo.toml"),
-        &cargo_toml(project_id, version, sdk),
+        &cargo_toml(project_id, version, sdk, &facade_deps(dir, facades)),
     )?;
     if let Some(t) = &sdk.toolchain {
         write(&dir.join("rust-toolchain.toml"), t)?;
