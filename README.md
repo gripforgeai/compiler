@@ -9,11 +9,11 @@ What a compiled game does is what the development mode (`dev.builder`) shows.
 
 ## Install
 
-The compiler is downloaded from the [GripForge](https://gripforge.ai) site, which lists every version. Each version is
-one archive that npm installs by its URL:
+Each version is a [GitHub release](https://github.com/gripforgeai/compiler/releases) of this repository (the
+GripForge site lists them too). Its archive installs with npm by its URL:
 
 ```sh
-npm install -g https://<download link of the version>/compiler-0.1.0.tgz
+npm install -g https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz
 gripforge-build --version
 ```
 
@@ -131,55 +131,47 @@ other jobs read the kits SDK with a secret).
 
 ## Releases
 
-A tag `vX.Y.Z` (the version of `package.json`, on `main`) releases that version: the CI checks it, packs it (`npm pack`)
-and puts it on the GripForge download storage. Nothing is published to the npm registry. A version is never rewritten.
+A tag `vX.Y.Z` (the version of `package.json`, on `main`) releases that version: the CI checks it, packs it
+(`npm pack`) and creates the GitHub release `vX.Y.Z` with these files attached. Nothing is published to the npm
+registry, and a version is never rewritten.
 
-```text
-compiler/<version>/compiler-<version>.tgz    the package (npm install <its url>)
-compiler/<version>/SHA256SUMS                its sha256
-compiler/<version>/release.json              the entry of this version (as in versions.json)
-compiler/versions.json                       every version, newest first
-compiler/latest.json                         the newest version's entry, with "schema": "gripforge.compiler-latest/1"
-```
+| File | Content |
+|---|---|
+| `compiler-X.Y.Z.tgz` | the package: the command, the library, the Rust core in wasm, the kits' catalog (`npm install <its URL>`) |
+| `SHA256SUMS` | the sha256 of `compiler-X.Y.Z.tgz` and `release.json` |
+| `release.json` | what the release holds (below) |
 
-### `versions.json`
+The release notes are the message of the annotated tag (else the version's section of `CHANGELOG.md`), then the install
+line and the sums. Tools and download pages list the versions with the public releases API
+(`GET https://api.github.com/repos/gripforgeai/compiler/releases`, newest first; `…/releases/latest` for the newest) and
+read `release.json` of a release for the details.
+
+### `release.json`
 
 ```json
 {
- "schema": "gripforge.compiler-versions/1",
- "updated": "2026-11-20T10:00:00.000Z",
- "latest": "0.1.0",
- "versions": [
-  {
-   "version": "0.1.0",
-   "tag": "v0.1.0",
-   "date": "2026-11-20T09:58:12.000Z",
-   "commit": "<commit of the tag>",
-   "source": "https://github.com/gripforgeai/compiler/tree/v0.1.0",
-   "notes": "<the message of the annotated tag, else the section of CHANGELOG.md, else empty>",
-   "sdk": { "repository": "https://github.com/gripforgeai/module-kits", "rev": "<kits SDK revision>" },
-   "files": [
-    { "name": "compiler-0.1.0.tgz", "path": "compiler/0.1.0/compiler-0.1.0.tgz", "size": 245760, "sha256": "<hex>", "url": "<public link>" },
-    { "name": "SHA256SUMS", "path": "compiler/0.1.0/SHA256SUMS", "size": 85, "sha256": "<hex>", "url": "<public link>" }
-   ],
-   "install": "npm install <public link of the archive>"
-  }
- ]
+ "schema": "gripforge.compiler-release/1",
+ "version": "0.1.0",
+ "tag": "v0.1.0",
+ "date": "2026-11-20T09:58:12.000Z",
+ "commit": "<commit of the tag>",
+ "source": "https://github.com/gripforgeai/compiler/tree/v0.1.0",
+ "sdk": { "repository": "https://github.com/gripforgeai/module-kits", "rev": "<kits SDK revision>" },
+ "files": [
+  { "name": "compiler-0.1.0.tgz", "size": 295295, "sha256": "<hex>", "url": "https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz" }
+ ],
+ "install": "npm install https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz"
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `schema` | `gripforge.compiler-versions/1`; a breaking change of this format changes the number |
-| `updated` | when the file was last written (ISO 8601, UTC) |
-| `latest` | the highest version (numeric order), the one a download page offers first |
-| `versions[]` | one entry per version, highest first |
+| `schema` | `gripforge.compiler-release/1`; a breaking change of this format changes the number |
 | `version`, `tag`, `commit`, `source` | the version, its git tag, its commit and its source tree |
 | `date` | the date of the tag (ISO 8601, UTC) |
-| `notes` | the release notes, Markdown |
 | `sdk` | the kits SDK revision the version is made for |
-| `files[]` | `name`, `path` (the key in the storage), `size` in bytes, `sha256`, and `url` when the public download address is configured |
-| `install` | the install command, when `url` is known |
+| `files[]` | the package archive: `name`, `size` in bytes, `sha256`, download `url` |
+| `install` | the install command |
 
 ## License
 

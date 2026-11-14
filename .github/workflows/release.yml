@@ -1,17 +1,16 @@
 name: Release
-# A tag vX.Y.Z (the version of package.json at that commit, on main) publishes that version of the compiler for
-# download: the CI checks it (lint, tests, coverage), packs it (npm pack: the package, its Rust core in wasm and the
-# kits' catalog), then puts it on the download storage (an S3-compatible bucket) with scripts/release.mjs:
-#   compiler/<version>/compiler-<version>.tgz, SHA256SUMS, release.json
-#   compiler/versions.json (every version, newest first) and compiler/latest.json
-# The format of versions.json is in the README; the GripForge site lists the versions from it. Nothing goes to the npm
-# registry: the archive installs by its URL. A version is never rewritten.
-# workflow_dispatch: a dry run only (builds and checks, writes nothing).
+# A tag vX.Y.Z (the version of package.json at that commit, on main) publishes that version of the compiler as a GitHub
+# release of this repository: the job checks it (lint, tests, coverage), packs it (npm pack: the package, its Rust core
+# in wasm and the kits' catalog), writes the release files with scripts/release.mjs, then creates the release:
+#   compiler-<version>.tgz   the package (npm install <its release URL>)
+#   SHA256SUMS               the sha256 of the files
+#   release.json             what the release holds (format: README); the GripForge site reads the public releases API
+# Notes: the annotated tag's message, else the CHANGELOG section, then the install line and the sums. Nothing goes to
+# the npm registry, and no file is an Actions artifact. A version is never rewritten (an existing release stops the job).
+# workflow_dispatch: a dry run only (builds the files, creates nothing).
 #
-# GitHub-hosted runner; contents: read; actions pinned by SHA. The archive goes straight from the job to the storage:
-# never an Actions artifact.
-# Variables: GF_S3_ENDPOINT, GF_S3_BUCKET, GF_S3_REGION (default garage), GF_COMPILER_PUBLIC_URL (optional).
-# Secrets: GF_S3_ACCESS_KEY_ID, GF_S3_SECRET_ACCESS_KEY (write on the bucket), GF_SPLIT_READ_TOKEN (read module-kits).
+# GitHub-hosted runner; actions pinned by SHA. Only this job has contents: write (the GITHUB_TOKEN creates the release);
+# GF_SPLIT_READ_TOKEN only reads the kits SDK (gripforgeai/module-kits).
 on:
   push:
     tags: ['v*']
@@ -36,6 +35,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
       PUBLISH: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
@@ -90,17 +91,21 @@ jobs:
           file=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].filename))')
           echo "TGZ=$RUNNER_TEMP/$file" >> "$GITHUB_ENV"
           sha256sum "$RUNNER_TEMP/$file"
-      - name: Publish for download (S3)
+      - name: The release files
+        run: node scripts/release.mjs "$V" --tgz "$TGZ" --out "$RUNNER_TEMP/release"
+      - name: Create the GitHub release
         env:
-          GF_S3_ENDPOINT: ${{ vars.GF_S3_ENDPOINT }}
-          GF_S3_BUCKET: ${{ vars.GF_S3_BUCKET }}
-          GF_S3_REGION: ${{ vars.GF_S3_REGION || 'garage' }}
-          GF_COMPILER_PUBLIC_URL: ${{ vars.GF_COMPILER_PUBLIC_URL }}
-          GF_S3_ACCESS_KEY_ID: ${{ secrets.GF_S3_ACCESS_KEY_ID }}
-          GF_S3_SECRET_ACCESS_KEY: ${{ secrets.GF_S3_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if [ "$PUBLISH" = true ]; then
-            node scripts/release.mjs "$V" --tgz "$TGZ"
-          else
-            node scripts/release.mjs "$V" --tgz "$TGZ" --dry-run
+          set -eu
+          r="$RUNNER_TEMP/release"
+          ls -l "$r"
+          if [ "$PUBLISH" != true ]; then
+            echo "dry run: release v$V not created"; cat "$r/notes.md"; exit 0
           fi
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "::error::the release v$V already exists: a version is never rewritten, release a new one"; exit 1
+          fi
+          gh release create "v$V" "$r/compiler-$V.tgz" "$r/SHA256SUMS" "$r/release.json" \
+            --verify-tag --title "v$V" --notes-file "$r/notes.md"
