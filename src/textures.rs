@@ -215,7 +215,11 @@ pub fn compress(project_dir: &Path, out: &Path, url: &str) -> (Json, Vec<Json>) 
             files.push(json!({ "file": rel, "status": "failed" }));
             continue;
         }
-        let s = &v["stats"];
+        let s = if v["report"].is_object() {
+            &v["report"]
+        } else {
+            &v["stats"]
+        };
         let n = |k: &str| s[k].as_u64();
         let (b0, b1) = (
             n("bytesBefore").unwrap_or(bytes.len() as u64),

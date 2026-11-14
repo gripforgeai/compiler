@@ -145,7 +145,7 @@ fn compresses_writes_a_copy_and_caches() {
         glb(&json!({"extensionsUsed": ["KHR_texture_basisu"]})),
     )
     .unwrap();
-    let body = json!({"applied": true, "glbBase64": b64(&done), "stats": {"bytesBefore": 1000, "bytesAfter": 400, "gpuBytesBefore": 4000, "gpuBytesAfter": 1000}}).to_string();
+    let body = json!({"applied": true, "glbBase64": b64(&done), "report": {"bytesBefore": 1000, "bytesAfter": 400, "gpuBytesBefore": 4000, "gpuBytesAfter": 1000}}).to_string();
     let (url, n, last) = server(200, body);
     let r = run(&d, &kits, Some(&url), true);
     assert!(r.ok, "{:?}", r.issues);
