@@ -117,7 +117,7 @@ fn golden(name: &str, actual: &str) {
 
 #[test]
 fn the_room_generates_the_golden_files() {
-    // A copy of the room, built into its own .build/: the paths of the kits' façades are the same everywhere.
+    // A copy of the room, built into its own .build/: the paths of the kits' accessors are the same everywhere.
     let room = tmp().join("room");
     copy_dir(&room_dir(), &room);
     let out = room.join(".build");

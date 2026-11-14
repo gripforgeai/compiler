@@ -4,7 +4,7 @@
 
 `gripforge-build` reads a GripForge project (`project.gripforge`) and the `kit.api.json` of the kits installed in it,
 checks it strictly with the common core of the project format, and **generates** the Rust of the game: one
-`init_scene.rs` per scene that calls the kits through their typed façades, `index.rs`, and the crate around them. It
+`init_scene.rs` per scene that calls the kits through their typed accessors, `index.rs`, and the crate around them. It
 compiles nothing: the game's own build does. What the generated game does is what the development mode (`dev.builder`)
 shows.
 
@@ -45,8 +45,8 @@ gripforge-build path/to/my-game --json       # the report gripforge.build-report
 |---|---|
 | `<project>` | `project.gripforge`, or its folder (`project.gripforge`, else the only `*.gripforge`); default the current folder |
 | `--out <dir>` | where the generated files go (default `.build/` beside the project) |
-| `--kits-path <dir>` | take the kits (`<kit>/kit.api.json` and `<kit>/facade/`) from this folder instead of the kits downloaded into the project: the `kits/` of the sources of the kits, for their demos (below); default: found in the project |
-| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-facade`) by path |
+| `--kits-path <dir>` | take the kits (`<kit>/kit.api.json` and `<kit>/access/rust/`) from this folder instead of the kits downloaded into the project: the `kits/` of the sources of the kits, for their demos (below); default: found in the project |
+| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-access`) by path |
 | `--sdk-rev <commit or branch>` | without `--sdk`: the revision of the kits SDK the generated crate takes by git |
 | `--check` | the strict check only |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
@@ -74,39 +74,39 @@ downloads anything. A kit the project installs or requires that is not there is 
 install it:
 
 ```text
-error kit_unknown — project.gripforge › property installed: the kit world.nowhere version 1.0.0 is not in the project: no kit.api.json for it among the kits of the project, so no façade to call it. Expected: install the kits of the project (gripforge game-attach <project folder>), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); …
+error kit_unknown — project.gripforge › property installed: the kit world.nowhere version 1.0.0 is not in the project: no kit.api.json for it among the kits of the project, so no accessor to call it. Expected: install the kits of the project (gripforge game-attach <project folder>), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); …
 ```
 
 A `kit.api.json` of another schema than `gripforge.kit-api/1` is refused with `kits_incompatible`.
 
 [`examples/room`](examples/room) is a project laid out this way: `project.gripforge` and its `kits/` (each with its
-`kit.api.json` and its `facade/`).
+`kit.api.json` and its `accessor/`).
 
-### The façades of the kits
+### The accessors of the kits
 
-The generated code calls each kit through its **Rust façade**: a crate the kit ships **in its own folder**, beside its
-`kit.api.json` (`<kit>/facade/Cargo.toml` and `src/lib.rs`), named `gripforge-kit-facade-<kit>` (`core.light` →
-`gripforge-kit-facade-core-light`) at **the version of the kit**. It is the Rust accessor of the kit, in the kit's
-package like its `kit.api.json`: no registry, nothing downloaded by the compiler, and the compiler never writes a façade.
+The generated code calls each kit through its **Rust accessor**: a crate the kit ships **in its own folder**, beside its
+`kit.api.json` (`<kit>/access/rust/Cargo.toml` and `src/lib.rs`), named `gripforge-kit-access-<kit>` (`core.light` →
+`gripforge-kit-access-core-light`) at **the version of the kit**. It is the Rust accessor of the kit, in the kit's
+package like its `kit.api.json`: no registry, nothing downloaded by the compiler, and the compiler never writes a accessor.
 
-For each kit of the built game (`dev.builder` is not one), the crate depends on the façade found in the folder the
+For each kit of the built game (`dev.builder` is not one), the crate depends on the accessor found in the folder the
 kit was read from, by a path relative to `.build/game`, at the exact version of the kit:
 
 ```toml
-gripforge-kit-facade-core-light = { path = "../../kits/core_light/facade", version = "=1.0.0" }
+gripforge-kit-access-core-light = { path = "../../kits/core_light/access/rust", version = "=1.0.0" }
 
 [patch.crates-io]
-gripforge-kit-facade = { git = "https://github.com/gripforgeai/module-kits", rev = "…" }  # or the --sdk path
+gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "…" }  # or the --sdk path
 ```
 
-The façades ask for the common part (`gripforge-kit-facade`: `Host`, `Spec`, `Posed`) by version only; the
+The accessors ask for the common part (`gripforge-kit-access`: `Host`, `Spec`, `Posed`) by version only; the
 `[patch.crates-io]` of the generated crate makes it the SDK's, the same crate the game itself uses (`--sdk`,
-`--sdk-rev`). A kit without its façade (`facade_missing`) or with a façade of another name or version
-(`facade_mismatch`) stops the build before anything is written (and fails `--check`), and says what to do.
+`--sdk-rev`). A kit without its accessor (`access_missing`) or with a accessor of another name or version
+(`access_mismatch`) stops the build before anything is written (and fails `--check`), and says what to do.
 
 **Demos of the kits repository**: they build from the sources, not from downloaded kits. `--kits-path <module-kits>/kits`
-makes the compiler read every kit, and so its façade, in the sources (`kits/<kit>/kit.api.json`,
-`kits/<kit>/facade/`); without it nothing changes (the kits downloaded into the project).
+makes the compiler read every kit, and so its accessor, in the sources (`kits/<kit>/kit.api.json`,
+`kits/<kit>/access/rust/`); without it nothing changes (the kits downloaded into the project).
 
 ```sh
 gripforge-build path/to/demo --kits-path path/to/module-kits/kits --sdk path/to/module-kits
@@ -137,8 +137,8 @@ error prop_out_of_range — project.gripforge › scene level › property kits.
 |---|---|
 | `kit_unknown` | an installed or required kit has no `kit.api.json` in the project |
 | `kits_missing` | the project has no kits folder, or `--kits-path` names none |
-| `facade_missing` | a kit of the built game has no `facade/Cargo.toml` in its folder |
-| `facade_mismatch` | the façade in a kit's folder is not `gripforge-kit-facade-<kit>` at the kit's version |
+| `access_missing` | a kit of the built game has no `accessor/Cargo.toml` in its folder |
+| `access_mismatch` | the accessor in a kit's folder is not `gripforge-kit-access-<kit>` at the kit's version |
 | `kits_incompatible` | a `kit.api.json` of another schema |
 | `file_not_json`, `project_missing` | the project or a file cannot be read, with the line and column |
 | `generator_missing`, `generator_failed` | the generator refuses the project |

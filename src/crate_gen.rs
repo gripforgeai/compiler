@@ -2,8 +2,8 @@
 //! any other (the kits SDK's `core/kit-guest`), loaded by the player beside the kits (wasm on the web, a native library
 //! elsewhere).
 //!
-//!   game/Cargo.toml            its own workspace; the SDK crates (core/kit-guest, core/kit-facade) by path or git;
-//!                              the façade of each kit (`<kit>/facade`) by path, at the kit's version
+//!   game/Cargo.toml            its own workspace; the SDK crates (core/kit-guest, core/kit-access) by path or git;
+//!                              the accessor of each kit (`<kit>/access/rust`) by path, at the kit's version
 //!   game/rust-toolchain.toml   the SDK's toolchain (the same Rust as the kits), with a local SDK
 //!   game/kit.api.json          the module's card (id game.main, its version), what the hosts read to load it
 //!   game/module.json           its implementations (native library, wasm), like a kit's logic/module.json
@@ -11,7 +11,7 @@
 //!   game/src/index.rs          the module: enters a scene by calling its init_scene, gives it back at the exit
 //!   game/src/init_scene/...    written by the generator (one init_scene.rs per scene), as is
 
-use crate::facades::{relative, Facade};
+use crate::access::{relative, Access};
 use crate::json::pretty;
 use serde_json::{json, Value as Json};
 use std::path::{Path, PathBuf};
@@ -82,10 +82,10 @@ fn dep(sdk: &Sdk, krate: &str, dir: &str, extra: &str) -> String {
     }
 }
 
-/// The dependency lines of the kits' façades: each by its path relative to the game's crate (`crate_dir`), at the
+/// The dependency lines of the kits' accessors: each by its path relative to the game's crate (`crate_dir`), at the
 /// exact version of its kit.
-pub fn facade_deps(crate_dir: &Path, facades: &[Facade]) -> String {
-    facades
+pub fn access_deps(crate_dir: &Path, accessors: &[Access]) -> String {
+    accessors
         .iter()
         .map(|f| {
             let path = relative(crate_dir, &f.dir)
@@ -101,12 +101,12 @@ pub fn facade_deps(crate_dir: &Path, facades: &[Facade]) -> String {
         .collect()
 }
 
-/// The Cargo.toml of the game's crate. `facades`: the lines of [`facade_deps`].
-pub fn cargo_toml(project_id: &str, version: &str, sdk: &Sdk, facades: &str) -> String {
+/// The Cargo.toml of the game's crate. `accessors`: the lines of [`access_deps`].
+pub fn cargo_toml(project_id: &str, version: &str, sdk: &Sdk, accessors: &str) -> String {
     format!(
         r#"{header}
 # The game's own module ({GAME_MODULE}) of the project {project_id}: its scenes posed by compiled code, its kits called
-# through their façades (one crate per kit, in the kit's folder), never linked.
+# through their accessors (one crate per kit, in the kit's folder), never linked.
 [package]
 name = "gripforge-game-{name}"
 version = {version}
@@ -126,10 +126,10 @@ common-memory = ["gripforge-kit-guest/common-memory"]
 [dependencies]
 serde_json = "1"
 {guest}
-{facade}
-# The façade of each kit, shipped in the kit's folder at the kit's version (gripforge-build never writes one).
-{facades}
-# The façades ask for gripforge-kit-facade by version: it is the SDK's, the same crate as above.
+{accessor}
+# The accessor of each kit, shipped in the kit's folder at the kit's version (gripforge-build never writes one).
+{accessors}
+# The accessors ask for gripforge-kit-access by version: it is the SDK's, the same crate as above.
 [patch.crates-io]
 {patched}
 
@@ -150,13 +150,13 @@ strip = true
         name = project_id.replace('_', "-"),
         version = Json::String(version.into()),
         guest = dep(sdk, "gripforge-kit-guest", "core/kit-guest", ""),
-        facade = dep(
+        accessor = dep(
             sdk,
-            "gripforge-kit-facade",
-            "core/kit-facade",
+            "gripforge-kit-access",
+            "core/kit-access",
             ", features = [\"guest\"]"
         ),
-        patched = dep(sdk, "gripforge-kit-facade", "core/kit-facade", ""),
+        patched = dep(sdk, "gripforge-kit-access", "core/kit-access", ""),
     )
 }
 
@@ -182,11 +182,11 @@ pub fn index_rs(entry: &str) -> String {
     format!(
         r#"{HEADER}
 //! The game's module: when game.engine enters a scene, its `init_scene` poses it (nodes, lights, cameras, the kits'
-//! elements) through the kits' façades; when it leaves it, what was posed is given back in the order dev.builder
+//! elements) through the kits' accessors; when it leaves it, what was posed is given back in the order dev.builder
 //! gives it back. The same file over a template's `init_scene.rs`.
 
 use crate::host::{{KitModule, Kx}};
-use gripforge_kit_facade::{{Json, Posed}};
+use gripforge_kit_access::{{Json, Posed}};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -246,7 +246,7 @@ pub fn kit_api(version: &str) -> Json {
 pub fn module_json() -> Json {
     let reason = "the scenes of the project posed by compiled code (gripforge project build): nothing at the tick";
     json!({ "implementations": {
-        "bevy-player": { "form": "library", "library": LIBRARY, "mechanism": "the kits called through their façades", "loop": "tick", "thread": "main", "reason": reason },
+        "bevy-player": { "form": "library", "library": LIBRARY, "mechanism": "the kits called through their accessors", "loop": "tick", "thread": "main", "reason": reason },
         "bevy-web": { "form": "wasm", "library": GAME_MODULE, "mechanism": "the same module in wasm, in the common memory", "loop": "tick", "thread": "main", "reason": reason }
     } })
 }
@@ -265,7 +265,7 @@ pub fn write_crate(
     project_id: &str,
     version: &str,
     sdk: &Sdk,
-    facades: &[Facade],
+    accessors: &[Access],
     generated: &[(String, String)],
     entry: &str,
 ) -> std::io::Result<Vec<String>> {
@@ -274,7 +274,7 @@ pub fn write_crate(
     let _ = std::fs::remove_file(dir.join("src/init_scene.rs"));
     write(
         &dir.join("Cargo.toml"),
-        &cargo_toml(project_id, version, sdk, &facade_deps(dir, facades)),
+        &cargo_toml(project_id, version, sdk, &access_deps(dir, accessors)),
     )?;
     if let Some(t) = &sdk.toolchain {
         write(&dir.join("rust-toolchain.toml"), t)?;

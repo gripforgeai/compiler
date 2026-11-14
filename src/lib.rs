@@ -3,11 +3,11 @@
 //! (`gripforge-scene-format`), and generates the Rust of the game: one `init_scene.rs` per scene, `index.rs`, and the
 //! crate around them in `.build/`. It compiles nothing: the game's own build compiles the generated crate.
 
+pub mod access;
 pub mod build;
 pub mod cli;
 pub mod core;
 pub mod crate_gen;
-pub mod facades;
 pub mod json;
 pub mod project;
 pub mod report;

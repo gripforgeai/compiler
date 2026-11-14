@@ -10,8 +10,8 @@
 //! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
 //! property, what is expected).
 
+use crate::access::resolve;
 use crate::crate_gen::{sdk_of, write_crate, GAME_MODULE};
-use crate::facades::resolve;
 use crate::json::pretty;
 use crate::project::{
     find_kits_dir, kit_folders, project_file, read_json, scene_files, BuildError,
@@ -27,7 +27,7 @@ pub struct BuildOptions {
     pub project: Option<PathBuf>,
     /// The output folder (default `.build/` beside the project).
     pub out: Option<PathBuf>,
-    /// The folder of the kits (`<kit>/kit.api.json` and its façade `<kit>/facade`), instead of the kits downloaded
+    /// The folder of the kits (`<kit>/kit.api.json` and its accessor `<kit>/access/rust`), instead of the kits downloaded
     /// into the project (`kits/`, `.gripforge/kits/`): the kits of the sources, for the demos of the kits repository.
     pub kits_path: Option<PathBuf>,
     /// A kits SDK checkout the generated crate takes its SDK crates from (else git at `sdk_rev`).
@@ -106,7 +106,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     if answer["ok"] != true {
         return r;
     }
-    // The façade of each kit of the built game: its lock (a build), else the kits the project installs (a check);
+    // The accessor of each kit of the built game: its lock (a build), else the kits the project installs (a check);
     // the development kits are left out of the game, game.main is this crate.
     let ids = |v: Option<&Json>| -> Vec<String> {
         v.and_then(Json::as_array)
@@ -121,14 +121,14 @@ pub fn build(o: &BuildOptions) -> BuildResult {
         Some(order) => ids(Some(order)),
         None => ids(project.get("installed")),
     };
-    let facades = match resolve(&folders, &wanted) {
+    let accessors = match resolve(&folders, &wanted) {
         Ok(f) => f,
         Err(mut i) => {
             r.issues.append(&mut i);
             return r;
         }
     };
-    steps_facades(&mut r, &facades);
+    steps_access(&mut r, &accessors);
     r.ok = true;
     if o.check {
         return r;
@@ -164,7 +164,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
             id,
             version,
             &sdk,
-            &facades,
+            &accessors,
             &generated,
             answer["entry"].as_str().unwrap_or("init_scene::enter"),
         )?;
@@ -185,8 +185,8 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     r
 }
 
-/// The façades found, in the steps of the report (kit, version, folder).
-fn steps_facades(r: &mut BuildResult, facades: &[crate::facades::Facade]) {
-    r.steps.push(json!({ "name": "facades", "ms": 0, "facades": facades.iter().map(|f| json!({
+/// The accessors found, in the steps of the report (kit, version, folder).
+fn steps_access(r: &mut BuildResult, accessors: &[crate::access::Access]) {
+    r.steps.push(json!({ "name": "access", "ms": 0, "access": accessors.iter().map(|f| json!({
         "kit": f.kit, "version": f.version, "crate": f.krate, "path": f.dir.to_string_lossy() })).collect::<Vec<_>>() }));
 }
