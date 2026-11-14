@@ -9,16 +9,28 @@ What a compiled game does is what the development mode (`dev.builder`) shows.
 
 ## Install
 
-Each version is a [GitHub release](https://github.com/gripforgeai/compiler/releases) of this repository (the
-GripForge site lists them too). Its archive installs with npm by its URL:
+`gripforge-build` is one native binary, with no runtime to install. Download the archive of your platform from the
+[latest release](https://github.com/gripforgeai/compiler/releases/latest) (the GripForge page
+[gripforge.ai/compiler](https://gripforge.ai/compiler) lists them too), check it against `SHA256SUMS`, unpack it and put
+`gripforge-build` in your `PATH`:
+
+| Platform | Archive |
+|---|---|
+| Linux x64 | `gripforge-build-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux arm64 | `gripforge-build-X.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `gripforge-build-X.Y.Z-x86_64-pc-windows-msvc.zip` |
+| macOS x64 (Intel) | `gripforge-build-X.Y.Z-x86_64-apple-darwin.tar.gz` |
+| macOS arm64 (Apple silicon) | `gripforge-build-X.Y.Z-aarch64-apple-darwin.tar.gz` |
 
 ```sh
-npm install -g https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz
-gripforge-build --version
+v=0.1.0; t=x86_64-unknown-linux-gnu        # your version and platform
+curl -LO https://github.com/gripforgeai/compiler/releases/download/v$v/gripforge-build-$v-$t.tar.gz
+curl -LO https://github.com/gripforgeai/compiler/releases/download/v$v/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
+tar -xzf gripforge-build-$v-$t.tar.gz && ./gripforge-build-$v-$t/gripforge-build --version
 ```
 
-It needs Node.js 20 or newer. To compile (not only to check), it also needs Rust (`rustup`), with the target
-`wasm32-unknown-unknown` and the component `rust-src` for the web build, and the GripForge kits SDK (below).
+On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 
 ## Use
 
@@ -131,47 +143,53 @@ other jobs read the kits SDK with a secret).
 
 ## Releases
 
-A tag `vX.Y.Z` (the version of `package.json`, on `main`) releases that version: the CI checks it, packs it
-(`npm pack`) and creates the GitHub release `vX.Y.Z` with these files attached. Nothing is published to the npm
-registry, and a version is never rewritten.
+A tag `vX.Y.Z` (the version of `Cargo.toml`, on `main`) releases that version. The workflow builds `gripforge-build` on
+a runner of each OS (Linux x64 and arm64, Windows x64, macOS x64 and arm64), runs each binary on its own runner
+(`--version`, then `--check` on the example room), and creates the GitHub release with the `GITHUB_TOKEN` alone: no
+secret, no registry. An existing release stops the job: a version is never rewritten.
 
 | File | Content |
 |---|---|
-| `compiler-X.Y.Z.tgz` | the package: the command, the library, the Rust core in wasm, the kits' catalog (`npm install <its URL>`) |
-| `SHA256SUMS` | the sha256 of `compiler-X.Y.Z.tgz` and `release.json` |
+| `gripforge-build-X.Y.Z-<target>.tar.gz` / `.zip` | the binary, `LICENSE`, `README.md`, one archive per platform |
+| `SHA256SUMS` | the sha256 of the archives and of `release.json` |
 | `release.json` | what the release holds (below) |
 
-The release notes are the message of the annotated tag (else the version's section of `CHANGELOG.md`), then the install
-line and the sums. Tools and download pages list the versions with the public releases API
-(`GET https://api.github.com/repos/gripforgeai/compiler/releases`, newest first; `…/releases/latest` for the newest) and
-read `release.json` of a release for the details.
+The notes are the message of the annotated tag (else the version's section of `CHANGELOG.md`), then the sums. Tools and
+download pages list the versions with the public releases API (`GET https://api.github.com/repos/gripforgeai/compiler/releases`,
+newest first; `…/releases/latest` for the newest) and read the `release.json` asset of a release for the details.
 
 ### `release.json`
 
 ```json
 {
- "schema": "gripforge.compiler-release/1",
+ "schema": "gripforge.compiler-release/2",
  "version": "0.1.0",
  "tag": "v0.1.0",
- "date": "2026-11-20T09:58:12.000Z",
+ "date": "2026-11-20T09:58:12Z",
  "commit": "<commit of the tag>",
  "source": "https://github.com/gripforgeai/compiler/tree/v0.1.0",
- "sdk": { "repository": "https://github.com/gripforgeai/module-kits", "rev": "<kits SDK revision>" },
- "files": [
-  { "name": "compiler-0.1.0.tgz", "size": 295295, "sha256": "<hex>", "url": "https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz" }
- ],
- "install": "npm install https://github.com/gripforgeai/compiler/releases/download/v0.1.0/compiler-0.1.0.tgz"
+ "binary": "gripforge-build",
+ "platforms": [
+  {
+   "platform": "linux-x64", "os": "linux", "arch": "x64", "target": "x86_64-unknown-linux-gnu",
+   "name": "gripforge-build-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+   "url": "https://github.com/gripforgeai/compiler/releases/download/v0.1.0/gripforge-build-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+   "size": 2951234,
+   "sha256": "<hex>"
+  }
+ ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `schema` | `gripforge.compiler-release/1`; a breaking change of this format changes the number |
+| `schema` | `gripforge.compiler-release/2`; a breaking change of this format changes the number |
 | `version`, `tag`, `commit`, `source` | the version, its git tag, its commit and its source tree |
-| `date` | the date of the tag (ISO 8601, UTC) |
-| `sdk` | the kits SDK revision the version is made for |
-| `files[]` | the package archive: `name`, `size` in bytes, `sha256`, download `url` |
-| `install` | the install command |
+| `date` | the date of the tag's commit (ISO 8601, UTC) |
+| `binary` | the name of the command in each archive (`gripforge-build`, `gripforge-build.exe` on Windows) |
+| `platforms[]` | one entry per platform, five in all: `linux-x64`, `linux-arm64`, `windows-x64`, `macos-x64`, `macos-arm64` |
+| `platforms[].name`, `url`, `size`, `sha256` | the archive: file name, download URL, size in bytes, sha256 |
+| `platforms[].os`, `arch`, `target` | the platform (`linux`, `windows`, `macos`; `x64`, `arm64`) and its Rust target triple |
 
 ## License
 

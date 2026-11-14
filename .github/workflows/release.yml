@@ -1,16 +1,12 @@
 name: Release
-# A tag vX.Y.Z (the version of package.json at that commit, on main) publishes that version of the compiler as a GitHub
-# release of this repository: the job checks it (lint, tests, coverage), packs it (npm pack: the package, its Rust core
-# in wasm and the kits' catalog), writes the release files with scripts/release.mjs, then creates the release:
-#   compiler-<version>.tgz   the package (npm install <its release URL>)
-#   SHA256SUMS               the sha256 of the files
-#   release.json             what the release holds (format: README); the GripForge site reads the public releases API
-# Notes: the annotated tag's message, else the CHANGELOG section, then the install line and the sums. Nothing goes to
-# the npm registry, and no file is an Actions artifact. A version is never rewritten (an existing release stops the job).
-# workflow_dispatch: a dry run only (builds the files, creates nothing).
-#
-# GitHub-hosted runner; actions pinned by SHA. Only this job has contents: write (the GITHUB_TOKEN creates the release);
-# GF_SPLIT_READ_TOKEN only reads the kits SDK (gripforgeai/module-kits).
+# A tag vX.Y.Z (the version of Cargo.toml at that commit, on main) publishes that version of the compiler as a GitHub
+# release of this repository: the binary gripforge-build for linux x64 + arm64, windows x64, macos x64 + arm64, each
+# built on a runner of its OS and RUN there (--version, --check on the example room) before it is released, as
+# archives + SHA256SUMS + release.json (README: one entry per platform: name, url, size, sha256).
+# Notes: the annotated tag's message, else the CHANGELOG section of the version. A version is never rewritten (an
+# existing release stops the job). No secret but the GITHUB_TOKEN; only the release job has contents: write.
+# workflow_dispatch: a dry run (builds and checks everything, creates nothing).
+# GitHub-hosted runners; actions pinned by SHA. The artifacts below only pass the files between the jobs.
 on:
   push:
     tags: ['v*']
@@ -29,83 +25,143 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: never
-  GF_JOBS: '4'
+  EXAMPLE_ROOM: examples/room
+  VERSION_INPUT: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+  PUBLISH: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
-      PUBLISH: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Version, tag on main
-        id: sdk
-        run: |
-          set -eu
-          v="${VERSION#v}"
-          [[ $v =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || { echo "::error::not a version vX.Y.Z: $VERSION"; exit 1; }
-          [ "$(node -p "require('./package.json').version")" = "$v" ] || { echo "::error::the tag says $v, package.json says $(node -p "require('./package.json').version")"; exit 1; }
-          if [ "$PUBLISH" = true ]; then
-            git fetch -q --force origin "+refs/tags/v$v:refs/tags/v$v" +refs/heads/main:refs/remotes/origin/main
-            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::v$v ($GITHUB_SHA) is not on main: only main is released"; exit 1; }
-          fi
-          [ -n "${{ secrets.GF_SPLIT_READ_TOKEN != '' && 'set' || '' }}" ] || { echo "::error::secret GF_SPLIT_READ_TOKEN missing (read access to gripforgeai/module-kits)"; exit 1; }
-          echo "V=$v" >> "$GITHUB_ENV"
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "rev=$(node -p "require('./sdk.json').rev")" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: gripforgeai/module-kits
-          ref: ${{ steps.sdk.outputs.rev }}
-          token: ${{ secrets.GF_SPLIT_READ_TOKEN }}
-          path: .sdk/module-kits
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
-        with:
-          toolchain: 1.99.0
-          targets: wasm32-unknown-unknown
-          components: rust-src,rustfmt,clippy,llvm-tools
-      - name: Checks (lint, tests, coverage)
-        env:
-          CI: '1'
-        run: |
-          set -eu
-          npm run lint
-          npm test
-          npm run coverage
-          npm run coverage:rust
-      - name: Pack
-        run: |
-          set -eu
-          rm -rf dist
-          file=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].filename))')
-          echo "TGZ=$RUNNER_TEMP/$file" >> "$GITHUB_ENV"
-          sha256sum "$RUNNER_TEMP/$file"
-      - name: The release files
-        run: node scripts/release.mjs "$V" --tgz "$TGZ" --out "$RUNNER_TEMP/release"
-      - name: Create the GitHub release
+      - name: Version, tag on main, release not yet made
+        id: v
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -eu
-          r="$RUNNER_TEMP/release"
-          ls -l "$r"
+          v="${VERSION_INPUT#v}"
+          [[ $v =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || { echo "::error::not a version vX.Y.Z: $VERSION_INPUT"; exit 1; }
+          cargo_v=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gripforge-compiler") | .version')
+          [ "$cargo_v" = "$v" ] || { echo "::error::the tag says $v, Cargo.toml says $cargo_v"; exit 1; }
+          if [ "$PUBLISH" = true ]; then
+            git fetch -q origin +refs/heads/main:refs/remotes/origin/main
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::v$v ($GITHUB_SHA) is not on main: only main is released"; exit 1; }
+            if gh release view "v$v" >/dev/null 2>&1; then
+              echo "::error::the release v$v already exists: a version is never rewritten, release a new one"; exit 1
+            fi
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+    env:
+      V: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
+        with:
+          toolchain: 1.99.0
+          targets: ${{ matrix.target }}
+      - name: Build
+        shell: bash
+        run: cargo build --release --locked --bin gripforge-build --target "${{ matrix.target }}"
+      - name: Run it on this platform (--version, --check on the example room)
+        shell: bash
+        run: |
+          set -eu
+          bin="target/${{ matrix.target }}/release/gripforge-build"
+          [ -f "$bin" ] || bin="$bin.exe"
+          out=$("$bin" --version)
+          echo "$out"
+          case $out in *"$V"*) ;; *) echo "::error::--version does not say $V: $out"; exit 1 ;; esac
+          "$bin" --check "$EXAMPLE_ROOM"
+      - name: Archive
+        shell: bash
+        run: |
+          set -eu
+          name="gripforge-build-$V-${{ matrix.target }}"
+          mkdir -p "dist/$name" out
+          rel="target/${{ matrix.target }}/release"
+          cp LICENSE README.md "dist/$name/"
+          if [ -f "$rel/gripforge-build.exe" ]; then
+            cp "$rel/gripforge-build.exe" "dist/$name/"
+            (cd dist && 7z a -tzip "../out/$name.zip" "$name" >/dev/null)
+          else
+            cp "$rel/gripforge-build" "dist/$name/"
+            tar -C dist -czf "out/$name.tar.gz" "$name"
+          fi
+          ls -l out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      V: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bin-*
+          path: files
+          merge-multiple: true
+      - name: Release files (SHA256SUMS, release.json, notes)
+        run: |
+          set -eu
+          export REPO="$GITHUB_REPOSITORY" TAG="v$V" COMMIT="$GITHUB_SHA" DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "$PUBLISH" = true ]; then
+            git fetch -q --force origin "+refs/tags/$TAG:refs/tags/$TAG"
+            DATE=$(git log -1 --format=%cI "$TAG^{commit}" | xargs -I{} date -u -d {} +%Y-%m-%dT%H:%M:%SZ)
+            # The annotated tag's message (empty for a lightweight tag: then the CHANGELOG).
+            if [ "$(git cat-file -t "$TAG")" = tag ]; then TAG_MESSAGE=$(git tag -l --format='%(contents)' "$TAG"); export TAG_MESSAGE; fi
+          fi
+          bash .github/scripts/release-files.sh "$V" files
+          # Each of the 5 platforms must be there.
+          [ "$(jq '.platforms | length' files/release.json)" = 5 ] || { echo "::error::expected 5 platforms"; exit 1; }
+          ls -l files; cat files/release.json
+      - name: Create the GitHub release
+        run: |
+          set -eu
           if [ "$PUBLISH" != true ]; then
-            echo "dry run: release v$V not created"; cat "$r/notes.md"; exit 0
+            echo "dry run: release v$V not created"; cat files/notes.md; exit 0
           fi
           if gh release view "v$V" >/dev/null 2>&1; then
             echo "::error::the release v$V already exists: a version is never rewritten, release a new one"; exit 1
           fi
-          gh release create "v$V" "$r/compiler-$V.tgz" "$r/SHA256SUMS" "$r/release.json" \
-            --verify-tag --title "v$V" --notes-file "$r/notes.md"
+          gh release create "v$V" files/gripforge-build-"$V"-* files/SHA256SUMS files/release.json \
+            --verify-tag --title "v$V" --notes-file files/notes.md
