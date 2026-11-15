@@ -151,7 +151,10 @@ pub fn code(
 /// `init_scene.rs`: the scenes, and the call that poses one by its id.
 fn index(scenes: &[(String, String)], origin: &str) -> String {
     let mut s = String::new();
-    let _ = writeln!(s, "// {MARKER} from {origin} - do not edit; run: gripforge-build <project>");
+    let _ = writeln!(
+        s,
+        "// {MARKER} from {origin} - do not edit; run: gripforge-build <project>"
+    );
     s.push_str("//! The scenes of the project posed in code: what dev.builder would do when each one is entered, written\n");
     s.push_str("//! ahead of time. The game calls `enter` from its `scene_enter` and `Posed::leave` from its `scene_exit`.\n\n");
     s.push_str("use gripforge_kit_access::{Host, Posed};\n\n");
@@ -204,7 +207,10 @@ impl Writer<'_> {
 
     fn scene(&mut self, id: &str, file: &str, tree: &Tree, origin: &str) -> String {
         let mut s = String::new();
-        let _ = writeln!(s, "// {MARKER} from {origin} ({file}) - do not edit; run: gripforge-build <project>");
+        let _ = writeln!(
+            s,
+            "// {MARKER} from {origin} ({file}) - do not edit; run: gripforge-build <project>"
+        );
         let _ = writeln!(s, "//! The scene `{id}`: its nodes, lights, cameras and kits' elements, posed in the order dev.builder poses them.\n");
         let mut uses: Vec<String> = Vec::new();
         let mut body = String::new();
