@@ -39,6 +39,8 @@ On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
 gripforge-build path/to/my-game --check      # the strict check only, nothing written
 gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
+gripforge-build path/to/my-game --compress-textures   # also a KTX2 copy of each GLB, by the public texture route (below)
+gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of the kits repository, kits read from the sources
 ```
 
 | Option | What it does |
@@ -115,13 +117,32 @@ makes the compiler read every kit, and so its accessor, in the sources (`kits/<k
 gripforge-build path/to/demo --kits-path path/to/module-kits/kits --sdk path/to/module-kits
 ```
 
+## Texture compression (`--compress-textures`)
+
+The compiler only CALLS the public route of GripForge (no key); the compression itself (KTX2 / Basis) is done by the
+service, nothing of it is in this repository. A local integration may come later.
+
+During the build, each `*.glb` of the project (hidden folders, `target`, `node_modules` and the output folder left out)
+that does not declare `KHR_texture_basisu` is sent as `{ glbBase64 }`; the answer's `glbBase64` is written as
+`<out>/textures/<path>.ktx2.glb`. The original is never touched. The copy is also kept by the sha256 of the original in
+`<out>/textures/.cache/`: a GLB already compressed is not sent again.
+
+The report (`build.json`, `--json`) gets a `textures` object (`gripforge.texture-compress/1`): per file the status, the
+file gain (`bytesBefore/After`) and the GPU memory gain (`gpuBytesBefore/After`), and the totals. A network or server
+failure, a file over 32 MB or `applied:false` is a warning (`textures_service_failed`, `textures_too_big`,
+`textures_not_applied`, `textures_write_failed`): the build goes on with the original GLB.
+
+It is off by default: the build is otherwise offline and deterministic, and sending the files of a project to a service
+is a choice to make, not a surprise. HTTP client: `ureq` (rustls).
+
 ## What it writes
 
 | File | Content |
 |---|---|
 | `.build/game.json` | what the player loads: the project packed, its scenes lowered for `game.engine` (no scene file read at run time), `dev.builder` left out, the game's module `game.main` last in the lock |
 | `.build/game/` | the crate of the game's module: `Cargo.toml`, `kit.api.json`, `module.json`, `src/lib.rs`, `src/index.rs`, `src/init_scene.rs` and `src/init_scene/<scene>.rs` |
-| `.build/build.json` | the report: issues, steps and their times, files written |
+| `.build/build.json` | the report: issues, steps and their times, files written (and `textures` with `--compress-textures`) |
+| `.build/textures/` | only with `--compress-textures`: `<path>.ktx2.glb`, the compressed copy of each GLB (the originals are never touched) |
 
 Never edit `.build/` by hand: change `project.gripforge` and generate again.
 
@@ -219,21 +240,3 @@ newest first; `…/releases/latest` for the newest) and read the `release.json` 
 ## License
 
 MIT
-
-## Texture compression (`--compress-textures`)
-
-The compiler only CALLS the public route of GripForge (no key); the compression itself (KTX2 / Basis) is done by the
-service, nothing of it is in this repository. A local integration may come later.
-
-During the build, each `*.glb` of the project (hidden folders, `target`, `node_modules` and the output folder left out)
-that does not declare `KHR_texture_basisu` is sent as `{ glbBase64 }`; the answer's `glbBase64` is written as
-`<out>/textures/<path>.ktx2.glb`. The original is never touched. The copy is also kept by the sha256 of the original in
-`<out>/textures/.cache/`: a GLB already compressed is not sent again.
-
-The report (`build.json`, `--json`) gets a `textures` object (`gripforge.texture-compress/1`): per file the status, the
-file gain (`bytesBefore/After`) and the GPU memory gain (`gpuBytesBefore/After`), and the totals. A network or server
-failure, a file over 32 MB or `applied:false` is a warning (`textures_service_failed`, `textures_too_big`,
-`textures_not_applied`, `textures_write_failed`): the build goes on with the original GLB.
-
-It is off by default: the build is otherwise offline and deterministic, and sending the files of a project to a service
-is a choice to make, not a surprise. HTTP client: `ureq` (rustls).
