@@ -367,20 +367,30 @@
           "description": "Optional stable identifier, unique in the scene: it survives renames and moves, a binding, an override or a command may name the node by it, and it is the id game.engine receives (prefixed by the instance node inside a sub-scene)."
         },
         "type": {
-          "enum": [
-            "group",
-            "model",
-            "shape",
-            "light",
-            "camera",
-            "entry",
-            "trigger",
-            "sound",
-            "hud",
-            "scene"
+          "anyOf": [
+            {
+              "enum": [
+                "group",
+                "model",
+                "shape",
+                "light",
+                "camera",
+                "entry",
+                "trigger",
+                "sound",
+                "hud",
+                "scene"
+              ],
+              "description": "A base node type."
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "description": "A node type a kit declares (\"nodeType\" on an expose entry of its kit.api.json, for scene, at node: collision, animation...): the node carries its properties under that key (\"collision\": { ... }), read as the section of that kit's element (kits.<kit> with \"element\"); unknown when no installed kit declares it."
+            }
           ],
           "default": "group",
-          "description": "The node type (registry nodeTypes)."
+          "description": "The node type (registry nodeTypes: the base types, then the types the kits declare)."
         },
         "position": {
           "$ref": "#/$defs/vec3",

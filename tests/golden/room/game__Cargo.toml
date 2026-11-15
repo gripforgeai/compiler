@@ -19,8 +19,8 @@ common-memory = ["gripforge-kit-guest/common-memory"]
 
 [dependencies]
 serde_json = "1"
-gripforge-kit-guest = { git = "https://github.com/gripforgeai/module-kits", rev = "65ffb2254a0881a1b0eb8199e8a3f5d7038ce1d0" }
-gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "65ffb2254a0881a1b0eb8199e8a3f5d7038ce1d0", features = ["guest"] }
+gripforge-kit-guest = { git = "https://github.com/gripforgeai/module-kits", rev = "108031bf9f6ca9a5ea811a55058c3600b2c5227d" }
+gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "108031bf9f6ca9a5ea811a55058c3600b2c5227d", features = ["guest"] }
 # The accessor of each kit, shipped in the kit's folder at the kit's version (gripforge-build never writes one).
 gripforge-kit-access-game-engine = { path = "../../kits/game_engine/access/rust", version = "=1.24.1" }
 gripforge-kit-access-core-light = { path = "../../kits/core_light/access/rust", version = "=1.0.0" }
@@ -28,7 +28,7 @@ gripforge-kit-access-core-camera = { path = "../../kits/core_camera/access/rust"
 
 # The accessors ask for gripforge-kit-access by version: it is the SDK's, the same crate as above.
 [patch.crates-io]
-gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "65ffb2254a0881a1b0eb8199e8a3f5d7038ce1d0" }
+gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "108031bf9f6ca9a5ea811a55058c3600b2c5227d" }
 
 # Its own workspace: never a member of the SDK's or of the game's folder.
 [workspace]
