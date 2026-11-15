@@ -10,10 +10,11 @@
 //! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
 //! property, what is expected).
 
-use crate::crate_gen::{sdk_of, write_crate};
+use crate::access::resolve;
+use crate::crate_gen::{sdk_of, write_crate, GAME_MODULE};
 use crate::json::pretty;
 use crate::project::{
-    find_kits_dir, kit_catalog, project_file, read_json, scene_files, BuildError,
+    find_kits_dir, kit_folders, project_file, read_json, scene_files, BuildError,
 };
 use serde_json::{json, Map, Value as Json};
 use std::path::{Path, PathBuf};
@@ -26,8 +27,9 @@ pub struct BuildOptions {
     pub project: Option<PathBuf>,
     /// The output folder (default `.build/` beside the project).
     pub out: Option<PathBuf>,
-    /// The folder of the kits (`<kit>/kit.api.json`); default the project's (`kits/`, `.gripforge/kits/`).
-    pub kits: Option<PathBuf>,
+    /// The folder of the kits (`<kit>/kit.api.json` and its accessor `<kit>/access/rust`), instead of the kits downloaded
+    /// into the project (`kits/`, `.gripforge/kits/`): the kits of the sources, for the demos of the kits repository.
+    pub kits_path: Option<PathBuf>,
     /// A kits SDK checkout the generated crate takes its SDK crates from (else git at `sdk_rev`).
     pub sdk: Option<PathBuf>,
     /// The revision of the kits SDK the generated crate takes by git.
@@ -36,6 +38,10 @@ pub struct BuildOptions {
     pub lenient: bool,
     /// Only the strict check: nothing written.
     pub check: bool,
+    /// Sends the GLB without a compressed copy to the public texture route (off by default: the build stays offline).
+    pub compress_textures: bool,
+    /// The route (default [`crate::textures::DEFAULT_URL`]).
+    pub compress_textures_url: Option<String>,
 }
 
 /// What a build answers.
@@ -48,6 +54,8 @@ pub struct BuildResult {
     pub project_name: Option<String>,
     pub project: Option<PathBuf>,
     pub out: Option<PathBuf>,
+    /// The texture compression report (`--compress-textures`).
+    pub textures: Option<Json>,
 }
 
 fn failed(issues: Vec<Json>, steps: Vec<Json>, file: Option<&Path>) -> BuildResult {
@@ -75,11 +83,12 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let read = (|| -> Result<_, BuildError> {
         let project = read_json(&file, "file_not_json")?;
         let files = scene_files(&project, &dir)?;
-        let kits_dir = o.kits.clone().or_else(|| find_kits_dir(&dir));
-        let kits = kit_catalog(kits_dir.as_deref())?;
-        Ok((project, files, kits))
+        let kits_dir = o.kits_path.clone().or_else(|| find_kits_dir(&dir));
+        let folders = kit_folders(kits_dir.as_deref())?;
+        let kits: Vec<Json> = folders.iter().map(|(_, k)| k.clone()).collect();
+        Ok((project, files, kits, folders))
     })();
-    let (project, files, kits) = match read {
+    let (project, files, kits, folders) = match read {
         Ok(r) => r,
         Err(BuildError(i)) => return failed(vec![i], steps, Some(&file)),
     };
@@ -103,6 +112,29 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     if answer["ok"] != true {
         return r;
     }
+    // The accessor of each kit of the built game: its lock (a build), else the kits the project installs (a check);
+    // the development kits are left out of the game, game.main is this crate.
+    let ids = |v: Option<&Json>| -> Vec<String> {
+        v.and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|k| k.as_str().or_else(|| k["id"].as_str()))
+            .filter(|k| *k != GAME_MODULE && !crate::core::DEV_KITS.contains(k))
+            .map(String::from)
+            .collect()
+    };
+    let wanted = match answer.pointer("/game/lock/order") {
+        Some(order) => ids(Some(order)),
+        None => ids(project.get("installed")),
+    };
+    let accessors = match resolve(&folders, &wanted) {
+        Ok(f) => f,
+        Err(mut i) => {
+            r.issues.append(&mut i);
+            return r;
+        }
+    };
+    steps_access(&mut r, &accessors);
     r.ok = true;
     if o.check {
         return r;
@@ -138,6 +170,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
             id,
             version,
             &sdk,
+            &accessors,
             &generated,
             answer["entry"].as_str().unwrap_or("init_scene::enter"),
         )?;
@@ -152,8 +185,25 @@ pub fn build(o: &BuildOptions) -> BuildResult {
             "message": format!("the build cannot be written in {}: {e}", out.display()), "fix": "check the folder given by --out and its rights" }));
         return r;
     }
+    if o.compress_textures {
+        let t0 = Instant::now();
+        let url = o
+            .compress_textures_url
+            .as_deref()
+            .unwrap_or(crate::textures::DEFAULT_URL);
+        let (rep, issues) = crate::textures::compress(&dir, &out, url);
+        r.steps.push(json!({ "name": "textures", "ms": t0.elapsed().as_millis() as u64, "compressed": rep["compressed"] }));
+        r.issues.extend(issues);
+        r.textures = Some(rep);
+    }
     r.out = Some(out.clone());
     let report = crate::report::report(&r);
     let _ = std::fs::write(out.join("build.json"), format!("{}\n", pretty(&report)));
     r
+}
+
+/// The accessors found, in the steps of the report (kit, version, folder).
+fn steps_access(r: &mut BuildResult, accessors: &[crate::access::Access]) {
+    r.steps.push(json!({ "name": "access", "ms": 0, "access": accessors.iter().map(|f| json!({
+        "kit": f.kit, "version": f.version, "crate": f.krate, "path": f.dir.to_string_lossy() })).collect::<Vec<_>>() }));
 }

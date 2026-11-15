@@ -2,8 +2,9 @@
 //! that poses it, `init_scene.rs` and one `init_scene/<scene>.rs` per scene. The code does what the dev.builder kit
 //! does when the scene is entered (nodes of the engine's tree, light and camera nodes, the kits' sections in their
 //! order), decided ahead of time from the same resolution (`build::resolve_scene`) and the same rules
-//! ([`crate::place`]); it calls the kits through their Rust façades (`gripforge-kit-facade`, generated from each
-//! `kit.api.json` by tools/kit-api), never through a line of a kit: the kits stay modules loaded apart.
+//! ([`crate::place`]); it calls the kits through their Rust accessors (one crate per kit, `gripforge-kit-access-<kit>`,
+//! shipped in the kit's folder and generated from its `kit.api.json` by tools/kit-api), never through a line of a kit:
+//! the kits stay modules loaded apart.
 //!
 //! The same writer serves the build of a game (`gfscene code`, `gripforge project build`) and the templates (a
 //! template is a `project.gripforge` and this `init_scene.rs`, beside its own `index.rs`).
@@ -150,10 +151,13 @@ pub fn code(
 /// `init_scene.rs`: the scenes, and the call that poses one by its id.
 fn index(scenes: &[(String, String)], origin: &str) -> String {
     let mut s = String::new();
-    let _ = writeln!(s, "// {MARKER} from {origin} - do not edit; run: gfscene code <project> --out <dir> --kits kits");
+    let _ = writeln!(
+        s,
+        "// {MARKER} from {origin} - do not edit; run: gripforge-build <project>"
+    );
     s.push_str("//! The scenes of the project posed in code: what dev.builder would do when each one is entered, written\n");
     s.push_str("//! ahead of time. The game calls `enter` from its `scene_enter` and `Posed::leave` from its `scene_exit`.\n\n");
-    s.push_str("use gripforge_kit_facade::{Host, Posed};\n\n");
+    s.push_str("use gripforge_kit_access::{Host, Posed};\n\n");
     // Generated: never reformatted (a game's `cargo fmt` would make it differ from what `gfscene code` writes).
     for (_, m) in scenes {
         let _ = writeln!(s, "#[rustfmt::skip]\npub mod {m};");
@@ -203,7 +207,10 @@ impl Writer<'_> {
 
     fn scene(&mut self, id: &str, file: &str, tree: &Tree, origin: &str) -> String {
         let mut s = String::new();
-        let _ = writeln!(s, "// {MARKER} from {origin} ({file}) - do not edit; run: gfscene code <project> --out <dir> --kits kits");
+        let _ = writeln!(
+            s,
+            "// {MARKER} from {origin} ({file}) - do not edit; run: gripforge-build <project>"
+        );
         let _ = writeln!(s, "//! The scene `{id}`: its nodes, lights, cameras and kits' elements, posed in the order dev.builder poses them.\n");
         let mut uses: Vec<String> = Vec::new();
         let mut body = String::new();
@@ -213,14 +220,11 @@ impl Writer<'_> {
         uses.sort();
         uses.dedup();
         s.push_str("#![allow(unused_imports, unused_variables, clippy::all)]\n\n");
-        if !uses.is_empty() {
-            let _ = writeln!(
-                s,
-                "use gripforge_kit_facade::kits::{{{}}};",
-                uses.join(", ")
-            );
+        // One crate per kit: the accessor the kit ships in its own folder (`<kit>/access/rust`, gripforge-kit-access-<kit>).
+        for u in &uses {
+            let _ = writeln!(s, "use gripforge_kit_access_{u} as {u};");
         }
-        s.push_str("use gripforge_kit_facade::{json, Host, Json, Posed, Spec};\n\n");
+        s.push_str("use gripforge_kit_access::{json, Host, Json, Posed, Spec};\n\n");
         let _ = writeln!(
             s,
             "/// Poses the scene `{id}`; `Posed::leave` gives it back."
@@ -398,7 +402,7 @@ impl Writer<'_> {
         );
     }
 
-    /// A property's value as Rust, typed as the façade declares it (tools/kit-api/langs/rust_facade.mjs).
+    /// A property's value as Rust, typed as the accessor declares it (tools/kit-api/langs/rust_facade.mjs).
     fn value(&mut self, f: &Field, v: &Json, key: &str) -> String {
         match f.kind.as_str() {
             "string" | "path" => format!("{:?}.into()", v.as_str().unwrap_or("")),
@@ -450,7 +454,7 @@ fn json_lit(v: &Json) -> String {
     out
 }
 
-/// The module of a kit's façade: its id with `.` and `-` as `_` (tools/kit-api/langs/common.mjs `dirOfKit`).
+/// The module of a kit's accessor: its id with `.` and `-` as `_` (tools/kit-api/langs/common.mjs `dirOfKit`).
 pub fn kit_module(id: &str) -> String {
     id.replace(['.', '-'], "_")
 }
@@ -483,7 +487,7 @@ fn words(s: &str) -> Vec<String> {
     out
 }
 
-/// `snake_case` as the façades name things.
+/// `snake_case` as the accessors name things.
 pub fn snake(s: &str) -> String {
     words(s)
         .iter()
@@ -492,7 +496,7 @@ pub fn snake(s: &str) -> String {
         .join("_")
 }
 
-/// `PascalCase` as the façades name types and variants.
+/// `PascalCase` as the accessors name types and variants.
 pub fn pascal(s: &str) -> String {
     words(s)
         .iter()

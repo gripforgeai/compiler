@@ -193,24 +193,33 @@ pub fn find_kits_dir(from: &Path) -> Option<PathBuf> {
 
 /// The kit.api.json of every kit of a folder (`<dir>/<any folder>/kit.api.json`), sorted by folder.
 pub fn kit_catalog(dir: Option<&Path>) -> Result<Vec<Json>, BuildError> {
+    Ok(kit_folders(dir)?.into_iter().map(|(_, k)| k).collect())
+}
+
+/// Every kit of a folder with its own folder (where its accessor is, `<kit>/access/rust`), sorted by folder.
+pub fn kit_folders(dir: Option<&Path>) -> Result<Vec<(PathBuf, Json)>, BuildError> {
     let Some(dir) = dir else {
-        return Err(BuildError::new("kits_missing", None, "the project has no kits: no kits/ or .gripforge/kits/ folder holding <kit>/kit.api.json beside it".into(), &format!("install the kits of the project ({INSTALL_KITS}), or give --kits <folder holding <kit>/kit.api.json>")));
+        return Err(BuildError::new("kits_missing", None, "the project has no kits: no kits/ or .gripforge/kits/ folder holding <kit>/kit.api.json beside it".into(), &format!("install the kits of the project ({INSTALL_KITS}), or give --kits-path <folder holding <kit>/kit.api.json>")));
     };
     if !dir.exists() {
         return Err(BuildError::new(
             "kits_missing",
             Some(dir),
             format!("the folder of the kits {} does not exist", dir.display()),
-            "give --kits <folder holding <kit>/kit.api.json>",
+            "give --kits-path <folder holding <kit>/kit.api.json>",
         ));
     }
-    let mut names: Vec<PathBuf> = std::fs::read_dir(dir)
+    let dir = absolute(dir);
+    let mut names: Vec<PathBuf> = std::fs::read_dir(&dir)
         .map(|r| r.flatten().map(|e| e.path()).collect())
         .unwrap_or_default();
     names.sort();
     names
-        .iter()
+        .into_iter()
         .filter(|p| p.join("kit.api.json").exists())
-        .map(|p| read_json(&p.join("kit.api.json"), "file_not_json"))
+        .map(|p| {
+            let api = read_json(&p.join("kit.api.json"), "file_not_json")?;
+            Ok((p, api))
+        })
         .collect()
 }

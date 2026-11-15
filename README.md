@@ -4,7 +4,7 @@
 
 `gripforge-build` reads a GripForge project (`project.gripforge`) and the `kit.api.json` of the kits installed in it,
 checks it strictly with the common core of the project format, and **generates** the Rust of the game: one
-`init_scene.rs` per scene that calls the kits through their typed façades, `index.rs`, and the crate around them. It
+`init_scene.rs` per scene that calls the kits through their typed accessors, `index.rs`, and the crate around them. It
 compiles nothing: the game's own build does. What the generated game does is what the development mode (`dev.builder`)
 shows.
 
@@ -39,18 +39,23 @@ On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
 gripforge-build path/to/my-game --check      # the strict check only, nothing written
 gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
+gripforge-build path/to/my-game --compress-textures   # also a KTX2 copy of each GLB, by the public texture route (below)
+gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of the kits repository, kits read from the sources
 ```
 
 | Option | What it does |
 |---|---|
 | `<project>` | `project.gripforge`, or its folder (`project.gripforge`, else the only `*.gripforge`); default the current folder |
 | `--out <dir>` | where the generated files go (default `.build/` beside the project) |
-| `--kits <dir>` | the kits of the project (`<kit>/kit.api.json`); default: found in the project (below) |
-| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-facade`) by path |
+| `--kits-path <dir>` | take the kits (`<kit>/kit.api.json` and `<kit>/access/rust/`) from this folder instead of the kits downloaded into the project: the `kits/` of the sources of the kits, for their demos (below); default: found in the project |
+| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-access`) by path |
 | `--sdk-rev <commit or branch>` | without `--sdk`: the revision of the kits SDK the generated crate takes by git |
 | `--check` | the strict check only |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
+| `--compress-textures` | sends the GLB without a compressed copy to the public texture route (see below); off by default |
+| `--no-compress-textures` | no texture compression (the default; cancels an earlier `--compress-textures`) |
+| `--compress-textures-url <url>` | the route (default `https://gripforge.ai/api/v1/public/textures/compress`) |
 | `--version`, `--help` | the version, the usage |
 
 Exit code: `0` generated (or checked), `1` the project has errors (nothing is generated), `2` wrong command line.
@@ -64,7 +69,7 @@ The compiler reads the `kit.api.json` of each kit the project uses, **from the p
 downloaded into the project by the GripForge CLI (`gripforge game-attach <project folder>`), at the version
 `project.gripforge` declares. It looks, in this order:
 
-1. `--kits <dir>`;
+1. `--kits-path <dir>`;
 2. `<project folder>/kits/<kit>/kit.api.json`;
 3. `<project folder>/.gripforge/kits/<kit>/kit.api.json`;
 4. a `kits/` folder above the project (a workspace holding several games).
@@ -74,12 +79,61 @@ downloads anything. A kit the project installs or requires that is not there is 
 install it:
 
 ```text
-error kit_unknown — project.gripforge › property installed: the kit world.nowhere version 1.0.0 is not in the project: no kit.api.json for it among the kits of the project, so no façade to call it. Expected: install the kits of the project (gripforge game-attach <project folder>), or give the folder of the kits with --kits <dir> (<kit>/kit.api.json); …
+error kit_unknown — project.gripforge › property installed: the kit world.nowhere version 1.0.0 is not in the project: no kit.api.json for it among the kits of the project, so no accessor to call it. Expected: install the kits of the project (gripforge game-attach <project folder>), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); …
 ```
 
 A `kit.api.json` of another schema than `gripforge.kit-api/1` is refused with `kits_incompatible`.
 
-[`examples/room`](examples/room) is a project laid out this way: `project.gripforge` and its `kits/`.
+[`examples/room`](examples/room) is a project laid out this way: `project.gripforge` and its `kits/` (each with its
+`kit.api.json` and its `accessor/`).
+
+### The accessors of the kits
+
+The generated code calls each kit through its **Rust accessor**: a crate the kit ships **in its own folder**, beside its
+`kit.api.json` (`<kit>/access/rust/Cargo.toml` and `src/lib.rs`), named `gripforge-kit-access-<kit>` (`core.light` →
+`gripforge-kit-access-core-light`) at **the version of the kit**. It is the Rust accessor of the kit, in the kit's
+package like its `kit.api.json`: no registry, nothing downloaded by the compiler, and the compiler never writes a accessor.
+
+For each kit of the built game (`dev.builder` is not one), the crate depends on the accessor found in the folder the
+kit was read from, by a path relative to `.build/game`, at the exact version of the kit:
+
+```toml
+gripforge-kit-access-core-light = { path = "../../kits/core_light/access/rust", version = "=1.0.0" }
+
+[patch.crates-io]
+gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "…" }  # or the --sdk path
+```
+
+The accessors ask for the common part (`gripforge-kit-access`: `Host`, `Spec`, `Posed`) by version only; the
+`[patch.crates-io]` of the generated crate makes it the SDK's, the same crate the game itself uses (`--sdk`,
+`--sdk-rev`). A kit without its accessor (`access_missing`) or with a accessor of another name or version
+(`access_mismatch`) stops the build before anything is written (and fails `--check`), and says what to do.
+
+**Demos of the kits repository**: they build from the sources, not from downloaded kits. `--kits-path <module-kits>/kits`
+makes the compiler read every kit, and so its accessor, in the sources (`kits/<kit>/kit.api.json`,
+`kits/<kit>/access/rust/`); without it nothing changes (the kits downloaded into the project).
+
+```sh
+gripforge-build path/to/demo --kits-path path/to/module-kits/kits --sdk path/to/module-kits
+```
+
+## Texture compression (`--compress-textures`)
+
+The compiler only CALLS the public route of GripForge (no key); the compression itself (KTX2 / Basis) is done by the
+service, nothing of it is in this repository. A local integration may come later.
+
+During the build, each `*.glb` of the project (hidden folders, `target`, `node_modules` and the output folder left out)
+that does not declare `KHR_texture_basisu` is sent as `{ glbBase64 }`; the answer's `glbBase64` is written as
+`<out>/textures/<path>.ktx2.glb`. The original is never touched. The copy is also kept by the sha256 of the original in
+`<out>/textures/.cache/`: a GLB already compressed is not sent again.
+
+The report (`build.json`, `--json`) gets a `textures` object (`gripforge.texture-compress/1`): per file the status, the
+file gain (`bytesBefore/After`) and the GPU memory gain (`gpuBytesBefore/After`), and the totals. A network or server
+failure, a file over 32 MB or `applied:false` is a warning (`textures_service_failed`, `textures_too_big`,
+`textures_not_applied`, `textures_write_failed`): the build goes on with the original GLB.
+
+It is off by default: the build is otherwise offline and deterministic, and sending the files of a project to a service
+is a choice to make, not a surprise. HTTP client: `ureq` (rustls).
 
 ## What it writes
 
@@ -87,7 +141,8 @@ A `kit.api.json` of another schema than `gripforge.kit-api/1` is refused with `k
 |---|---|
 | `.build/game.json` | what the player loads: the project packed, its scenes lowered for `game.engine` (no scene file read at run time), `dev.builder` left out, the game's module `game.main` last in the lock |
 | `.build/game/` | the crate of the game's module: `Cargo.toml`, `kit.api.json`, `module.json`, `src/lib.rs`, `src/index.rs`, `src/init_scene.rs` and `src/init_scene/<scene>.rs` |
-| `.build/build.json` | the report: issues, steps and their times, files written |
+| `.build/build.json` | the report: issues, steps and their times, files written (and `textures` with `--compress-textures`) |
+| `.build/textures/` | only with `--compress-textures`: `<path>.ktx2.glb`, the compressed copy of each GLB (the originals are never touched) |
 
 Never edit `.build/` by hand: change `project.gripforge` and generate again.
 
@@ -105,7 +160,9 @@ error prop_out_of_range — project.gripforge › scene level › property kits.
 | Code | When |
 |---|---|
 | `kit_unknown` | an installed or required kit has no `kit.api.json` in the project |
-| `kits_missing` | the project has no kits folder, or `--kits` names none |
+| `kits_missing` | the project has no kits folder, or `--kits-path` names none |
+| `access_missing` | a kit of the built game has no `accessor/Cargo.toml` in its folder |
+| `access_mismatch` | the accessor in a kit's folder is not `gripforge-kit-access-<kit>` at the kit's version |
 | `kits_incompatible` | a `kit.api.json` of another schema |
 | `file_not_json`, `project_missing` | the project or a file cannot be read, with the line and column |
 | `generator_missing`, `generator_failed` | the generator refuses the project |

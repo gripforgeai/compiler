@@ -117,10 +117,12 @@ fn golden(name: &str, actual: &str) {
 
 #[test]
 fn the_room_generates_the_golden_files() {
-    let out = tmp();
+    // A copy of the room, built into its own .build/: the paths of the kits' accessors are the same everywhere.
+    let room = tmp().join("room");
+    copy_dir(&room_dir(), &room);
+    let out = room.join(".build");
     let r = build(&BuildOptions {
-        project: Some(room_dir()),
-        out: Some(out.clone()),
+        project: Some(room),
         ..Default::default()
     });
     assert!(r.ok, "{:?}", r.issues);
@@ -170,7 +172,7 @@ fn the_messages_of_a_broken_project_are_the_golden_ones() {
     let (code, _, err) = run(&[
         d.to_str().unwrap(),
         "--check",
-        "--kits",
+        "--kits-path",
         kits().to_str().unwrap(),
     ]);
     assert_eq!(code, 1);
@@ -189,7 +191,7 @@ fn check_on_the_room_exits_0_and_writes_nothing() {
     let (code, _, err) = run(&[
         d.to_str().unwrap(),
         "--check",
-        "--kits",
+        "--kits-path",
         kits().to_str().unwrap(),
     ]);
     assert_eq!(code, 0, "{err}");
@@ -213,7 +215,12 @@ fn the_kits_are_found_in_the_project_else_a_clear_error() {
         err.contains("kits_missing") && err.contains("gripforge game-attach"),
         "{err}"
     );
-    let (code, _, err) = run(&[none.to_str().unwrap(), "--check", "--kits", "/no/such/kits"]);
+    let (code, _, err) = run(&[
+        none.to_str().unwrap(),
+        "--check",
+        "--kits-path",
+        "/no/such/kits",
+    ]);
     assert_eq!(code, 1);
     assert!(err.contains("does not exist"), "{err}");
 }
@@ -240,7 +247,7 @@ fn a_kit_of_another_schema_is_refused_with_kits_incompatible() {
     .unwrap();
     let r = build(&BuildOptions {
         project: Some(project_dir(&room())),
-        kits: Some(k),
+        kits_path: Some(k),
         check: true,
         ..Default::default()
     });

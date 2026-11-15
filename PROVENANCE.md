@@ -9,4 +9,6 @@
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).
 - `examples/room` is the dev.builder room of the kits SDK (one `project.gripforge`) with a frozen copy of the
-  `kit.api.json` of the kits at the same commit.
+  `kit.api.json` of the kits at the same commit. The accessor of each kit (`kits/<kit>/access/rust/`) is written from that
+  frozen `kit.api.json` by the generator of the kits SDK (`tools/kit-api/langs/rust_facade.mjs`, branch
+  `feat/kit-accessors-published`), as the kit's package ships it.

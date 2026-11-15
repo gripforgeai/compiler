@@ -7,7 +7,7 @@
 //!   `validate_project`, the same validator as dev.builder and the MCP), then **strictly**: a build accepts no
 //!   guess, so every warning of the tolerant validator is an error here (`promoted: true`), but for the few that only
 //!   say a node is read and not played ([`LENIENT`]); every installed or required kit must have its kit.api.json in
-//!   the catalog (`kit_unknown`: no façade can be generated without it). Each issue says the file, the scene, the
+//!   the catalog (`kit_unknown`: no accessor can be generated without it). Each issue says the file, the scene, the
 //!   element (node path), the property (field), what is wrong and what is expected.
 //! - `{ "op": "pack", ... }`: the check, then the game.json of the built game: the project packed (core/scene-format
 //!   `pack_with`) and its scenes lowered for game.engine at build time (`expand_project`: no scene JSON resolved at
@@ -153,7 +153,7 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
     if !lenient {
         out.extend(strict::check(&project, &files, &kits, &reg));
     }
-    // Every kit the project installs or requires has its kit.api.json: the façades come from it.
+    // Every kit the project installs or requires has its kit.api.json: the accessors come from it.
     let known: Vec<&str> = kits
         .iter()
         .filter_map(|a| a.get("id").and_then(Json::as_str))
@@ -182,8 +182,8 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
     for (id, field) in named {
         if !known.contains(&id.as_str()) {
             out.push(json!({ "level": "error", "code": "kit_unknown", "field": field,
-                "message": format!("the kit {id}{} is not in the project: no kit.api.json for it among the kits of the project, so no façade to call it", version_of(&id)),
-                "fix": format!("install the kits of the project ({}), or give the folder of the kits with --kits <dir> (<kit>/kit.api.json); check the id {id} (the kits are named like core.light)", crate::project::INSTALL_KITS) }));
+                "message": format!("the kit {id}{} is not in the project: no kit.api.json for it among the kits of the project, so no accessor to call it", version_of(&id)),
+                "fix": format!("install the kits of the project ({}), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); check the id {id} (the kits are named like core.light)", crate::project::INSTALL_KITS) }));
         }
     }
     (out, scenes)

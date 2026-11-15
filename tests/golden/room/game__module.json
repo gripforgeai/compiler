@@ -3,7 +3,7 @@
   "bevy-player": {
    "form": "library",
    "library": "gfkit_game_main",
-   "mechanism": "the kits called through their façades",
+   "mechanism": "the kits called through their accessors",
    "loop": "tick",
    "thread": "main",
    "reason": "the scenes of the project posed by compiled code (gripforge project build): nothing at the tick"

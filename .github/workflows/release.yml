@@ -5,11 +5,19 @@ name: Release
 # archives + SHA256SUMS + release.json (README: one entry per platform: name, url, size, sha256).
 # Notes: the annotated tag's message, else the CHANGELOG section of the version. A version is never rewritten (an
 # existing release stops the job). No secret but the GITHUB_TOKEN; only the release job has contents: write.
-# workflow_dispatch: a dry run (builds and checks everything, creates nothing).
+# workflow_dispatch, and a pull request that touches the release or the dependencies: a dry run (builds and checks
+# everything on the 5 platforms, creates nothing; the version is the one of Cargo.toml).
 # GitHub-hosted runners; actions pinned by SHA. The artifacts below only pass the files between the jobs.
 on:
   push:
     tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/scripts/release-files.sh
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
   workflow_dispatch:
     inputs:
       version:
@@ -20,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
   cancel-in-progress: false
 
 env:
@@ -48,6 +56,8 @@ jobs:
         run: |
           set -eu
           v="${VERSION_INPUT#v}"
+          # A pull request (dry run) tries the version of Cargo.toml.
+          [ -n "$v" ] || v=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gripforge-compiler") | .version')
           [[ $v =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || { echo "::error::not a version vX.Y.Z: $VERSION_INPUT"; exit 1; }
           cargo_v=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gripforge-compiler") | .version')
           [ "$cargo_v" = "$v" ] || { echo "::error::the tag says $v, Cargo.toml says $cargo_v"; exit 1; }
