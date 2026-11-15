@@ -270,3 +270,167 @@ fn the_project_level_of_a_kit_is_checked_against_its_config_schema() {
     );
     assert!(!got.iter().any(|g| g.1.ends_with("defaultMass")), "{got:?}");
 }
+
+#[test]
+fn the_spec_of_an_element_names_the_type_asset_archetype_and_entity_of_its_node() {
+    use gripforge_scene_format::place;
+    let api = json!({ "id": "core.physics", "expose": [
+        { "id": "core.physics.body", "for": ["scene"], "at": "node",
+          "props": { "kind": { "type": "string", "default": "" } },
+          "create": "core.physics.elementCreate", "remove": "core.physics.elementRemove" }
+    ] });
+    let mut reg = Registry::base();
+    reg.add_kit_api(&api);
+    let scene = json!({ "requires": ["game.engine", "core.physics"], "nodes": [
+        { "name": "Hall", "children": [
+            { "name": "Door", "type": "model", "model": { "asset": "models/door.glb" },
+              "kits": { "game.engine": { "archetype": "door" }, "core.physics": { "kind": "door" } } },
+            { "name": "Wall", "id": "north_wall", "type": "shape", "kits": { "core.physics": {} } }
+        ] }
+    ] });
+    let list = [("level.gfscene", scene)];
+    let tree = resolve("level.gfscene", &reg, &files(&list));
+    let specs: Vec<Json> = place::wanted(&tree, "level.gfscene")
+        .iter()
+        .filter_map(|w| {
+            let (el, props, _) = place::resolve_section(&reg, w)?;
+            let node = tree.nodes.iter().find(|n| n.path == w.node);
+            Some(place::element_spec(
+                "level",
+                w,
+                &el,
+                &props,
+                node,
+                None,
+                Json::Null,
+            ))
+        })
+        .collect();
+    let got: Vec<(Json, Json, Json, Json)> = specs
+        .iter()
+        .map(|s| {
+            (
+                s["type"].clone(),
+                s["asset"].clone(),
+                s["archetype"].clone(),
+                s["entity"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (
+                json!("model"),
+                json!("models/door.glb"),
+                json!("door"),
+                json!("hall_door")
+            ),
+            (json!("shape"), Json::Null, Json::Null, json!("north_wall")),
+        ],
+        "a kit gets what it needs to give one rule to a whole kind of element"
+    );
+}
+
+#[test]
+fn collision_and_animation_nodes_are_children_of_the_tree_read_by_their_kit() {
+    use gripforge_scene_format::place;
+    let api = json!({ "id": "core.physics", "expose": [
+        { "id": "core.physics.collision", "for": ["scene"], "at": "node", "nodeType": "collision", "nodeTypes": ["collision"],
+          "props": { "shape": { "type": "enum", "choices": ["box", "sphere"], "default": "box" },
+                     "type": { "type": "enum", "choices": ["static", "dynamic"], "default": "static" },
+                     "size": { "type": "f64x3", "default": [1, 1, 1] } },
+          "create": "core.physics.elementCreate", "remove": "core.physics.elementRemove" }
+    ] });
+    let anim = json!({ "id": "core.animation", "expose": [
+        { "id": "core.animation.clips", "for": ["scene"], "at": "node", "nodeType": "animation", "nodeTypes": ["animation"],
+          "props": { "loop": { "type": "string", "default": "" } },
+          "create": "core.animation.elementCreate", "remove": "core.animation.elementRemove" }
+    ] });
+    let mut reg = Registry::base();
+    assert!(
+        !reg.node_types.contains_key("collision"),
+        "not a base type: core.physics declares it"
+    );
+    reg.add_kit_api(&api);
+    reg.add_kit_api(&anim);
+    // A group with no model nor entity (an invisible wall), moved and turned: its two shapes follow it.
+    let scene = json!({ "requires": ["core.physics", "core.animation"], "nodes": [
+        { "name": "Wall", "type": "group", "position": [10, 0, 0], "rotation": [0, 90, 0], "children": [
+            { "name": "Low", "type": "collision", "position": [0, 0.5, 0], "collision": { "size": [4, 1, 0.2] } },
+            { "name": "High", "type": "collision", "position": [0, 2, 0], "collision": { "shape": "sphere", "type": "dynamic", "speed": 3 } }
+        ] },
+        { "name": "Mill", "type": "model", "model": { "asset": "models/mill.glb" }, "children": [
+            { "name": "Turn", "type": "animation", "animation": { "loop": "Spin" } }
+        ] }
+    ] });
+    let list = [("level.gfscene", scene)];
+    let tree = resolve("level.gfscene", &reg, &files(&list));
+    let issues: Vec<(&str, &str)> = tree
+        .issues
+        .iter()
+        .map(|i| (i.code, i.field.as_str()))
+        .collect();
+    assert_eq!(
+        issues,
+        [("section_field_unknown", "kits.core.physics.speed")],
+        "a typed node is checked against its kit's element, not as a node type of its own"
+    );
+    let found: Vec<(String, String, Json, Json, Json)> = place::wanted(&tree, "level.gfscene")
+        .iter()
+        .filter_map(|w| {
+            let (el, props, _) = place::resolve_section(&reg, w)?;
+            let node = tree.nodes.iter().find(|n| n.path == w.node)?;
+            let up = tree.nodes.iter().find(|p| p.path == node.parent);
+            let spec = place::element_spec("level", w, &el, &props, Some(node), up, Json::Null);
+            Some((
+                w.kit.clone(),
+                el.name,
+                spec["parentNode"].clone(),
+                spec["parentType"].clone(),
+                spec["props"].clone(),
+            ))
+        })
+        .collect();
+    assert_eq!(found.len(), 3, "two shapes and one animation: {found:?}");
+    assert_eq!(
+        (found[0].0.as_str(), found[0].1.as_str()),
+        ("core.physics", "collision")
+    );
+    assert_eq!(
+        (found[0].2.clone(), found[0].3.clone()),
+        (json!("Wall"), json!("group"))
+    );
+    assert_eq!(found[0].4["size"], json!([4, 1, 0.2]));
+    assert_eq!(
+        (found[1].4["shape"].clone(), found[1].4["type"].clone()),
+        (json!("sphere"), json!("dynamic"))
+    );
+    assert_eq!(
+        (found[2].0.as_str(), found[2].1.as_str()),
+        ("core.animation", "clips")
+    );
+    assert_eq!(
+        (found[2].2.clone(), found[2].4["loop"].clone()),
+        (json!("Mill"), json!("Spin"))
+    );
+    let mill = tree.nodes.iter().find(|n| n.path == "Mill/Turn").unwrap();
+    let w = place::wanted(&tree, "level.gfscene")
+        .into_iter()
+        .find(|w| w.node == "Mill/Turn")
+        .unwrap();
+    let (el, props, _) = place::resolve_section(&reg, &w).unwrap();
+    let up = tree.nodes.iter().find(|p| p.path == "Mill");
+    let spec = place::element_spec("level", &w, &el, &props, Some(mill), up, Json::Null);
+    assert_eq!(
+        spec["parentAsset"],
+        json!("models/mill.glb"),
+        "a collision mesh or an animation reads its parent's model"
+    );
+    assert_eq!(spec["parentArchetype"], Json::Null);
+    // The shapes take the group's place: its position and turn, then their own.
+    let low = tree.nodes.iter().find(|n| n.path == "Wall/Low").unwrap();
+    assert!(
+        (low.world.position[0] - 10.0).abs() < 1e-9 && (low.world.position[1] - 0.5).abs() < 1e-9
+    );
+}

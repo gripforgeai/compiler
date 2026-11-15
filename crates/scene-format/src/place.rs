@@ -199,21 +199,61 @@ pub fn kits_of(all: &[Wanted]) -> Vec<String> {
     kits
 }
 
+/// The file of a `model` node, else null.
+fn asset_of(n: &Node) -> Json {
+    n.raw
+        .get("model")
+        .and_then(|m| m.get("asset"))
+        .filter(|a| a.is_string())
+        .cloned()
+        .unwrap_or(Json::Null)
+}
+
+/// The archetype a node's `game.engine` section names, else null.
+fn archetype_of(n: &Node) -> Json {
+    n.raw
+        .get("kits")
+        .and_then(|k| k.get("game.engine"))
+        .and_then(|g| g.get("archetype"))
+        .filter(|a| a.is_string())
+        .cloned()
+        .unwrap_or(Json::Null)
+}
+
 /// What a kit receives to make an element (`create(spec)`): the element, where it is, its properties, the node's
 /// resolved transform and the engine node to make it under (`parent`: `null` for the scene's root or an element of
-/// the scene).
+/// the scene). For a node, also what a kit needs to give one rule to a whole kind of element (a physics or an
+/// animation declared once for every door): `type` (the node's type), `asset` (the file of a `model`, else null),
+/// `archetype` (the archetype its `game.engine` section names, else null) and `entity` (the identifier game.engine
+/// receives for it, `lower::id_of`, whether game.engine is there or not), and of its parent node (`parentNode`, its
+/// path, empty at the root; `parentType`; `parentEntity`, its game.engine instance identifier; `parentAsset`,
+/// `parentArchetype`): a collision or an animation
+/// node acts on its parent (a model, a shape, a group). Additive: a kit that reads none of them is not changed.
 pub fn element_spec(
     scene: &str,
     w: &Wanted,
     el: &Element,
     props: &Json,
     node: Option<&Node>,
+    parent_node: Option<&Node>,
     parent: Json,
 ) -> Json {
     let transform = node.map_or(Json::Null, |n| {
         json!({ "position": n.world.position, "rotation": n.world.rotation, "scale": n.world.scale })
     });
     let id = node.and_then(|n| n.id.clone());
-    json!({ "element": el.name, "scene": scene, "node": w.node, "id": id, "props": props,
-        "transform": transform, "parent": parent })
+    let mut spec = json!({ "element": el.name, "scene": scene, "node": w.node, "id": id, "props": props,
+        "transform": transform, "parent": parent });
+    if let Some(n) = node {
+        spec["type"] = json!(n.ty);
+        spec["asset"] = asset_of(n);
+        spec["archetype"] = archetype_of(n);
+        spec["entity"] = json!(crate::lower::id_of(n));
+        spec["parentNode"] = json!(n.parent);
+        spec["parentType"] = parent_node.map_or(Json::Null, |p| json!(p.ty));
+        spec["parentEntity"] = parent_node.map_or(Json::Null, |p| json!(crate::lower::id_of(p)));
+        spec["parentAsset"] = parent_node.map_or(Json::Null, asset_of);
+        spec["parentArchetype"] = parent_node.map_or(Json::Null, archetype_of);
+    }
+    spec
 }

@@ -11,7 +11,8 @@ impl Walk<'_> {
         let Some(t) = self.reg.node_types.get(ty) else {
             return;
         };
-        if ty == "scene" {
+        // A type read by a kit (`section`) is checked against the kit's element, by `sections`.
+        if ty == "scene" || t.section.is_some() {
             return;
         }
         let Some(v) = node.get(ty) else { return };
