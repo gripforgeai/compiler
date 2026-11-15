@@ -1,0 +1,7 @@
+# The Rust version of the whole workspace: core, gateways, player and the kit modules built from it.
+# `rust-src` is what the relocatable kit modules rebuild std from; wasm32 is the web target of the host and the player.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rust-src", "rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

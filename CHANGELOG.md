@@ -16,6 +16,9 @@
   gains are in the report (`textures`). A failure is a warning, the build goes on. Off by default. New dependencies:
   `ureq` (rustls), `sha2`, `base64`.
 
-- The generated crate takes the kits SDK of module-kits at `65ffb2254a0881a1b0eb8199e8a3f5d7038ce1d0` (accessors in the
-  kits' folders); `--sdk-rev` or `GRIPFORGE_SDK_REV` change it. The header of the generated scenes says to run
-  `gripforge-build <project>`.
+- The generated crate takes the public part of the kits SDK (`gripforge-abi`, `gripforge-kit-guest`,
+  `gripforge-kit-access`) from this repository, `sdk/` (copied from module-kits `65ffb2254a0881a1b0eb8199e8a3f5d7038ce1d0`
+  by `tools/sync-sdk`, see `PROVENANCE.md`), by git at the compiler's tag (`tag = "v0.1.0"`): a game builds without any
+  access to the kits repository. `--sdk <dir>` takes it by path (this repository's `sdk/` or a kits checkout);
+  `--sdk-rev` or `GRIPFORGE_SDK_REV` another tag, commit or branch. The CI generates the example room and builds it,
+  native and wasm, on `sdk/` alone. The header of the generated scenes says to run `gripforge-build <project>`.

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Copies the public part of the kits SDK (gripforge-abi, gripforge-kit-guest, gripforge-kit-access and the Rust
+# toolchain) from a checkout of the kits repository (gripforgeai/module-kits) into sdk/, at a given revision, or checks
+# that sdk/ is exactly that copy (--check, what the maintainers run before a release).
+#
+#   tools/sync-sdk <module-kits checkout> [--rev <commit>] [--check]
+#
+# Without --rev, the revision of sdk/sdk.json. The files are taken by `git archive` at the revision (never the working
+# tree), unchanged, with one exception written below (PATCHES): gripforge-kit-access loses its `kithost` feature, the
+# kit host's side, whose crate (gripforge-kit-api) is not public. sdk/Cargo.toml, sdk/README.md and sdk/sdk.json are
+# this repository's own (the workspace of the three crates, its notes, the revision).
+set -euo pipefail
+export LC_ALL=C
+
+usage() { echo "usage: tools/sync-sdk <module-kits checkout> [--rev <commit>] [--check]" >&2; exit 2; }
+
+src="" rev="" check=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rev) [ $# -ge 2 ] || usage; rev="$2"; shift 2 ;;
+    --check) check=true; shift ;;
+    -h|--help) usage ;;
+    -*) usage ;;
+    *) [ -z "$src" ] || usage; src="$1"; shift ;;
+  esac
+done
+[ -n "$src" ] || usage
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+sdk="$root/sdk"
+if [ -z "$rev" ]; then
+  rev="$(sed -n 's/.*"rev": *"\([0-9a-f]*\)".*/\1/p' "$sdk/sdk.json")"
+  [ -n "$rev" ] || { echo "sync-sdk: no rev in sdk/sdk.json" >&2; exit 1; }
+fi
+full="$(git -C "$src" rev-parse --verify "$rev^{commit}")"
+
+# What is copied: paths in the kits repository -> paths under sdk/.
+MAP=(
+  "core/abi/Cargo.toml:abi/Cargo.toml"
+  "core/abi/README.md:abi/README.md"
+  "core/abi/src:abi/src"
+  "core/kit-guest/Cargo.toml:kit-guest/Cargo.toml"
+  "core/kit-guest/README.md:kit-guest/README.md"
+  "core/kit-guest/socle.json:kit-guest/socle.json"
+  "core/kit-guest/src:kit-guest/src"
+  "core/kit-access/Cargo.toml:kit-access/Cargo.toml"
+  "core/kit-access/src:kit-access/src"
+  "rust-toolchain.toml:rust-toolchain.toml"
+)
+OWN=(Cargo.toml README.md sdk.json)
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/sync-sdk.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/archive" "$tmp/sdk"
+paths=()
+for m in "${MAP[@]}"; do paths+=("${m%%:*}"); done
+git -C "$src" archive "$full" -- "${paths[@]}" | tar -x -C "$tmp/archive"
+for m in "${MAP[@]}"; do
+  from="${m%%:*}" to="${m#*:}"
+  mkdir -p "$(dirname "$tmp/sdk/$to")"
+  cp -R "$tmp/archive/$from" "$tmp/sdk/$to"
+done
+
+# PATCHES: the only change to the copied files. gripforge-kit-access: no `kithost` feature (gripforge-kit-api, the kit
+# host, stays in the kits repository); its `#[cfg(feature = "kithost")]` is then never on.
+f="$tmp/sdk/kit-access/Cargo.toml"
+grep -q '^gripforge-kit-api = { workspace = true, optional = true }$' "$f" \
+  && grep -q '^kithost = \["dep:gripforge-kit-api"\]$' "$f" \
+  || { echo "sync-sdk: kit-access/Cargo.toml changed upstream, update PATCHES" >&2; exit 1; }
+sed -i \
+  -e '/^# The host side (a game module loaded in memory by the kit host, the tests)/d' \
+  -e '/^gripforge-kit-api = { workspace = true, optional = true }$/d' \
+  -e 's/^kithost = \["dep:gripforge-kit-api"\]$/# `kithost` (the kit host side, gripforge-kit-api) is not in the public SDK (gripforgeai\/compiler sdk\/, tools\/sync-sdk)./' \
+  "$f"
+printf '\n[lints.rust]\nunexpected_cfgs = { level = "warn", check-cfg = ['"'"'cfg(feature, values("kithost"))'"'"'] }\n' >> "$f"
+
+if $check; then
+  # sdk/ against the copy; this repository's own top-level files (OWN) are not compared.
+  own="$(printf '%s|' "${OWN[@]}" | sed 's/|$//; s/\./\\./g')"
+  diff -r "$tmp/sdk" "$sdk" | grep -vE "^Only in $sdk: ($own)\$" > "$tmp/diff" || true
+  if [ -s "$tmp/diff" ]; then
+    cat "$tmp/diff" >&2
+    echo "sync-sdk: sdk/ is NOT the copy of module-kits $full" >&2
+    exit 1
+  fi
+  echo "sync-sdk: sdk/ is the copy of module-kits $full"
+  exit 0
+fi
+
+for d in abi kit-guest kit-access; do rm -rf "${sdk:?}/$d"; done
+rm -f "$sdk/rust-toolchain.toml"
+mkdir -p "$sdk"
+cp -R "$tmp/sdk/." "$sdk/"
+if [ -f "$sdk/sdk.json" ]; then
+  sed -i "s/\"rev\": *\"[0-9a-f]*\"/\"rev\": \"$full\"/" "$sdk/sdk.json"
+fi
+echo "sync-sdk: sdk/ copied from module-kits $full"

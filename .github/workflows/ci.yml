@@ -2,7 +2,9 @@ name: CI
 # Each pull request and each push to main: cargo fmt --check, clippy -D warnings, cargo test, the line coverage
 # (cargo llvm-cov; 90 % wanted: for now under it is a warning, set COVERAGE_ENFORCE to 'true' to make it fail), and the
 # build of the Linux binary, run with --version and --check on the example room of the repository (examples/room).
-# The compiler only GENERATES .rs files: nothing here compiles a game, no secret, no S3, no npm, no paid AI call.
+# The compiler only GENERATES .rs files; the job `game` then builds the generated crate of the example room (native and
+# wasm) on the public SDK of this repository (sdk/), with no access to the private kits repository. No secret, no S3,
+# no npm, no paid AI call.
 # GitHub-hosted runners; never pull_request_target (a fork's pull request runs with a read-only token and no secret);
 # contents: read; actions pinned by SHA.
 on:
@@ -83,3 +85,58 @@ jobs:
           bin=target/release/gripforge-build
           "$bin" --version
           "$bin" --check "$EXAMPLE_ROOM"
+
+  game:
+    # End to end, as a user outside GripForge: the example room generated, then its game crate built native and wasm on
+    # the public SDK of this repository alone (sdk/), by path (--sdk) and by git (this repository at the tested commit,
+    # as the default tag line does). Any fetch of the private kits repository is made to fail.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
+        with:
+          toolchain: 1.99.0
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: compiler-game
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: No access to the kits repository
+        run: |
+          set -eu
+          git config --global url."https://invalid.invalid/no-module-kits/".insteadOf "https://github.com/gripforgeai/module-kits"
+      - name: Build gripforge-build
+        run: cargo build --locked --bin gripforge-build
+      - name: The room on sdk/ by path, native and wasm
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/room-path"
+          target/debug/gripforge-build "$EXAMPLE_ROOM" --out "$out" --sdk "$GITHUB_WORKSPACE/sdk"
+          grep -q "$GITHUB_WORKSPACE/sdk/kit-guest" "$out/game/Cargo.toml"
+          if grep -n module-kits "$out/game/Cargo.toml"; then exit 1; fi
+          cd "$out/game"
+          cargo build --target-dir "$RUNNER_TEMP/target"
+          cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target"
+          if grep -n module-kits Cargo.lock; then exit 1; fi
+          ls -l "$RUNNER_TEMP/target/debug/libgfkit_game_main.so" "$RUNNER_TEMP/target/wasm32-unknown-unknown/release/gfkit_game_main.wasm"
+      - name: The room on sdk/ by git (this repository at the tested commit), native and wasm
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/room-git"
+          rev="$(git rev-parse HEAD)"
+          GRIPFORGE_SDK_GIT="file://$GITHUB_WORKSPACE" target/debug/gripforge-build "$EXAMPLE_ROOM" --out "$out" --sdk-rev "$rev"
+          grep -q "rev = \"$rev\"" "$out/game/Cargo.toml"
+          if grep -n module-kits "$out/game/Cargo.toml"; then exit 1; fi
+          cd "$out/game"
+          cargo build --target-dir "$RUNNER_TEMP/target"
+          cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target"
+          if grep -n module-kits Cargo.lock; then exit 1; fi
+          grep -q "file://$GITHUB_WORKSPACE?rev=$rev" Cargo.lock

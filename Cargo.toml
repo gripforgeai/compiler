@@ -26,6 +26,8 @@ base64 = "0.22"
 
 [workspace]
 members = [".", "crates/scene-format"]
+# sdk/: the public part of the kits SDK, its own workspace (what the generated game crates compile against).
+exclude = ["sdk"]
 
 [workspace.dependencies]
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }

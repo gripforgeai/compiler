@@ -48,8 +48,8 @@ gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of 
 | `<project>` | `project.gripforge`, or its folder (`project.gripforge`, else the only `*.gripforge`); default the current folder |
 | `--out <dir>` | where the generated files go (default `.build/` beside the project) |
 | `--kits-path <dir>` | take the kits (`<kit>/kit.api.json` and `<kit>/access/rust/`) from this folder instead of the kits downloaded into the project: the `kits/` of the sources of the kits, for their demos (below); default: found in the project |
-| `--sdk <dir>` | a kits SDK checkout: the generated crate takes its SDK crates (`core/kit-guest`, `core/kit-access`) by path |
-| `--sdk-rev <commit or branch>` | without `--sdk`: the revision of the kits SDK the generated crate takes by git |
+| `--sdk <dir>` | a local SDK: the generated crate takes its SDK crates (`gripforge-kit-guest`, `gripforge-kit-access`) by path, from this repository's `sdk/` (crates at its top) or a checkout of the kits repository (under `core/`) |
+| `--sdk-rev <tag, commit or branch>` | without `--sdk`: the revision of this repository whose `sdk/` the generated crate takes by git (default the compiler's tag, `v<version>`) |
 | `--check` | the strict check only |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
@@ -101,13 +101,29 @@ kit was read from, by a path relative to `.build/game`, at the exact version of 
 gripforge-kit-access-core-light = { path = "../../kits/core_light/access/rust", version = "=1.0.0" }
 
 [patch.crates-io]
-gripforge-kit-access = { git = "https://github.com/gripforgeai/module-kits", rev = "…" }  # or the --sdk path
+gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0" }  # or the --sdk path
 ```
 
 The accessors ask for the common part (`gripforge-kit-access`: `Host`, `Spec`, `Posed`) by version only; the
 `[patch.crates-io]` of the generated crate makes it the SDK's, the same crate the game itself uses (`--sdk`,
 `--sdk-rev`). A kit without its accessor (`access_missing`) or with a accessor of another name or version
 (`access_mismatch`) stops the build before anything is written (and fails `--check`), and says what to do.
+
+### The SDK of the game's crate (public)
+
+The game's crate compiles against the public part of the kits SDK: `gripforge-kit-guest` (the kit side of the host),
+`gripforge-kit-access` (the common part of the accessors) and their contract `gripforge-abi`. They are in this
+repository, [`sdk/`](sdk/README.md), copied from the kits repository at the revision of `sdk/sdk.json`
+(`tools/sync-sdk` copies them, or checks the copy). By default the crate takes them by git from this repository at the
+compiler's tag, so a game builds with nothing but this public repository and the kits downloaded into the project:
+
+```toml
+gripforge-kit-guest = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0" }
+gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0", features = ["guest"] }
+```
+
+`--sdk <dir>` takes them by path, `--sdk-rev` (or `GRIPFORGE_SDK_REV`) another revision, `GRIPFORGE_SDK_GIT` another
+repository. The CI builds the example room this way, native and wasm, without any access to the kits repository.
 
 **Demos of the kits repository**: they build from the sources, not from downloaded kits. `--kits-path <module-kits>/kits`
 makes the compiler read every kit, and so its accessor, in the sources (`kits/<kit>/kit.api.json`,
