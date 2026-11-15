@@ -12,6 +12,7 @@ pub fn enter(h: &mut (impl Host + ?Sized)) -> Posed {
     // The nodes of the engine's tree (group, model, shape), parents first.
     let n0_wall = p.node(h, 0, "Wall", "Wall", [10.0, 0.0, 0.0, 0.0, 0.7071067811865475, 0.0, 0.7071067811865476, 1.0, 1.0, 1.0]);
     let n1_mill = p.node(h, 0, "Mill", "Mill", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+    let n2_crate = p.node(h, 0, "Crate", "Crate", [-3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
     // kits.test.nodes on Wall/Low (node of type collision, acting on Wall): the element collision of test.nodes.
     let spec = Spec { scene: "yard", node: "Wall/Low", id: None, transform: Some(([10.0, 0.5, 0.0], [0.0, 0.7071067811865475, 0.0, 0.7071067811865476], [1.0, 1.0, 1.0])), parent: None,
         ty: Some("collision"), asset: None, archetype: None, entity: Some("wall_low"), parent_node: Some("Wall"), parent_type: Some("group"), parent_entity: Some("wall"), parent_asset: None, parent_archetype: None,
@@ -30,5 +31,11 @@ pub fn enter(h: &mut (impl Host + ?Sized)) -> Posed {
         ..Default::default() };
     let r = test_nodes::clips::create(h, &spec, &test_nodes::clips::Props { clips: json!({"spin":"Spin"}), speed: 2.0, state: "spin".into(), ..Default::default() });
     p.make(test_nodes::clips::REMOVE, "Mill/Turn", "kits.test.nodes", r);
+    // kits.test.nodes on Crate/Hit (node of type collision, acting on Crate): the element collision of test.nodes.
+    let spec = Spec { scene: "yard", node: "Crate/Hit", id: None, transform: Some(([-3.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0])), parent: None,
+        ty: Some("collision"), asset: None, archetype: None, entity: Some("crate_hit"), parent_node: Some("Crate"), parent_type: Some("model"), parent_entity: Some("crate"), parent_asset: Some("crate"), parent_archetype: None,
+        ..Default::default() };
+    let r = test_nodes::collision::create(h, &spec, &test_nodes::collision::Props { shape: test_nodes::collision::Shape::Mesh, ..Default::default() });
+    p.make(test_nodes::collision::REMOVE, "Crate/Hit", "kits.test.nodes", r);
     p
 }

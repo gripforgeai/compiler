@@ -149,7 +149,8 @@ fn the_room_generates_the_golden_files() {
 }
 
 /// Node types a kit declares (`"nodeType"` on an `expose` entry of its kit.api.json): examples/nodes, a `group` that
-/// carries two `collision` nodes and a `model` that carries an `animation` node, read by the test kit test.nodes. Each
+/// carries two `collision` nodes, a `model` that carries an `animation` node and a `model` named by its Library id
+/// that carries a `collision` mesh, read by the test kit test.nodes. Each
 /// typed node becomes the section of its kit's element, made through the kit's accessor in the generated code.
 #[test]
 fn node_types_declared_by_a_kit_reach_the_generated_code() {
@@ -165,8 +166,8 @@ fn node_types_declared_by_a_kit_reach_the_generated_code() {
     let yard = std::fs::read_to_string(out.join("game/src/init_scene/yard.rs")).unwrap();
     assert_eq!(
         yard.matches("test_nodes::collision::create(").count(),
-        2,
-        "two collision nodes, two elements of test.nodes:\n{yard}"
+        3,
+        "three collision nodes, three elements of test.nodes:\n{yard}"
     );
     assert_eq!(
         yard.matches("test_nodes::clips::create(").count(),
@@ -178,6 +179,21 @@ fn node_types_declared_by_a_kit_reach_the_generated_code() {
             && yard.contains("r#type: test_nodes::collision::Type::Sensor"),
         "an enum is named in the element's module of the accessor:\n{yard}"
     );
+    // A model named by its Library id (`crate`, the folder library/crate/): its collision mesh and the model itself
+    // reach the game by that logical id, never by a GLB path. The file's form (whole GLB, compressed textures, LOD,
+    // split parts) is the asset kits' to resolve at run time from the id (asset.meta for the passport and its
+    // collision parts); the generated code and the game do not name a file for it.
+    assert!(
+        yard.contains(r#"parent_type: Some("model"), parent_entity: Some("crate"), parent_asset: Some("crate")"#),
+        "the collision node under Crate gets the Library id as its parent's asset:\n{yard}"
+    );
+    let game = std::fs::read_to_string(out.join("game.json")).unwrap();
+    for (name, text) in [("init_scene/yard.rs", &yard), ("game.json", &game)] {
+        assert!(
+            !text.contains("library/crate") && !text.contains("crate.glb"),
+            "{name} names a file for the asset crate instead of its Library id:\n{text}"
+        );
+    }
     for f in ["game/src/init_scene.rs", "game/src/init_scene/yard.rs"] {
         golden(
             &format!("nodes/{}", f.replace('/', "__")),

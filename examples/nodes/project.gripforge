@@ -27,6 +27,15 @@
             "children": [
               { "name": "Turn", "type": "animation", "animation": { "state": "spin", "clips": { "spin": "Spin" }, "speed": 2 } }
             ]
+          },
+          {
+            "name": "Crate",
+            "type": "model",
+            "position": [-3, 0, 0],
+            "model": { "asset": "crate" },
+            "children": [
+              { "name": "Hit", "type": "collision", "collision": { "shape": "mesh" } }
+            ]
           }
         ]
       }
