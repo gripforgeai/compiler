@@ -97,7 +97,7 @@ fn run(
 ) -> gripforge_compiler::build::BuildResult {
     build(&BuildOptions {
         project: Some(d.to_path_buf()),
-        kits: Some(kits.to_path_buf()),
+        kits_path: Some(kits.to_path_buf()),
         sdk: Some(d.join("sdk")),
         compress_textures: on,
         compress_textures_url: url.map(String::from),
