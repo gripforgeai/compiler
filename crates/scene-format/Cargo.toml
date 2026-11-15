@@ -7,7 +7,7 @@
 [package]
 name = "gripforge-scene-format"
 description = "The GripForge project file (project.gripforge) and scene file (<name>.gfscene) format: tolerant reading, validator, sub-scenes, lowering into game.engine documents, conversion and packing."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.99"
 license = "MIT"

@@ -1,0 +1,26 @@
+[package]
+name = "gripforge-kit-guest"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MIT"
+description = "The kit side of the kit logic modules: a façade of the kit host (Host, Kx) over the calls to the core, so a kit's source compiles unchanged into its own wasm (docs/kit-modules.md)."
+publish = false
+# MKP kits/kit_guest (docs/sources.md); natively a module keeps its own allocator (D3).
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
+# The contract (once gripforge-kitcall and gripforge-modcall with `guest`).
+gripforge-abi = { workspace = true, features = ["guest"] }
+
+[features]
+# The kit module lives in the common memory of the trusted kit modules (docs/kit-modules.md « Common memory »): built
+# relocatable by tools/kit-modules/build.mjs, the core's allocator, calls by pointer.
+common-memory = ["gripforge-abi/trusted-peer"]
+# An ISOLATED kit module (docs/kit-third-party.md): a third-party kit the game does not trust with its memory. It
+# owns its memory; it speaks to the core across the two memories on the structures of the contract (src/iso.rs,
+# `isolated_kit!`) — no bridge, no written-out containers. Built by `gripforge kit build`. Not with `common-memory`.
+isolated = []
+# Measures only (never in a shipped build): the probes of an entry (gripforge-kitcall `fast::PROBE_*`,
+# src/probe.rs) — parts of an entry run alone, to cost them (GF_KIT_FEATURES=entry-probe of tools/kit-modules/build.mjs).
+entry-probe = []

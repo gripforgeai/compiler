@@ -1,0 +1,26 @@
+[package]
+name = "gripforge-abi"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MIT"
+description = "The contract alone between the GripForge kit host, the kit modules and the gateways: C tables, fixed layouts, function numbers, interfaces, the calls between modules, the port types and the frame format. No logic of a host or of a kit."
+publish = false
+# Written new for the refonte (docs/sources.md): the four crates gripforge-kitcall, gripforge-modcall, gripforge-ports
+# and gripforge-wire of the sources, gathered as modules of one crate.
+
+[dependencies]
+# preserve_order: objects keep the order of the document; float_roundtrip: numbers read as `JSON.parse` does;
+# raw_value: the ports read slot metadata without allocating the whole document.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
+
+[features]
+default = ["json"]
+# The frame format reads and writes serde_json values (once gripforge-wire `json`).
+json = []
+# The module side of the calls between modules: `call`, `expose`, the `gf_calls` imports (once gripforge-modcall
+# `guest`; wasm32 links only).
+guest = []
+# A kit module of the common memory (wasm): what it reads comes from modules of the same memory, so its readers accept
+# fixed-layout blocks (`T_FIXED`) unless told otherwise (once gripforge-kitcall `trusted-peer`).
+trusted-peer = []

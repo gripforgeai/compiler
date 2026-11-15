@@ -428,6 +428,52 @@ fn the_generated_crate_takes_the_sdk_by_path_or_git() {
     assert!(r.ok);
     let toml = std::fs::read_to_string(out.join("game/Cargo.toml")).unwrap();
     assert!(toml.contains("branch = \"main\""), "{toml}");
+    // By default: the public SDK of this repository (sdk/), at the compiler's tag; never the private kits repository.
+    let r = build(&BuildOptions {
+        project: Some(room_dir()),
+        out: Some(out.clone()),
+        ..Default::default()
+    });
+    assert!(r.ok);
+    let toml = std::fs::read_to_string(out.join("game/Cargo.toml")).unwrap();
+    assert!(
+        toml.contains(&format!(
+            "gripforge-kit-guest = {{ git = \"https://github.com/gripforgeai/compiler\", tag = \"v{}\" }}",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "{toml}"
+    );
+    assert!(!toml.contains("module-kits"), "{toml}");
+    for (rev, pin) in [("v0.2.0", "tag"), ("65ffb22", "rev")] {
+        let r = build(&BuildOptions {
+            project: Some(room_dir()),
+            out: Some(out.clone()),
+            sdk_rev: Some(rev.into()),
+            ..Default::default()
+        });
+        assert!(r.ok);
+        let toml = std::fs::read_to_string(out.join("game/Cargo.toml")).unwrap();
+        assert!(toml.contains(&format!("{pin} = \"{rev}\"")), "{toml}");
+    }
+    // This repository's sdk/: the crates at its top.
+    let public = Path::new(env!("CARGO_MANIFEST_DIR")).join("sdk");
+    let r = build(&BuildOptions {
+        project: Some(room_dir()),
+        out: Some(out.clone()),
+        sdk: Some(public.clone()),
+        ..Default::default()
+    });
+    assert!(r.ok);
+    let toml = std::fs::read_to_string(out.join("game/Cargo.toml")).unwrap();
+    assert!(
+        toml.contains(&format!(
+            "path = \"{}\"",
+            public.join("kit-guest").display()
+        )),
+        "{toml}"
+    );
+    assert!(out.join("game/rust-toolchain.toml").exists());
+    // A checkout of the kits repository: the crates under core/.
     let sdk = tmp();
     std::fs::write(
         sdk.join("rust-toolchain.toml"),

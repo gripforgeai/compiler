@@ -1,0 +1,26 @@
+# The common part of the Rust accessors of the kits (Host, Spec, Method, Posed). Each kit's accessor is its own crate,
+# generated from its kit.api.json in kits/<kit>/access/rust (tools/kit-api, language `rust-access`), that calls the kit
+# through the host — never a line of the kit linked — and depends on this crate by version (patched to this path by
+# the root Cargo.toml). What the code written by `gfscene code` (the build of a project.gripforge into Rust,
+# docs/design/build-gripforge.md) and a game's own Rust use.
+[package]
+name = "gripforge-kit-access"
+description = "The common part of the typed Rust accessors of the GripForge kits (the host they call through, what their calls take), and what a scene posed in code keeps to give it back."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde_json = { workspace = true }
+gripforge-abi = { workspace = true }
+# The guest side (a game module built as its own native library or wasm): `Host` for gripforge-kit-guest's `Kx`.
+gripforge-kit-guest = { workspace = true, optional = true }
+
+[features]
+# `kithost` (the kit host side, gripforge-kit-api) is not in the public SDK (gripforgeai/compiler sdk/, tools/sync-sdk).
+guest = ["dep:gripforge-kit-guest"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("kithost"))'] }

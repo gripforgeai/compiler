@@ -1,5 +1,19 @@
 # Changes
 
+## [0.1.1]
+
+- The generated crate takes the public part of the kits SDK (`gripforge-abi`, `gripforge-kit-guest`,
+  `gripforge-kit-access`) from this repository, `sdk/` (copied from module-kits by `tools/sync-sdk`, revision in
+  `sdk/sdk.json`, see `PROVENANCE.md`), by git at the compiler's tag (`tag = "v0.1.1"`): a game builds without any
+  access to the kits repository. `--sdk <dir>` takes it by path (this repository's `sdk/` or a kits checkout);
+  `--sdk-rev` or `GRIPFORGE_SDK_REV` another tag, commit or branch. The CI generates the example room and builds it,
+  native and wasm, on `sdk/` alone.
+- The spec of an element of a node passes what dev.builder passes: `type`, `asset`, `archetype`, `entity` and, of its
+  parent node, `parentNode`, `parentType`, `parentEntity`, `parentAsset`, `parentArchetype`: a collision or an
+  animation under its parent works built. Typed nodes (collision, animation) reach the generated code.
+- A model named by its Library id reaches the generated code by that id.
+- The header of the generated scenes says to run `gripforge-build <project>`.
+
 ## [0.1.0]
 
 - `gripforge-build`: one native binary. Reads `project.gripforge` and the `kit.api.json` of the kits of the project,
