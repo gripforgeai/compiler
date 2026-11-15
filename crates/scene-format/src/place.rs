@@ -199,25 +199,64 @@ pub fn kits_of(all: &[Wanted]) -> Vec<String> {
     kits
 }
 
-/// The file of a `model` node, else null.
-fn asset_of(n: &Node) -> Json {
+/// The file of a `model` node, else none.
+fn asset_of(n: &Node) -> Option<String> {
     n.raw
         .get("model")
         .and_then(|m| m.get("asset"))
-        .filter(|a| a.is_string())
-        .cloned()
-        .unwrap_or(Json::Null)
+        .and_then(Json::as_str)
+        .map(str::to_string)
 }
 
-/// The archetype a node's `game.engine` section names, else null.
-fn archetype_of(n: &Node) -> Json {
+/// The archetype a node's `game.engine` section names, else none.
+fn archetype_of(n: &Node) -> Option<String> {
     n.raw
         .get("kits")
         .and_then(|k| k.get("game.engine"))
         .and_then(|g| g.get("archetype"))
-        .filter(|a| a.is_string())
-        .cloned()
-        .unwrap_or(Json::Null)
+        .and_then(Json::as_str)
+        .map(str::to_string)
+}
+
+/// What a kit needs to give one rule to a whole kind of element, for a node and its parent node: the keys
+/// [`element_spec`] adds (`type`, `asset`, `archetype`, `entity`, `parentNode`, `parentType`, `parentEntity`,
+/// `parentAsset`, `parentArchetype`). One place for both the builder (`element_spec`) and the code a scene is
+/// written as (`code.rs`, through the accessors' `Spec`), so the two give a kit the same thing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NodeKind {
+    /// The node's type.
+    pub ty: String,
+    /// The file of a `model`, else none.
+    pub asset: Option<String>,
+    /// The archetype its `game.engine` section names, else none.
+    pub archetype: Option<String>,
+    /// The identifier game.engine receives for it (`lower::id_of`), whether game.engine is there or not.
+    pub entity: String,
+    /// Its parent node's path, empty at the root.
+    pub parent_node: String,
+    /// The parent node's type, none at the root.
+    pub parent_type: Option<String>,
+    /// The parent node's game.engine instance identifier, none at the root.
+    pub parent_entity: Option<String>,
+    /// The parent node's model file, else none.
+    pub parent_asset: Option<String>,
+    /// The parent node's archetype, else none.
+    pub parent_archetype: Option<String>,
+}
+
+/// The [`NodeKind`] of `n`, whose parent node is `parent_node` (none at the root).
+pub fn node_kind(n: &Node, parent_node: Option<&Node>) -> NodeKind {
+    NodeKind {
+        ty: n.ty.clone(),
+        asset: asset_of(n),
+        archetype: archetype_of(n),
+        entity: crate::lower::id_of(n),
+        parent_node: n.parent.clone(),
+        parent_type: parent_node.map(|p| p.ty.clone()),
+        parent_entity: parent_node.map(crate::lower::id_of),
+        parent_asset: parent_node.and_then(asset_of),
+        parent_archetype: parent_node.and_then(archetype_of),
+    }
 }
 
 /// What a kit receives to make an element (`create(spec)`): the element, where it is, its properties, the node's
@@ -245,15 +284,16 @@ pub fn element_spec(
     let mut spec = json!({ "element": el.name, "scene": scene, "node": w.node, "id": id, "props": props,
         "transform": transform, "parent": parent });
     if let Some(n) = node {
-        spec["type"] = json!(n.ty);
-        spec["asset"] = asset_of(n);
-        spec["archetype"] = archetype_of(n);
-        spec["entity"] = json!(crate::lower::id_of(n));
-        spec["parentNode"] = json!(n.parent);
-        spec["parentType"] = parent_node.map_or(Json::Null, |p| json!(p.ty));
-        spec["parentEntity"] = parent_node.map_or(Json::Null, |p| json!(crate::lower::id_of(p)));
-        spec["parentAsset"] = parent_node.map_or(Json::Null, asset_of);
-        spec["parentArchetype"] = parent_node.map_or(Json::Null, archetype_of);
+        let k = node_kind(n, parent_node);
+        spec["type"] = json!(k.ty);
+        spec["asset"] = json!(k.asset);
+        spec["archetype"] = json!(k.archetype);
+        spec["entity"] = json!(k.entity);
+        spec["parentNode"] = json!(k.parent_node);
+        spec["parentType"] = json!(k.parent_type);
+        spec["parentEntity"] = json!(k.parent_entity);
+        spec["parentAsset"] = json!(k.parent_asset);
+        spec["parentArchetype"] = json!(k.parent_archetype);
     }
     spec
 }

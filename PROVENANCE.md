@@ -8,6 +8,10 @@
   Since then, `src/registry.rs`, `src/tree.rs`, `src/tree/values.rs`, `src/place.rs` and `tests/lower.rs` were taken
   again, unchanged, from the same folder at commit `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` (node types declared by
   the kits, `nodeType`).
+  Then `src/place.rs` again, unchanged, and the test
+  `the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder_does` of `tests/lower.rs`, at commit
+  `108031bf9f6ca9a5ea811a55058c3600b2c5227d` (`place::node_kind`, the accessors' `Spec` with the node's kind and its parent); the same
+  change made to `src/code.rs`, which differs from the source here.
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).

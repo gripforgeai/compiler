@@ -434,3 +434,37 @@ fn collision_and_animation_nodes_are_children_of_the_tree_read_by_their_kit() {
         (low.world.position[0] - 10.0).abs() < 1e-9 && (low.world.position[1] - 0.5).abs() < 1e-9
     );
 }
+
+#[test]
+fn the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder_does() {
+    use gripforge_scene_format::code::code;
+    let api = json!({ "id": "core.physics", "expose": [
+        { "id": "core.physics.collision", "for": ["scene"], "at": "node", "nodeType": "collision", "nodeTypes": ["collision"],
+          "props": { "size": { "type": "f64x3", "default": [1, 1, 1] } },
+          "create": "core.physics.elementCreate", "remove": "core.physics.elementRemove" }
+    ] });
+    let mut reg = Registry::base();
+    reg.add_kit_api(&api);
+    let project = json!({ "id": "p", "requires": ["game.engine", "core.physics"],
+        "installed": [{ "id": "game.engine", "config": { "startScene": "level" } }, { "id": "core.physics" }],
+        "data": { "scenes": [{ "id": "level", "role": "level", "file": "scenes/level.gfscene" }] } });
+    let scene = json!({ "requires": ["core.physics"], "nodes": [
+        { "name": "Wall", "type": "group", "children": [
+            { "name": "Low", "type": "collision", "collision": { "size": [4, 1, 0.2] } }
+        ] }
+    ] });
+    let list = [("scenes/level.gfscene", scene)];
+    let out = code(&project, &files(&list), &reg, "test").unwrap();
+    let level = &out
+        .files
+        .iter()
+        .find(|(p, _)| p.ends_with("level.rs"))
+        .unwrap()
+        .1;
+    assert!(
+        level.contains(r#"ty: Some("collision")"#)
+            && level.contains(r#"parent_node: Some("Wall")"#)
+            && level.contains(r#"parent_type: Some("group")"#),
+        "the collision acts on its parent group, as dev.builder tells core.physics:\n{level}"
+    );
+}

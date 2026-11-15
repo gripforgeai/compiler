@@ -15,8 +15,8 @@ use crate::build::resolve_scene;
 use crate::issue::{has_errors, Issue};
 use crate::math::Transform;
 use crate::place::{
-    camera_look, camera_params, kits_of, light_params, name_of, ordered, resolve_section, wanted,
-    Wanted,
+    camera_look, camera_params, kits_of, light_params, name_of, node_kind, ordered,
+    resolve_section, wanted, Wanted,
 };
 use crate::project::validate_project;
 use crate::registry::{Element, Field, Registry};
@@ -330,9 +330,15 @@ impl Writer<'_> {
                 };
                 self.issues.extend(issues);
                 let node = tree.nodes.iter().find(|n| n.path == w.node);
+                // The parent node, found as dev.builder finds it (kits/dev_builder/logic/sections.rs).
+                let up = node.and_then(|n| {
+                    tree.nodes
+                        .iter()
+                        .find(|p| !n.parent.is_empty() && p.path == n.parent)
+                });
                 let m = ident(&kit_module(&w.kit));
                 uses.push(m.clone());
-                self.element(scene, w, &el, &props, node, vars.get(&w.node), &m, s);
+                self.element(scene, w, &el, &props, (node, up), vars.get(&w.node), &m, s);
             }
         }
     }
@@ -344,7 +350,7 @@ impl Writer<'_> {
         w: &Wanted,
         el: &Element,
         props: &Json,
-        node: Option<&Node>,
+        (node, up): (Option<&Node>, Option<&Node>),
         var: Option<&String>,
         m: &str,
         s: &mut String,
@@ -356,9 +362,7 @@ impl Writer<'_> {
             w.node.clone()
         };
         // A node of a type its kit declares (`nodeType`: a collision, an animation) is that kit's section: said so, with
-        // the node it acts on (its parent). The accessors' `Spec` (gripforge-kit-access) does not carry yet the fields
-        // `place::element_spec` adds for dev.builder (type, asset, archetype, entity, parentNode, parentType, parentEntity,
-        // parentAsset, parentArchetype): they are written here when it does.
+        // the node it acts on (its parent). The spec below carries what it needs of that parent.
         let typed = node.filter(|n| {
             self.reg
                 .node_types
@@ -403,7 +407,25 @@ impl Writer<'_> {
             .and_then(|n| n.id.clone())
             .map_or("None".to_string(), |i| format!("Some({i:?})"));
         let parent = var.map_or("None".to_string(), |v| format!("Some({v})"));
-        let _ = writeln!(s, "    let spec = Spec {{ scene: {scene:?}, node: {:?}, id: {id}, transform: {transform}, parent: {parent} }};", w.node);
+        // What a kit needs of the node and its parent (a collision or an animation acts on its parent), the same
+        // keys dev.builder gives (`place::element_spec`), through the one computation `place::node_kind`.
+        let kind = node.map_or(String::new(), |n| {
+            let k = node_kind(n, up);
+            let opt = |v: &Option<String>| v.as_ref().map_or("None".to_string(), |x| format!("Some({x:?})"));
+            format!(
+                "\n        ty: Some({:?}), asset: {}, archetype: {}, entity: Some({:?}), parent_node: Some({:?}), parent_type: {}, parent_entity: {}, parent_asset: {}, parent_archetype: {},\n       ",
+                k.ty,
+                opt(&k.asset),
+                opt(&k.archetype),
+                k.entity,
+                k.parent_node,
+                opt(&k.parent_type),
+                opt(&k.parent_entity),
+                opt(&k.parent_asset),
+                opt(&k.parent_archetype)
+            )
+        });
+        let _ = writeln!(s, "    let spec = Spec {{ scene: {scene:?}, node: {:?}, id: {id}, transform: {transform}, parent: {parent},{kind} ..Default::default() }};", w.node);
         let mut fields = String::new();
         for (k, f) in &el.props {
             let v = &props[k];
