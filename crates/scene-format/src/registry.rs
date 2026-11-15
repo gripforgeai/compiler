@@ -32,6 +32,11 @@ pub struct NodeType {
     pub when: Vec<String>,
     /// What game.engine receives from such a node: `instance`, `entry`, `zone`, or `none`.
     pub lowers: String,
+    /// The kit and the element that read a node of this type (`"section": { "kit", "element" }` of its declaration):
+    /// its properties (`"<type>": { ... }`) are that element's section, as if written in `kits.<kit>` with
+    /// `"element": "<element>"`, and are checked against what the kit exposes, never here. A collision shape, an
+    /// animation: a node of the tree like any other, read by the kit that knows it.
+    pub section: Option<(String, String)>,
 }
 
 /// Where an element lives: on a node of a scene (`kits.<kit>` of the node) or on the scene itself (`kits.<kit>` of the
@@ -141,7 +146,7 @@ impl Registry {
         r
     }
 
-    /// Add node types from a `{ <name>: { description, props, when, lowers } }` document (a kit, a mod).
+    /// Add node types from a `{ <name>: { description, props, when, lowers, section? } }` document (a kit, a mod).
     pub fn add_node_types(&mut self, doc: &Json) {
         for (name, t) in doc.as_object().into_iter().flatten() {
             let props = t
@@ -169,6 +174,11 @@ impl Registry {
                 .and_then(Json::as_str)
                 .unwrap_or("none")
                 .to_string();
+            let section = t.get("section").and_then(|v| {
+                let k = v.get("kit")?.as_str()?.to_string();
+                let e = v.get("element")?.as_str()?.to_string();
+                Some((k, e))
+            });
             self.node_types.insert(
                 name.clone(),
                 NodeType {
@@ -176,12 +186,14 @@ impl Registry {
                     props,
                     when,
                     lowers,
+                    section,
                 },
             );
         }
     }
 
-    /// Add the elements a kit exposes: the `expose` entries of its `kit.api.json` whose `for` holds `scene`.
+    /// Add the elements a kit exposes: the `expose` entries of its `kit.api.json` whose `for` holds `scene`, and the
+    /// node types it declares with them (`nodeType`).
     pub fn add_kit_api(&mut self, api: &Json) {
         let Some(kit) = api.get("id").and_then(Json::as_str) else {
             return;
@@ -195,6 +207,22 @@ impl Registry {
             .into_iter()
             .flatten();
         for e in entries.filter(|e| for_scene(e)) {
+            // The registry of node types: a kit declares its own (`"nodeType": "collision"` on a node element) beside
+            // the base ones; the node then carries the element's properties under that key, read by this kit.
+            if let (Some(ty), Some(el)) =
+                (e.get("nodeType").and_then(Json::as_str), element_of(kit, e))
+            {
+                self.node_types.insert(
+                    ty.to_string(),
+                    NodeType {
+                        description: el.description.clone(),
+                        props: BTreeMap::new(),
+                        when: vec!["event".to_string()],
+                        lowers: "none".to_string(),
+                        section: Some((kit.to_string(), el.name.clone())),
+                    },
+                );
+            }
             if let Some(el) = element_of(kit, e) {
                 self.sections
                     .entry(kit.to_string())

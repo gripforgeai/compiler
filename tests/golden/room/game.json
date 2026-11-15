@@ -40,7 +40,7 @@
    },
    {
     "id": "game.main",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "enabled": true
    }
   ],
@@ -432,7 +432,7 @@
     "dependencies": {}
    },
    "game.main": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "enabled": true,
     "dependencies": {}
    }
@@ -441,7 +441,7 @@
  "physics": "none",
  "build": {
   "schema": "gripforge.build/1",
-  "compiler": "0.1.0",
+  "compiler": "0.1.1",
   "gameModule": "game.main",
   "scenes": [
    "menu",

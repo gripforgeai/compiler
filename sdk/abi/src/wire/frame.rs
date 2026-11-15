@@ -16,7 +16,7 @@
 //! - 8 VARS: n × (path ref, 0 unset | 1 + value);
 //! - 9 EVENTS: n × (topic ref, seq, tick, time f64, source ref, entity ref + 1 or 0, actor ref + 1 or 0, payload value);
 //! - 10 VIEWS: n × (name ref, value) — the views that changed;
-//! - 11 STATE: n × (key ref, value) — `phase`, `hudVars` when they changed;
+//! - 11 STATE: n × (key ref, value) — `hudVars` when it changed;
 //! - 12 PORTS: n × (port ref, value) — the calls of the browser ports (`audio`, `display`, `pointer`, `saves`).
 //!
 //! Counts, slots and refs are LEB128 varints but in TRANSFORM and VELOCITY; values are `value.rs` (tags 0-9).
@@ -468,7 +468,7 @@ impl FrameWriter {
         self.vars_at = self.vars_given.len();
     }
 
-    /// `phase`, `hudVars`…: sent when it changed.
+    /// `hudVars`…: sent when it changed.
     pub fn state(&mut self, key: &str, value: &serde_json::Value) {
         match self.state_given.iter_mut().find(|(k, _)| k == key) {
             Some((_, last)) if same(last, value) => return,

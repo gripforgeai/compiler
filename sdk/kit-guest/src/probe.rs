@@ -21,7 +21,7 @@ pub unsafe fn tick(func: u32, ctx: *const kc::fast::HookCtx) -> u32 {
         std::hint::black_box(&host.tick);
     } else if func & kc::fast::PROBE_LINK != 0 {
         for _ in 0..n {
-            std::hint::black_box(crate::direct::phase_probe());
+            std::hint::black_box(crate::direct::link_probe());
         }
     } else if func & kc::fast::PROBE_SVC != 0 {
         crate::svc::probe(n);

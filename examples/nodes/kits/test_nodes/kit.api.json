@@ -1,0 +1,156 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "test.nodes",
+  "version": "0.1.0",
+  "requires": [],
+  "dependencies": [],
+  "provides": [
+    {
+      "id": "test.nodes",
+      "version": "0.1.0",
+      "description": "A test kit of the compiler: it declares two node types of the scene tree, collision and animation, read by its own elements (no behaviour: only the surface the build reads)."
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "defaults": {},
+  "events": {
+    "emits": [],
+    "listens": []
+  },
+  "engine": {
+    "role": "service",
+    "hooks": {},
+    "moddable": {
+      "collections": [],
+      "config": [],
+      "live": []
+    }
+  },
+  "services": {
+    "test.nodes": {
+      "description": "The elements of the scene this test kit reads (a collision, an animation), by handle.",
+      "methods": [
+        {
+          "name": "elementCreate",
+          "args": [
+            "spec"
+          ],
+          "description": "Makes an element of a scene: spec { element, scene, node, props, ... }; answers its handle."
+        },
+        {
+          "name": "elementRemove",
+          "args": [
+            "handle"
+          ],
+          "description": "Lets an element go."
+        }
+      ]
+    }
+  },
+  "expose": [
+    {
+      "id": "test.nodes.collision",
+      "for": [
+        "scene"
+      ],
+      "label": "Collision",
+      "at": "node",
+      "nodeType": "collision",
+      "description": "A collision shape, a child node of what it collides for (a group, a model, a shape).",
+      "props": {
+        "shape": {
+          "type": "enum",
+          "choices": [
+            "box",
+            "sphere",
+            "capsule",
+            "mesh",
+            "heightmap"
+          ],
+          "default": "box",
+          "description": "The shape."
+        },
+        "type": {
+          "type": "enum",
+          "choices": [
+            "static",
+            "kinematic",
+            "dynamic",
+            "sensor"
+          ],
+          "default": "static",
+          "description": "How it moves."
+        },
+        "size": {
+          "type": "f64x3",
+          "default": [
+            1,
+            1,
+            1
+          ],
+          "description": "The size of a box, metres."
+        },
+        "radius": {
+          "type": "f64",
+          "default": 0.5,
+          "description": "The radius of a sphere or a capsule, metres."
+        },
+        "height": {
+          "type": "f64",
+          "default": 1,
+          "description": "The height of a capsule, metres."
+        },
+        "material": {
+          "type": "string",
+          "default": "",
+          "description": "A physics material by name; empty: the default one."
+        },
+        "layers": {
+          "type": "json",
+          "default": [],
+          "description": "The collision layers it is in."
+        }
+      },
+      "create": "test.nodes.elementCreate",
+      "remove": "test.nodes.elementRemove"
+    },
+    {
+      "id": "test.nodes.clips",
+      "for": [
+        "scene"
+      ],
+      "label": "Animation",
+      "at": "node",
+      "nodeType": "animation",
+      "description": "The animation of its parent node (a model): a state, its clips, played in a loop or once.",
+      "props": {
+        "state": {
+          "type": "string",
+          "default": "",
+          "description": "The state played first; empty: none."
+        },
+        "clips": {
+          "type": "json",
+          "default": {},
+          "description": "The clip of each state ({ state: clip })."
+        },
+        "loop": {
+          "type": "bool",
+          "default": true,
+          "description": "Played in a loop."
+        },
+        "speed": {
+          "type": "f64",
+          "default": 1,
+          "description": "The speed of the clips, 1: their own."
+        }
+      },
+      "create": "test.nodes.elementCreate",
+      "remove": "test.nodes.elementRemove"
+    }
+  ]
+}

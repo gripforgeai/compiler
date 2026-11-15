@@ -3,7 +3,7 @@
 //! entry of the core (as src/entities.rs of this crate).
 
 mod var_spec;
-pub use var_spec::{HudVarSpec, VarChange, PHASES, PHASE_KEY};
+pub use var_spec::{HudVarSpec, VarChange};
 
 use crate::entities::Arena;
 use crate::host::call_core_ok;
@@ -17,55 +17,13 @@ pub(crate) fn call(func: crate::uses::Func, args: impl FnOnce(&mut Writer)) -> V
     call_core_ok(func, &w)
 }
 
-/// The phase as read now (`host.state.phase`, a field of the core's `GameState`): compares with a `&str` and
-/// clones to a `String`, asking the core each time.
-#[derive(Default)]
-pub struct Phase {}
-
-impl Phase {
-    /// The phase now.
-    #[allow(clippy::should_implement_trait)]
-    pub fn clone(&self) -> String {
-        if let Some(p) = crate::direct::phase() {
-            return p;
-        }
-        let bytes = call(crate::func!(f::PHASE), |_| {});
-        Reader::new(&bytes).string().unwrap_or_default()
-    }
-    pub fn as_str(&self) -> String {
-        self.clone()
-    }
-}
-
-impl PartialEq<&str> for Phase {
-    fn eq(&self, other: &&str) -> bool {
-        self.clone() == *other
-    }
-}
-impl PartialEq<str> for Phase {
-    fn eq(&self, other: &str) -> bool {
-        self.clone() == other
-    }
-}
-impl PartialEq<String> for Phase {
-    fn eq(&self, other: &String) -> bool {
-        self.clone() == *other
-    }
-}
-impl std::fmt::Display for Phase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.clone())
-    }
-}
-
 impl Reads {
     /// Drops every copy and keeps the tables (most entries read the same few paths again).
     fn clear(&mut self, rev: u32) {
-        if !self.vars.is_empty() || !self.values.is_empty() || self.phase.is_some() {
+        if !self.vars.is_empty() || !self.values.is_empty() {
             self.vars.clear();
             self.values = Arena::default();
             self.strings = Arena::default();
-            self.phase = None;
         }
         self.rev = rev;
     }
@@ -77,14 +35,13 @@ struct Reads {
     strings: Arena<str>,
     /// path → its copy (None: no value).
     vars: crate::direct::FastMap<String, Option<*const Json>>,
-    phase: Option<*const str>,
     /// The revision of the state in the shared zone these copies were read under (0: unknown — dropped at the next
     /// entry).
     rev: u32,
 }
 
 /// The revision of the game state in the shared zone (the `STATE` buffer, docs/kit-modules.md §7): it changes at
-/// every write of a var or of the phase, whoever makes it. 0: no zone (off wasm) or nothing published.
+/// every write of a var, whoever makes it. 0: no zone (off wasm) or nothing published.
 fn state_rev() -> u32 {
     #[cfg(any(target_arch = "wasm32", feature = "common-memory"))]
     {
@@ -99,7 +56,6 @@ fn state_rev() -> u32 {
 /// `host.state`.
 #[derive(Default)]
 pub struct GameState {
-    pub phase: Phase,
     reads: RefCell<Reads>,
     /// The moment of the module this façade last looked at (`host::moment`, as `Entities::settle`).
     seen: std::cell::Cell<u64>,
@@ -145,25 +101,11 @@ impl GameState {
         self.reads.get_mut().clear(0);
     }
 
-    pub fn phase(&self) -> &str {
-        self.settle();
-        if let Some(p) = self.reads.borrow().phase {
-            // SAFETY: kept in the arena, which is only cleared through `&mut self`.
-            return unsafe { &*p };
-        }
-        let s = self.phase.clone();
-        let mut r = self.reads.borrow_mut();
-        let p = r.strings.keep(s.into_boxed_str());
-        r.phase = Some(p);
-        // SAFETY: as above.
-        unsafe { &*p }
-    }
-
     /// The value of a path (a copy kept until the next write or entry).
     pub fn get(&self, path: &str) -> Option<&Json> {
         self.settle();
         if let Some(hit) = self.reads.borrow().vars.get(path).copied() {
-            // SAFETY: as `phase`.
+            // SAFETY: kept in the arena, which is only cleared through `&mut self`.
             return hit.map(|p| unsafe { &*p });
         }
         // Absent or a scalar: a direct link; else the bridge.
@@ -176,7 +118,7 @@ impl GameState {
         let mut r = self.reads.borrow_mut();
         let p = got.map(|v| r.values.keep(Box::new(v)));
         r.vars.insert(path.to_string(), p);
-        // SAFETY: as `phase`.
+        // SAFETY: kept in the arena, which is only cleared through `&mut self`.
         p.map(|p| unsafe { &*p })
     }
 
@@ -196,13 +138,13 @@ impl GameState {
         Reader::new(&bytes).f64().unwrap_or(0.0)
     }
 
-    /// Every value plus `$phase`.
+    /// Every value.
     pub fn snapshot(&self) -> Json {
         let bytes = call(crate::func!(f::SNAPSHOT), |_| {});
         Reader::new(&bytes).value().unwrap_or(Json::Null)
     }
 
-    /// The values in definition order (`None`: the path holds `undefined`), `$phase` apart.
+    /// The values in definition order (`None`: the path holds `undefined`).
     pub fn values(&self) -> Vec<(String, Option<Json>)> {
         let bytes = call(crate::func!(f::VALUES), |_| {});
         let mut r = Reader::new(&bytes);

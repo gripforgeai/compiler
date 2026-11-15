@@ -276,6 +276,16 @@ impl Physics for PhysicsProxy {
             }),
         );
     }
+    fn hold_body(&mut self, entity: &str, mode: u32) -> bool {
+        ask(
+            crate::func!(f::HOLD_BODY),
+            &args(|w| {
+                w.str(entity);
+                w.u32(mode);
+            }),
+            |r| r.bool(),
+        )
+    }
     fn set_collision_space(&mut self, entity: &str, space: &str) -> bool {
         ask(
             crate::func!(f::SET_COLLISION_SPACE),

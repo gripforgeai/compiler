@@ -342,13 +342,6 @@ impl Host {
             .unwrap_or_else(|| opt_string(&call(crate::func!(fw::ACTING_PLAYER), |_| {})))
     }
 
-    pub fn set_phase(&mut self, to: &str) {
-        self.state.wrote();
-        call(crate::func!(fst::SET_PHASE), |w| {
-            w.str(to);
-        });
-    }
-
     /// Tells the kits the changes of the state paths they bound.
     pub fn drain_binds(&mut self) {
         self.reads_stale();

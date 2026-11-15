@@ -104,7 +104,7 @@ pub unsafe fn free(ptr: *mut u8, size: usize, align: usize) {
 /// The contracts of an isolated kit module (its custom section `gripforge.calls`): what every kit module consumes,
 /// and `kithost.iso` — the calls across two memories on the structures of the contract. The widest list, as
 /// `crate::host::CONTRACTS` (tools/kit-modules/contracts.mjs `sealKit` writes the real one).
-pub const CONTRACTS: &str = "provides kithost.kit@1.1.0\nconsumes kithost.world@^1.3\nconsumes kithost.state@^1.1\nconsumes kithost.physics@^1.3\nconsumes kithost.services@^1.1\nconsumes kithost.input@^2.0\nconsumes kithost.assets@^1.0\nconsumes kithost.platform@^1.0\nconsumes kithost.zone@^1.0\nconsumes kithost.iso@^1.0\n";
+pub const CONTRACTS: &str = "provides kithost.kit@1.1.0\nconsumes kithost.world@^1.3\nconsumes kithost.state@^2.0\nconsumes kithost.physics@^1.3\nconsumes kithost.services@^1.1\nconsumes kithost.input@^2.0\nconsumes kithost.assets@^1.0\nconsumes kithost.platform@^1.0\nconsumes kithost.zone@^1.0\nconsumes kithost.iso@^1.0\n";
 
 /// Makes a crate an **isolated** kit module: `isolated_kit!(kit::module, "1.0.0", 0);` — its own memory, the entry
 /// across memories, the structures table, the contracts section. In place of `export_kit!` (never beside it); the

@@ -6,7 +6,7 @@
 [package]
 name = "gripforge-compiler"
 description = "gripforge project build: compiles a GripForge project into a game, native and wasm."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.99"
 license = "MIT"
@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json = { workspace = true }
-gripforge-scene-format = { path = "crates/scene-format", version = "0.1.0" }
+gripforge-scene-format = { path = "crates/scene-format", version = "0.1.1" }
 ureq = "2"
 sha2 = "0.10"
 base64 = "0.22"

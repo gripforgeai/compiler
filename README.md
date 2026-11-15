@@ -101,7 +101,7 @@ kit was read from, by a path relative to `.build/game`, at the exact version of 
 gripforge-kit-access-core-light = { path = "../../kits/core_light/access/rust", version = "=1.0.0" }
 
 [patch.crates-io]
-gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0" }  # or the --sdk path
+gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.1" }  # or the --sdk path
 ```
 
 The accessors ask for the common part (`gripforge-kit-access`: `Host`, `Spec`, `Posed`) by version only; the
@@ -118,8 +118,8 @@ repository, [`sdk/`](sdk/README.md), copied from the kits repository at the revi
 compiler's tag, so a game builds with nothing but this public repository and the kits downloaded into the project:
 
 ```toml
-gripforge-kit-guest = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0" }
-gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0", features = ["guest"] }
+gripforge-kit-guest = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.1" }
+gripforge-kit-access = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.1", features = ["guest"] }
 ```
 
 `--sdk <dir>` takes them by path, `--sdk-rev` (or `GRIPFORGE_SDK_REV`) another revision, `GRIPFORGE_SDK_GIT` another

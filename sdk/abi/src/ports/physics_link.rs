@@ -63,6 +63,8 @@ pub mod order {
     pub const ADD_JOINT: u32 = 23;
     /// Let go of a joint: its name.
     pub const REMOVE_JOINT: u32 = 24;
+    /// Hold or release one body (1.11): the mode in the first number of the payload.
+    pub const HOLD_BODY: u32 = 25;
     // Questions: a ticket.
     pub const MOVE_CHARACTER: u32 = 32;
     pub const CAST_CHARACTER: u32 = 33;
@@ -716,6 +718,11 @@ impl Sim {
                 p.add_dynamic_box(o.name(), o.v3(0), o.v3(3), o.num(6));
                 self.write_info(p, o.slot, o.seq);
                 Some(o.slot)
+            }
+            HOLD_BODY => {
+                let n = name(self)?;
+                p.hold_body(&n, o.num(0) as u32);
+                None
             }
             SET_COLLISION_SPACE => {
                 let n = name(self)?;

@@ -374,6 +374,7 @@ impl Walk<'_> {
         }
         let id = self.node_id(file, &node, path, prefix);
         self.props(file, &mut node, path, &ty);
+        self.typed_section(&mut node, &ty);
         self.sections(file, &mut node, path, &ty, At::Node);
         self.bindings(file, &node, path, &ty);
         let children = node.remove("children");
@@ -411,6 +412,33 @@ impl Walk<'_> {
     }
 
     /// The node's resolved `id`, checked: a valid identifier, unique in the scene (else a warning, and the path).
+    /// A node whose type is read by a kit (`section` of its declaration: `collision` → core.physics, `animation` →
+    /// core.animation) carries its properties as that kit's section: `"<type>": { ... }` becomes `kits.<kit>` with
+    /// `"element"`, then is checked like any section. A section the node also writes for that kit keeps its own keys.
+    fn typed_section(&mut self, node: &mut Map<String, Json>, ty: &str) {
+        let Some((kit, element)) = self.reg.node_types.get(ty).and_then(|t| t.section.clone())
+        else {
+            return;
+        };
+        let mut section = match node.get(ty) {
+            Some(Json::Object(o)) => o.clone(),
+            _ => Map::new(),
+        };
+        section.insert(
+            crate::registry::ELEMENT_KEY.to_string(),
+            Json::String(element),
+        );
+        let kits = node
+            .entry("kits")
+            .or_insert_with(|| Json::Object(Map::new()));
+        if let Some(kits) = kits.as_object_mut() {
+            if let Some(Json::Object(own)) = kits.get(&kit) {
+                merge(&mut section, own);
+            }
+            kits.insert(kit, Json::Object(section));
+        }
+    }
+
     fn node_id(
         &mut self,
         file: &str,

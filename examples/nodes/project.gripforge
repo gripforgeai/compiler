@@ -1,0 +1,44 @@
+{
+  "id": "node_types",
+  "name": "Node types",
+  "requires": ["test.nodes"],
+  "installed": [{ "id": "test.nodes" }],
+  "data": {
+    "scenes": [
+      {
+        "id": "yard",
+        "kind": "3d",
+        "requires": ["test.nodes"],
+        "nodes": [
+          {
+            "name": "Wall",
+            "type": "group",
+            "position": [10, 0, 0],
+            "rotation": [0, 90, 0],
+            "children": [
+              { "name": "Low", "type": "collision", "position": [0, 0.5, 0], "collision": { "size": [4, 1, 0.2], "material": "stone" } },
+              { "name": "High", "type": "collision", "position": [0, 2, 0], "collision": { "shape": "sphere", "type": "sensor", "radius": 0.8, "layers": ["trigger"] } }
+            ]
+          },
+          {
+            "name": "Mill",
+            "type": "model",
+            "model": { "asset": "models/mill.glb" },
+            "children": [
+              { "name": "Turn", "type": "animation", "animation": { "state": "spin", "clips": { "spin": "Spin" }, "speed": 2 } }
+            ]
+          },
+          {
+            "name": "Crate",
+            "type": "model",
+            "position": [-3, 0, 0],
+            "model": { "asset": "crate" },
+            "children": [
+              { "name": "Hit", "type": "collision", "collision": { "shape": "mesh" } }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

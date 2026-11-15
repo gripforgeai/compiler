@@ -791,7 +791,7 @@ pub fn last_panic() -> u64 {
 /// replaces them in each house kit by what its binary really calls (the markers of [`crate::uses`],
 /// tools/kit-modules/contracts.mjs `sealKit`) — a kit that never touches the physics does not consume it. A kit built
 /// by `gripforge kit build` keeps this list until that tool seals its binaries the same way.
-pub const CONTRACTS: &str = "provides kithost.kit@1.3.0\nconsumes kithost.world@^1.5\nconsumes kithost.state@^1.1\nconsumes kithost.physics@^1.5\nconsumes kithost.services@^1.1\nconsumes kithost.input@^2.0\nconsumes kithost.assets@^1.0\nconsumes kithost.platform@^1.0\nconsumes kithost.zone@^1.0\nconsumes kithost.scene@^1.0\n";
+pub const CONTRACTS: &str = "provides kithost.kit@1.3.0\nconsumes kithost.world@^1.5\nconsumes kithost.state@^2.0\nconsumes kithost.physics@^1.5\nconsumes kithost.services@^1.1\nconsumes kithost.input@^2.0\nconsumes kithost.assets@^1.0\nconsumes kithost.platform@^1.0\nconsumes kithost.zone@^1.0\nconsumes kithost.scene@^1.0\n";
 
 /// Makes a crate a kit module of the common memory, with [`common_memory!`] beside it (always both):
 /// `export_kit!(kits::fx_hit_flash::module, "1.2.0");` — the `gf_*` exports of the

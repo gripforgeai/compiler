@@ -10,7 +10,7 @@
 //! by the calls between modules (`gripforge:calls@1`, docs/module-calls.md). Reference: docs/kit-modules.md.
 //!
 //! - The core (`kithost.core`) owns the world and provides versioned interfaces: `kithost.world@1`,
-//!   `kithost.state@1`, `kithost.services@1`, `kithost.physics@1`,
+//!   `kithost.state@2`, `kithost.services@1`, `kithost.physics@1`,
 //!   `kithost.input@2`, `kithost.assets@1`, `kithost.platform@1`, `kithost.scene@1` (the engine's tree).
 //! - Every kit module provides `kithost.kit@1` (its lifecycle: setup, update, on_event, call…), which the core calls.
 //!
@@ -54,10 +54,10 @@ pub const KIT: Iface = Iface {
 
 ifaces! {
     WORLD = "kithost.world" @ "1.8.0", 1;
-    STATE = "kithost.state" @ "1.1.0", 2;
+    STATE = "kithost.state" @ "2.0.0", 2;
     // Retired, never reused: 3 was kithost.zones@1 (the kit world.zones, issue #1206), 4 was kithost.objectives@1
     // (the missions: the story.quest kit's).
-    PHYSICS = "kithost.physics" @ "1.10.0", 5;
+    PHYSICS = "kithost.physics" @ "1.11.0", 5;
     SERVICES = "kithost.services" @ "1.7.0", 6;
     INPUT = "kithost.input" @ "2.0.0", 7;
     ASSETS = "kithost.assets" @ "1.0.0", 8;

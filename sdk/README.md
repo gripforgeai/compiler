@@ -32,7 +32,7 @@ tools/sync-sdk path/to/module-kits --check          # sdk/ is exactly the copy a
 `gripforge-build` writes, by default, the git dependency on this repository at the compiler's tag:
 
 ```toml
-gripforge-kit-guest = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.0" }
+gripforge-kit-guest = { git = "https://github.com/gripforgeai/compiler", tag = "v0.1.1" }
 ```
 
 `--sdk <dir>` takes it by path instead (this folder, or a checkout of the kits repository); `--sdk-rev <tag, commit or

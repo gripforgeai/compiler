@@ -163,6 +163,11 @@ pub trait PhysicsPort {
     fn set_collision_space(&mut self, entity: &str, space: &str) -> bool {
         false
     }
+    /// Holds (`mode` 1), lets go with its speed (0) or at rest (2) one body: out of context
+    /// (docs/hors-contexte.md). Returns false when unsupported.
+    fn hold_body(&mut self, entity: &str, mode: u32) -> bool {
+        false
+    }
     fn remove(&mut self, entity: &str);
     fn has_body(&self, entity: &str) -> bool {
         self.body(entity).is_some()
@@ -498,6 +503,11 @@ pub trait Physics {
     fn remove_joint(&mut self, id: &str) {}
     /// Queue zone assignment after body creation. False means unsupported or invalid.
     fn set_collision_space(&mut self, entity: &str, space: &str) -> bool {
+        false
+    }
+    /// Holds (`mode` 1), lets go with its speed (0) or at rest (2) one body: out of context
+    /// (docs/hors-contexte.md). Returns false when unsupported.
+    fn hold_body(&mut self, entity: &str, mode: u32) -> bool {
         false
     }
     /// `null` or `rapier` (or the engine's).

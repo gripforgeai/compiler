@@ -18,6 +18,8 @@ pub mod expr;
 pub mod js;
 pub mod kept;
 pub mod kit;
+/// What a kit does with its elements out of their contexts of game.engine's stack (docs/hors-contexte.md).
+pub mod out_of_context;
 /// The kit side of the passport reader of `expose` (docs/exposer-au-passeport.md).
 pub mod passport_expose;
 pub mod ray_chain;

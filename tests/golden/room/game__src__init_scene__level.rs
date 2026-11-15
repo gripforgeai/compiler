@@ -52,7 +52,7 @@ pub fn enter(h: &mut (impl Host + ?Sized)) -> Posed {
     })();
     p.place(core_light::REMOVE, "Shelf/Lamp", "light", r);
     // kits.core.light on the scene: the element ambience of core.light.
-    let spec = Spec { scene: "level", node: "", id: None, transform: None, parent: None };
+    let spec = Spec { scene: "level", node: "", id: None, transform: None, parent: None, ..Default::default() };
     let r = core_light::ambience::create(h, &spec, &core_light::ambience::Props { exposure: 1.2, tonemapping: "agx".into(), ..Default::default() });
     p.make(core_light::ambience::REMOVE, "", "kits.core.light", r);
     p

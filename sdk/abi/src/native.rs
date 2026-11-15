@@ -135,7 +135,6 @@ macro_rules! native_links {
             w_scope_pop() -> u32;
             w_set_anim(lo: u64, hi: u64, clip: u32) -> ();
             st_get(path: u32) -> u32;
-            st_phase() -> u32;
             st_set_f64(path: u32, value: f64) -> ();
             st_set_i64(path: u32, value: i64) -> ();
             st_set_flag(path: u32, what: u32) -> ();

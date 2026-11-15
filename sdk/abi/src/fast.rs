@@ -81,7 +81,7 @@ pub const WAKE_MASK: u32 = 15;
 /// Measures only (feature `entry-probe` of the core and of the façade, never in a shipped build; docs/kit-modules.md
 /// §9.14): bits of `func` that make [`Tick`] run a part of an entry and no hook. [`PROBE_ENTER`]: the façade's own
 /// prologue (its instance found, `Host::enter`). [`PROBE_LINK`]: `ctx.frame` calls of the cheapest direct link
-/// (`st_phase`). [`PROBE_SVC`]: `ctx.frame` scalar service calls to a provider this kit is linked to, opened and
+/// (`w_acting_player`). [`PROBE_SVC`]: `ctx.frame` scalar service calls to a provider this kit is linked to, opened and
 /// ended by the core, the provider entered, no method run.
 pub const PROBE_ENTER: u32 = 1 << 30;
 pub const PROBE_LINK: u32 = 1 << 29;

@@ -49,7 +49,11 @@ pub struct Method {
 }
 
 /// Where an element is made: what `create(spec)` receives besides the properties (docs/design/dev-builder-sections.md).
-#[derive(Clone, Debug, PartialEq)]
+/// For a node, also what a kit needs to give one rule to a whole kind of element and to act on the parent node (a
+/// collision or an animation node acts on its parent): the same keys dev.builder gives
+/// (`gripforge_scene_format::place::element_spec`). Write it with `..Default::default()` so a new key does not break
+/// the code already written.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spec<'a> {
     /// The scene's id.
     pub scene: &'a str,
@@ -61,10 +65,31 @@ pub struct Spec<'a> {
     pub transform: Option<([f64; 3], [f64; 4], [f64; 3])>,
     /// The engine node to make it under (0 or `None`: the scene's root).
     pub parent: Option<u64>,
+    /// The node's type (`"type"`); `None` for an element of the scene itself, and then none of the keys below is
+    /// written.
+    pub ty: Option<&'a str>,
+    /// The file of a `model` node (`"asset"`).
+    pub asset: Option<&'a str>,
+    /// The archetype the node's `game.engine` section names (`"archetype"`).
+    pub archetype: Option<&'a str>,
+    /// The identifier game.engine receives for the node (`"entity"`).
+    pub entity: Option<&'a str>,
+    /// The parent node's path, empty at the root (`"parentNode"`).
+    pub parent_node: Option<&'a str>,
+    /// The parent node's type (`"parentType"`).
+    pub parent_type: Option<&'a str>,
+    /// The parent node's game.engine instance identifier (`"parentEntity"`).
+    pub parent_entity: Option<&'a str>,
+    /// The parent node's model file (`"parentAsset"`).
+    pub parent_asset: Option<&'a str>,
+    /// The parent node's archetype (`"parentArchetype"`).
+    pub parent_archetype: Option<&'a str>,
 }
 
 impl Spec<'_> {
-    /// The JSON the kit's `create` receives: `{ element, scene, node, id, props, transform, parent }`.
+    /// The JSON the kit's `create` receives: `{ element, scene, node, id, props, transform, parent }`, and for a node
+    /// (`ty` set) `type, asset, archetype, entity, parentNode, parentType, parentEntity, parentAsset,
+    /// parentArchetype` (`null` when not known), as dev.builder gives them.
     pub fn to_json(&self, element: &str, props: Json) -> Json {
         let transform = self.transform.map_or(
             Json::Null,
@@ -74,8 +99,20 @@ impl Spec<'_> {
             .parent
             .filter(|h| *h != 0)
             .map_or(Json::Null, |h| json!(h));
-        json!({ "element": element, "scene": self.scene, "node": self.node, "id": self.id, "props": props,
-            "transform": transform, "parent": parent })
+        let mut spec = json!({ "element": element, "scene": self.scene, "node": self.node, "id": self.id,
+            "props": props, "transform": transform, "parent": parent });
+        if self.ty.is_some() {
+            spec["type"] = json!(self.ty);
+            spec["asset"] = json!(self.asset);
+            spec["archetype"] = json!(self.archetype);
+            spec["entity"] = json!(self.entity);
+            spec["parentNode"] = json!(self.parent_node);
+            spec["parentType"] = json!(self.parent_type);
+            spec["parentEntity"] = json!(self.parent_entity);
+            spec["parentAsset"] = json!(self.parent_asset);
+            spec["parentArchetype"] = json!(self.parent_archetype);
+        }
+        spec
     }
 }
 

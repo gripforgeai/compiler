@@ -53,10 +53,9 @@ pub mod world {
     pub const IS_HELD: u32 = B | 0x41;
 }
 
-/// `kithost.state@1`: the game variables and the phase.
+/// `kithost.state@2`: the game variables (2.0: no phase).
 pub mod state {
     const B: u32 = crate::STATE.base;
-    pub const PHASE: u32 = B | 0x01;
     pub const GET: u32 = B | 0x02;
     pub const SET_VAR: u32 = B | 0x03;
     pub const INC: u32 = B | 0x04;
@@ -64,7 +63,6 @@ pub mod state {
     pub const DEFINE: u32 = B | 0x06;
     pub const BIND: u32 = B | 0x07;
     pub const GUARD: u32 = B | 0x08;
-    pub const SET_PHASE: u32 = B | 0x09;
     pub const SET_GUARDED: u32 = B | 0x0a;
     pub const INC_GUARDED: u32 = B | 0x0b;
     pub const SET: u32 = B | 0x0c;

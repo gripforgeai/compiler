@@ -131,7 +131,7 @@ pub type Mass = unsafe extern "C" fn(w: usize, name: *const u8, len: usize) -> f
 /// 1 and [`BODY_WORDS`] numbers at `out`, or 0.
 pub type Body = unsafe extern "C" fn(w: usize, name: *const u8, len: usize, out: *mut f64) -> u32;
 pub type SetBody = unsafe extern "C" fn(w: usize, name: *const u8, len: usize, state: *const f64);
-/// `what` 0 set_position, 1 apply_impulse, 2 apply_force, 3 apply_torque_impulse, 4 set_character_position.
+/// `what` 0 set_position, 1 apply_impulse, 2 apply_force, 3 apply_torque_impulse, 4 set_character_position, 5 hold_body (1.11: x the mode, 1 hold, 0 release, 2 release at rest).
 pub type Vector =
     unsafe extern "C" fn(w: usize, what: u32, name: *const u8, len: usize, x: f64, y: f64, z: f64);
 /// `args`: position (3), then the rotation (4) when `rotated` is 1.

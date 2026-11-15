@@ -45,19 +45,16 @@ mod link {
         w_transform,
     };
     #[cfg(target_arch = "wasm32")]
-    #[link(wasm_import_module = "gf:kithost.state@^1.1")]
+    #[link(wasm_import_module = "gf:kithost.state@^2.0")]
     extern "C" {
         pub fn st_get(path: u32) -> u32;
-        pub fn st_phase() -> u32;
         pub fn st_set_f64(path: u32, value: f64);
         pub fn st_set_i64(path: u32, value: i64);
         pub fn st_set_flag(path: u32, what: u32);
         pub fn st_set_str(path: u32, lo: u64, hi: u64);
     }
     #[cfg(all(feature = "common-memory", not(target_arch = "wasm32")))]
-    pub use crate::native::link::{
-        st_get, st_phase, st_set_f64, st_set_flag, st_set_i64, st_set_str,
-    };
+    pub use crate::native::link::{st_get, st_set_f64, st_set_flag, st_set_i64, st_set_str};
     #[cfg(target_arch = "wasm32")]
     #[link(wasm_import_module = "gf:kithost.services@^1.1")]
     extern "C" {
@@ -95,9 +92,6 @@ mod link {
     }
     pub unsafe fn st_set_str(_: u32, _: u64, _: u64) {}
     pub unsafe fn st_get(_: u32) -> u32 {
-        6
-    }
-    pub unsafe fn st_phase() -> u32 {
         6
     }
     pub unsafe fn st_set_f64(_: u32, _: f64) {}
@@ -294,15 +288,6 @@ pub fn var(path: &str) -> Option<Option<Json>> {
     scalar(unsafe { link::st_get(atom(path)) })
 }
 
-/// The phase, when it is a short string (every phase of `PHASES` is).
-pub fn phase() -> Option<String> {
-    if !LINKED {
-        return None;
-    }
-    // SAFETY: as `has`.
-    (unsafe { link::st_phase() } == SHORT_STR).then(reg_string)
-}
-
 /// `kx.set_var(path, value)` for a number, a boolean or null: false when the value is not one (take the bridge).
 pub fn set_var(path: &str, value: &Json) -> bool {
     if !LINKED {
@@ -402,9 +387,9 @@ pub fn has_service(capability: &str) -> Option<bool> {
     Some(unsafe { link::sv_has(atom(capability)) } != 0)
 }
 
-/// Measures only (feature `entry-probe`): one call of the cheapest direct link (`st_phase`), its answer.
+/// Measures only (feature `entry-probe`): one call of the cheapest direct link (`w_acting_player`), its answer.
 #[cfg(feature = "entry-probe")]
-pub fn phase_probe() -> u32 {
+pub fn link_probe() -> u32 {
     // SAFETY: an import wired by the calls host to the core's export of the same name.
-    unsafe { link::st_phase() }
+    unsafe { link::w_acting_player() }
 }

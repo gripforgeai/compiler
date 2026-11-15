@@ -81,6 +81,8 @@ pub mod physics_fn {
     pub const REMOVE_JOINT: u32 = B | 54;
     // 1.10: the address of the physics' shape table (u64, 0: none), read in place by the kit.
     pub const SHAPES_VIEW: u32 = B | 55;
+    // 1.11: hold or release one body (entity, mode u32) → bool.
+    pub const HOLD_BODY: u32 = B | 56;
 }
 
 /// `kithost.input@2`: the neutral transport of the devices (the core holds no table of actions: core.input does).

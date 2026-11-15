@@ -3,9 +3,6 @@
 
 use serde_json::{json, Value as Json};
 
-pub const PHASE_KEY: &str = "$phase";
-pub const PHASES: [&str; 5] = ["loading", "countdown", "playing", "paused", "finished"];
-
 /// A state variable shown by HUDs (`HudVarSpec` of types.ts).
 #[derive(Clone, Debug, PartialEq)]
 pub struct HudVarSpec {
