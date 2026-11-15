@@ -1,0 +1,85 @@
+name: CI
+# Each pull request and each push to main: cargo fmt --check, clippy -D warnings, cargo test, the line coverage
+# (cargo llvm-cov; 90 % wanted: for now under it is a warning, set COVERAGE_ENFORCE to 'true' to make it fail), and the
+# build of the Linux binary, run with --version and --check on the example room of the repository (examples/room).
+# The compiler only GENERATES .rs files: nothing here compiles a game, no secret, no S3, no npm, no paid AI call.
+# GitHub-hosted runners; never pull_request_target (a fork's pull request runs with a read-only token and no secret);
+# contents: read; actions pinned by SHA.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  EXAMPLE_ROOM: examples/room
+  COVERAGE_MIN: '90'
+  COVERAGE_ENFORCE: 'false'
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
+        with:
+          toolchain: 1.99.0
+          components: rustfmt,clippy,llvm-tools
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: compiler
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        with:
+          tool: cargo-llvm-cov
+      - name: Coverage (lines)
+        run: |
+          set -u
+          cargo llvm-cov --workspace --locked --summary-only
+          if ! cargo llvm-cov report --fail-under-lines "$COVERAGE_MIN" >/dev/null 2>&1; then
+            if [ "$COVERAGE_ENFORCE" = true ]; then
+              echo "::error::line coverage under $COVERAGE_MIN %"; exit 1
+            fi
+            echo "::warning::line coverage under $COVERAGE_MIN % (warning only for now)"
+          fi
+
+  binary:
+    # The binary of a pull request: built (release profile), then run on the example room.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: compiler-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build
+        run: cargo build --release --locked --bin gripforge-build
+      - name: Run it (--version, --check on the example room)
+        run: |
+          set -eu
+          bin=target/release/gripforge-build
+          "$bin" --version
+          "$bin" --check "$EXAMPLE_ROOM"

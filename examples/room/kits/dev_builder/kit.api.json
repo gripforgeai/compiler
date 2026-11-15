@@ -1,0 +1,274 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "dev.builder",
+  "version": "0.1.0",
+  "requires": ["game.engine@^1"],
+  "dependencies": [
+    {
+      "kit": "game.engine",
+      "range": "^1",
+      "reason": "game.engine owns the flow of the scenes and turns the models, shapes, entries, zones and bindings of a scene file into its instances, zones and rules (core/scene-format); it tells dev.builder when a scene is entered and left (scene_enter, scene_exit)."
+    },
+    {
+      "kit": "core.light",
+      "range": "^1",
+      "recommended": true,
+      "reason": "The light nodes of a scene are made or adopted by core.light (adopt, set, remove), the engine's own lights on every target. Without it a light node is only read and shown (light_not_placed)."
+    },
+    {
+      "kit": "core.camera",
+      "range": "^1",
+      "recommended": true,
+      "reason": "The camera nodes of a scene are made or adopted by core.camera (adopt, setPreset fixed, setFov, activate), the engine's own cameras on every target. Without it a camera node is only read and shown (camera_not_placed)."
+    }
+  ],
+  "provides": [
+    {
+      "id": "dev.builder",
+      "version": "0.1.0",
+      "description": "Reads the scene files of a project (<name>.gfscene, docs/dev-builder.md) with their sub-scenes and overrides, refuses a scene whose required kit is missing (nothing placed), places what game.engine does not (the light and camera nodes, by the kits of the engine's lights and cameras), and shows each scene's resolved tree and problems, with what to fix."
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "lights": {
+        "type": "boolean",
+        "default": true,
+        "description": "Places the light nodes of the scenes through core.light when it is installed. Off: they are only read and shown."
+      },
+      "cameras": {
+        "type": "boolean",
+        "default": true,
+        "description": "Places the camera nodes of the scenes through core.camera when it is installed. Off: they are only read and shown."
+      },
+      "lookAhead": {
+        "type": "number",
+        "default": 10,
+        "minimum": 0.01,
+        "description": "Metres ahead of a camera node, along its -Z axis, of the point its fixed preset looks at."
+      }
+    },
+    "additionalProperties": false
+  },
+  "defaults": {
+    "lights": true,
+    "cameras": true,
+    "lookAhead": 10
+  },
+  "events": {
+    "emits": [
+      {
+        "topic": "dev.builder.placed",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "lights": { "type": "integer" },
+            "cameras": { "type": "integer" },
+            "shown": { "type": "integer" }
+          }
+        },
+        "description": "A scene from a file was entered and its light and camera nodes placed; shown counts the nodes only read (no kit places them)."
+      },
+      {
+        "topic": "dev.builder.refused",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "file": { "type": "string" },
+            "problems": { "type": "array" }
+          }
+        },
+        "description": "A scene from a file was entered but refused as a whole (a required kit is missing): nothing of it is placed; problems say what to install."
+      },
+      {
+        "topic": "dev.builder.applied",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "node": { "type": "string" },
+            "transform": { "type": "object" }
+          }
+        },
+        "description": "An edit command moved a node of a scene in the running game (apply); transform is its new place in the world, the whole quaternion."
+      },
+      {
+        "topic": "dev.builder.reflected",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "node": { "type": "string" },
+            "id": { "type": "string" },
+            "states": { "type": "object" },
+            "rules": { "type": "array" },
+            "transition": {}
+          }
+        },
+        "description": "The states of an element changed (engine.state.changed, or a game variable a derived state reads) and its reflection was posed: the rules of its reflect table that hold (game.engine's resolver) (indexes, in order) and the transition of the last rule that started to hold (null: none). Not told when a scene is entered (the reflection is rebuilt from the state, no transition)."
+      }
+    ],
+    "listens": [{"topic":"engine.state.changed"}]
+  },
+  "engine": {
+    "role": "service",
+    "hooks": {
+      "dev.builder.place": {
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "node": { "type": "string" },
+            "type": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "mutable": [],
+        "cancellable": true,
+        "targets": ["web", "rust"],
+        "description": "A light or camera node, or a kit's section (type kits.<kit>), of a scene is about to be placed: a game or a mod keeps it out (cancel), for instance to place it itself.",
+        "example": { "id": "my_sun", "hook": "dev.builder.place", "match": { "node": "Sun" }, "cancel": true }
+      },
+      "dev.builder.apply": {
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scene": { "type": "string" },
+            "command": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        "mutable": [],
+        "cancellable": true,
+        "targets": ["web", "rust"],
+        "description": "An edit command is about to move a node of a scene in the running game: a game or a mod keeps it out (cancel), for instance a node it moves itself.",
+        "example": { "id": "frozen_door", "hook": "dev.builder.apply", "match": { "scene": "level" }, "cancel": true }
+      }
+    },
+    "moddable": {
+      "collections": [],
+      "config": ["lights", "cameras", "lookAhead"],
+      "live": []
+    },
+    "registries": {
+      "nodeTypes": {
+        "of": "node type",
+        "inherit": false,
+        "description": "The types of the nodes of a scene file, in data (core/scene-format/src/node_types.json): their properties with type, default and description, the bindings they accept, what game.engine makes of them. Served by nodeTypes()."
+      }
+    }
+  },
+  "services": {
+    "dev.builder": {
+      "description": "The scene files of the project as dev.builder read them. Each method can be served by the game in its language (provide_<method>). Every answer is rare (JSON): nothing is read or made at the tick.",
+      "methods": [
+        {
+          "name": "scenes",
+          "args": [],
+          "description": "The scenes of the project that name a file: [{ id, file, refused, errors, warnings, nodes }]."
+        },
+        {
+          "name": "tree",
+          "args": ["scene"],
+          "description": "The resolved tree of a scene (its id): { scene, file, refused, requires, nodes: [{ path, type, position, rotation, scale, visible, file, placedBy }] }; null for an unknown scene. Positions are world metres, rotations quaternions [x, y, z, w]."
+        },
+        {
+          "name": "problems",
+          "args": ["scene"],
+          "description": "The problems of a scene (its id; empty: every scene): [{ level, code, file, node, field, message, fix }], the codes of docs/ecrire-un-projet.md."
+        },
+        {
+          "name": "placed",
+          "args": ["scene"],
+          "description": "What dev.builder placed for the scene while it is entered (empty: every scene): [{ scene, node, type, kit, handle }]; a node only read has kit null and a reason."
+        },
+        {
+          "name": "nodeTypes",
+          "args": [],
+          "description": "The registry nodeTypes: { <type>: { description, props, when, lowers } }."
+        },
+        {
+          "name": "debugView",
+          "args": [],
+          "description": "What the debug inspector shows: each scene file, refused or not, its problems, what is placed, and the elements of the entered scenes (states, rules that hold, transition)."
+        },
+        {
+          "name": "debugEpoch",
+          "args": [],
+          "description": "A number that changes when a scene is entered or left: the debug inspector reads debugView again only then."
+        },
+        {
+          "name": "apply",
+          "args": ["commands"],
+          "description": "Applies edit commands to the running game, the format of the debugging editor (editor.scene) and of the site's scene patch: [{ type: \"transform\", id, transform: { translation {x,y,z}, rotation {x,y,z,w}, scale {x,y,z} } }] or { commands }. id is a node path (transform local to its parent) or the game.engine id of an instance (transform in the world). The node and its children move in the tree and in the engine's tree with the whole transform (the render; lights and cameras through core.light and core.camera); a changed value the node binds to its entity (bind: the position by default, the yaw when declared) changes the entity (engine.content.moveInstance), a free value the render only. Answers { applied, refused, warnings }. Never writes a file."
+        },
+        {
+          "name": "nodes",
+          "args": ["scene"],
+          "description": "The group, model and shape nodes held in the engine's tree while their scene is entered (empty: every scene): [{ scene, node, handle, created }]; created false: the game's own node at that path, adopted."
+        },
+        {
+          "name": "inspect",
+          "args": ["node"],
+          "description": "What the debugger shows of a node (its path or game.engine id): both values, side by side: { scene, node, bind: { position, yaw }, entity: { id, entity, x, y, z, yaw } | null, render: { position, rotation, scale } | null }."
+        },
+        {
+          "name": "reflect",
+          "args": ["node"],
+          "description": "An element of an entered scene (a node with entity.states, entity.bind or reflect), by its game.engine id or its path: { scene, node, id, states (stored and derived, read from game.engine), declared: { name: enum|value|derived }, rules (the reflect rules that hold), set (what they set, by path under the element), transition, nodes: [{ path, position, rotation (degrees), scale, visible, material }] (what is posed, world), pending: [{ node, prop, why }] (what a rule asks that has no way yet) }; null when none."
+        },
+        {
+          "name": "patches",
+          "args": ["scene"],
+          "description": "The commands applied to a scene (empty: every scene), one per node, local to its parent with the whole quaternion: { schema: \"gripforge.editor-patches/1\", room, baseRevision: null, commands }, what gfscene apply writes back to the scene files (<name>.gfscene)."
+        },
+        {
+          "name": "expose",
+          "args": ["kit", "entries"],
+          "description": "A kit hands the elements it exposes to scenes (its expose entries for scene, docs/design/dev-builder-sections.md), at its ready() through gripforge-kit-guest scene_expose; those of the scenes already entered are made at the next tick. Answers how many elements it exposes. No kit needs it: without dev.builder the call is never made."
+        },
+        {
+          "name": "sections",
+          "args": [],
+          "description": "The elements each kit exposed, as declared: { <kit>: [{ element, at, nodeTypes, places, after, props: { <key>: { type, default, choices, description } }, create, set, remove, get, description }] }: what an editor or an AI may write in kits.<kit> of a node or of a scene file."
+        },
+        {
+          "name": "elements",
+          "args": ["scene"],
+          "description": "The elements made for the kits' sections of the entered scenes (empty: every scene): [{ scene, node (empty: the scene's own), kit, element, handle, props }], props read back from the kit (get) when it declares it."
+        },
+        {
+          "name": "setElement",
+          "args": ["scene", "node", "kit", "props"],
+          "description": "Changes the properties given of a made element (node empty: the scene's own), checked like a written section, sent to the kit (set; remove then create without it); a node's change is kept for patches (update of kits.<kit>). Answers { applied, warnings }."
+        },
+        {
+          "name": "reload",
+          "args": ["files"],
+          "description": "Scene files given again ({ <project path>: <file> }, by the gateway or the tool that watches them; a kit never reads the disk), read over the project's: for each entered scene, an element still written is changed (only what differs), a new one made, one gone let go. Nodes, lights and cameras are not reloaded yet. Answers the scenes as read now."
+        }
+      ]
+    }
+  },
+  "site": "site",
+  "expose": [
+    {
+      "id": "dev.builder.scenes",
+      "for": ["debug"],
+      "label": "Scene files",
+      "category": "info",
+      "call": "dev.builder.debugView",
+      "epoch": "dev.builder.debugEpoch"
+    },
+    {
+      "id": "dev.builder.events",
+      "for": ["debug"],
+      "label": "Scene file events",
+      "category": "events",
+      "topics": ["dev.builder.placed", "dev.builder.refused", "dev.builder.applied"]
+    }
+  ]
+}

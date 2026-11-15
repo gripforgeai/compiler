@@ -1,0 +1,533 @@
+{
+  "id": "dev_builder_room",
+  "name": "Dev builder room",
+  "requires": [
+    "game.engine",
+    "dev.builder",
+    "core.light",
+    "core.camera"
+  ],
+  "installed": [
+    {
+      "id": "game.engine",
+      "config": {
+        "startScene": "menu",
+        "flow": {
+          "title": "off"
+        },
+        "sceneFlow": {
+          "menu": "none",
+          "loading": "none",
+          "minLoadingMs": 0
+        }
+      }
+    },
+    {
+      "id": "dev.builder"
+    },
+    {
+      "id": "core.light"
+    },
+    {
+      "id": "core.camera"
+    }
+  ],
+  "variables": {
+    "room.doors": 0
+  },
+  "data": {
+    "scenes": [
+      {
+        "id": "menu",
+        "kind": "3d",
+        "role": "menu",
+        "next": "level",
+        "requires": [
+          "game.engine",
+          "core.light",
+          "core.camera"
+        ],
+        "nodes": [
+          {
+            "name": "Eye",
+            "type": "camera",
+            "position": [
+              0,
+              1.5,
+              6
+            ],
+            "camera": {
+              "fov": 50,
+              "current": true
+            }
+          },
+          {
+            "name": "Key",
+            "type": "light",
+            "light": {
+              "kind": "directional",
+              "intensity": 2000
+            },
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          },
+          {
+            "name": "Title",
+            "type": "shape",
+            "shape": {
+              "shape": "box",
+              "size": [
+                3,
+                0.6,
+                0.2
+              ],
+              "color": "#3070c0"
+            },
+            "position": [
+              0,
+              1.5,
+              0
+            ]
+          }
+        ],
+        "on": [
+          {
+            "when": "event",
+            "event": "room.play",
+            "do": [
+              {
+                "load_scene": {
+                  "scene": "level"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "level",
+        "role": "level",
+        "requires": [
+          "game.engine",
+          "core.light",
+          "core.camera"
+        ],
+        "nodes": [
+          {
+            "name": "Spawn",
+            "type": "entry",
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          {
+            "name": "Sun",
+            "type": "light",
+            "light": {
+              "kind": "directional",
+              "intensity": 3000,
+              "shadows": true
+            },
+            "rotation": [
+              -50,
+              30,
+              0
+            ]
+          },
+          {
+            "name": "View",
+            "type": "camera",
+            "position": [
+              0,
+              4,
+              9
+            ],
+            "rotation": [
+              -20,
+              0,
+              0
+            ],
+            "camera": {
+              "fov": 55,
+              "current": true
+            }
+          },
+          {
+            "name": "Floor",
+            "type": "shape",
+            "shape": {
+              "shape": "plane",
+              "size": [
+                20,
+                20
+              ],
+              "color": "#556655"
+            }
+          },
+          {
+            "name": "Hall",
+            "position": [
+              0,
+              0,
+              -4
+            ],
+            "children": [
+              {
+                "name": "Crate",
+                "type": "model",
+                "model": {
+                  "asset": "models/crate.glb"
+                },
+                "position": [
+                  2,
+                  0,
+                  0
+                ]
+              },
+              {
+                "name": "Door",
+                "type": "trigger",
+                "trigger": {
+                  "shape": "box",
+                  "size": [
+                    2,
+                    3,
+                    2
+                  ],
+                  "watch": [
+                    "visitor"
+                  ]
+                },
+                "position": [
+                  0,
+                  1.5,
+                  -4
+                ],
+                "on": [
+                  {
+                    "when": "enter",
+                    "do": [
+                      {
+                        "emit": {
+                          "topic": "room.door_reached"
+                        }
+                      },
+                      {
+                        "inc_var": {
+                          "path": "room.doors",
+                          "delta": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Visitor",
+            "type": "shape",
+            "shape": {
+              "shape": "capsule",
+              "radius": 0.3,
+              "height": 1.6,
+              "color": "#d0a040"
+            },
+            "position": [
+              4,
+              0.8,
+              4
+            ],
+            "kits": {
+              "game.engine": {
+                "tags": [
+                  "visitor"
+                ]
+              }
+            },
+            "on": [
+              {
+                "when": "event",
+                "event": "room.walk_in",
+                "do": [
+                  {
+                    "teleport": {
+                      "entity": {
+                        "tag": "visitor"
+                      },
+                      "to": [
+                        0,
+                        0.8,
+                        -8
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Door",
+            "id": "hall_door",
+            "position": [
+              4,
+              0,
+              -2
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ],
+            "entity": {
+              "states": {
+                "door": {
+                  "values": [
+                    "closed",
+                    "open",
+                    "locked"
+                  ]
+                }
+              }
+            },
+            "reflect": [
+              {
+                "when": {
+                  "door": "open"
+                },
+                "set": {
+                  "Hinge": {
+                    "rotation": [
+                      0,
+                      95,
+                      0
+                    ]
+                  }
+                },
+                "transition": {
+                  "duration": 0.6,
+                  "ease": "out"
+                }
+              },
+              {
+                "when": {
+                  "door": "locked"
+                },
+                "set": {
+                  "Hinge/Leaf/Lock": {
+                    "material": {
+                      "emissive": "#ff3020"
+                    }
+                  }
+                }
+              }
+            ],
+            "on": [
+              {
+                "when": "interact",
+                "if": [
+                  {
+                    "state": "door",
+                    "eq": "closed"
+                  }
+                ],
+                "do": [
+                  {
+                    "set_state": {
+                      "door": "open"
+                    }
+                  }
+                ]
+              }
+            ],
+            "children": [
+              {
+                "name": "Frame",
+                "type": "shape",
+                "shape": {
+                  "shape": "box",
+                  "size": [
+                    1.2,
+                    2.2,
+                    0.1
+                  ],
+                  "color": "#6b4a2b"
+                },
+                "position": [
+                  0,
+                  1.1,
+                  0
+                ]
+              },
+              {
+                "name": "Hinge",
+                "position": [
+                  -0.45,
+                  0,
+                  0
+                ],
+                "children": [
+                  {
+                    "name": "Leaf",
+                    "id": "door_leaf",
+                    "type": "shape",
+                    "shape": {
+                      "shape": "box",
+                      "size": [
+                        0.9,
+                        2,
+                        0.05
+                      ],
+                      "color": "#a07040"
+                    },
+                    "position": [
+                      0.45,
+                      1,
+                      0
+                    ],
+                    "children": [
+                      {
+                        "name": "Lock",
+                        "id": "door_lock",
+                        "type": "shape",
+                        "shape": {
+                          "shape": "box",
+                          "size": [
+                            0.1,
+                            0.1,
+                            0.1
+                          ],
+                          "color": "#303030"
+                        },
+                        "position": [
+                          0.35,
+                          0,
+                          0.05
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Shelf",
+            "type": "scene",
+            "scene": "scenes/shelf.gfscene",
+            "position": [
+              -4,
+              0,
+              -4
+            ],
+            "overrides": {
+              "Lamp": {
+                "light": {
+                  "intensity": 400
+                }
+              },
+              "Book2": {
+                "visible": false
+              }
+            }
+          }
+        ],
+        "kits": {
+          "core.light": {
+            "exposure": 1.2,
+            "tonemapping": "agx"
+          }
+        }
+      }
+    ],
+    "scene_files": {
+      "scenes/shelf.gfscene": {
+        "requires": [
+          "game.engine",
+          "core.light"
+        ],
+        "nodes": [
+          {
+            "name": "Board",
+            "type": "shape",
+            "shape": {
+              "shape": "box",
+              "size": [
+                2,
+                0.1,
+                0.6
+              ],
+              "color": "#806040"
+            },
+            "position": [
+              0,
+              1,
+              0
+            ]
+          },
+          {
+            "name": "Book1",
+            "type": "shape",
+            "shape": {
+              "shape": "box",
+              "size": [
+                0.2,
+                0.4,
+                0.3
+              ],
+              "color": "#a03030"
+            },
+            "position": [
+              -0.5,
+              1.25,
+              0
+            ]
+          },
+          {
+            "name": "Book2",
+            "type": "shape",
+            "shape": {
+              "shape": "box",
+              "size": [
+                0.2,
+                0.4,
+                0.3
+              ],
+              "color": "#3030a0"
+            },
+            "position": [
+              0.5,
+              1.25,
+              0
+            ]
+          },
+          {
+            "name": "Lamp",
+            "type": "light",
+            "light": {
+              "kind": "point",
+              "intensity": 800,
+              "color": "#ffd8a0",
+              "range": 6
+            },
+            "position": [
+              0,
+              2,
+              0.5
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "run": {
+    "seed": 7,
+    "fixedHz": 60,
+    "physics": "none"
+  }
+}

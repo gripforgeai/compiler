@@ -1,0 +1,100 @@
+{
+  "group": {
+    "description": "An empty node: it only carries a transform for its children, and the sections of the kits that place it (a terrain, a decor).",
+    "props": {},
+    "when": ["event"],
+    "lowers": "none"
+  },
+  "model": {
+    "description": "A 3D model file of the project, given to game.engine as an instance (its archetype, or one made from these properties).",
+    "props": {
+      "asset": { "type": "path", "default": "", "description": "Path of the model file in the project (models/crate.glb); its passport in asset.meta stays its identity." },
+      "material": { "type": "json", "default": null, "description": "A material name of the game, or { color, metallic, roughness, ... } laid over the file's materials." }
+    },
+    "when": ["interact", "event"],
+    "lowers": "instance"
+  },
+  "shape": {
+    "description": "A simple shape drawn natively by each engine, given to game.engine as an instance.",
+    "props": {
+      "shape": { "type": "enum", "choices": ["box", "sphere", "plane", "capsule", "cylinder", "cone", "torus"], "default": "box", "description": "The kind of shape." },
+      "size": { "type": "json", "default": null, "description": "box: [x, y, z] or one number; plane: [x, z]." },
+      "radius": { "type": "number", "default": null, "description": "sphere, capsule, cylinder, cone, torus." },
+      "height": { "type": "number", "default": null, "description": "capsule (total), cylinder, cone." },
+      "tube": { "type": "number", "default": null, "description": "torus: the radius of the tube." },
+      "color": { "type": "string", "default": null, "description": "A shortcut of material.color: #rgb, #rrggbb or #rrggbbaa." },
+      "material": { "type": "json", "default": null, "description": "A material name of the game, or { color, metallic, roughness, ... }." }
+    },
+    "when": ["interact", "event"],
+    "lowers": "instance"
+  },
+  "light": {
+    "description": "A light declared by the game, placed by dev.builder through core.light (adopted at its path in the engine's tree, else made there).",
+    "props": {
+      "kind": { "type": "enum", "choices": ["point", "spot", "directional"], "default": "point", "description": "The kind of light; a directional light shines along its -Z axis." },
+      "color": { "type": "string", "default": "#ffffff", "description": "The colour of the light." },
+      "intensity": { "type": "number", "default": null, "description": "In the units of core.light, which places the light: lux for a directional light, lumens for a point or spot light; unset: core.light's default for the kind." },
+      "range": { "type": "number", "default": 20, "description": "point and spot: the distance where the light ends, in metres." },
+      "angle": { "type": "number", "default": 45, "description": "spot: the outer angle of the cone, in degrees." },
+      "shadows": { "type": "bool", "default": false, "description": "Whether the light casts shadows." }
+    },
+    "when": ["event"],
+    "lowers": "none"
+  },
+  "camera": {
+    "description": "A camera of the scene, placed by dev.builder through core.camera (adopted at its path, else made), with the fixed preset looking along its -Z axis.",
+    "props": {
+      "fov": { "type": "number", "default": 60, "description": "The vertical field of view, in degrees." },
+      "near": { "type": "number", "default": 0.1, "description": "The near plane, in metres." },
+      "far": { "type": "number", "default": 1000, "description": "The far plane, in metres." },
+      "current": { "type": "bool", "default": false, "description": "Whether this camera draws when the scene is entered." }
+    },
+    "when": ["event"],
+    "lowers": "none"
+  },
+  "entry": {
+    "description": "A point where the player enters the scene (game.engine entries); its yaw is the node's rotation around Y.",
+    "props": {},
+    "when": ["event"],
+    "lowers": "entry"
+  },
+  "trigger": {
+    "description": "A trigger zone (game.engine zones): bindings run when something enters or leaves it.",
+    "props": {
+      "shape": { "type": "enum", "choices": ["box", "sphere"], "default": "sphere", "description": "The shape of the zone." },
+      "size": { "type": "vec3", "default": [10, 4, 10], "description": "box: its size in metres." },
+      "radius": { "type": "number", "default": 5, "description": "sphere: its radius in metres." },
+      "tags": { "type": "json", "default": [], "description": "Tags of the zone." },
+      "watch": { "type": "json", "default": [], "description": "The tags of the entities the zone watches (empty: the player)." }
+    },
+    "when": ["enter", "leave", "event"],
+    "lowers": "zone"
+  },
+  "sound": {
+    "description": "A sound of the scene, played by the sound kit when there is one.",
+    "props": {
+      "asset": { "type": "path", "default": "", "description": "Path of the sound file in the project." },
+      "volume": { "type": "number", "default": 1, "description": "From 0 to 1." },
+      "loop": { "type": "bool", "default": false, "description": "Whether it loops." },
+      "spatial": { "type": "bool", "default": true, "description": "A 3D voice placed at the node." }
+    },
+    "when": ["event"],
+    "lowers": "none"
+  },
+  "hud": {
+    "description": "A HUD slot of core.webui (<kit>/<slot>) and the HUD asset it shows.",
+    "props": {
+      "slot": { "type": "string", "default": "", "description": "The core.webui slot, <kit>/<slot>." },
+      "asset": { "type": "path", "default": "", "description": "Path of the HUD asset package in the project; empty: the asset the kit recommends." },
+      "props": { "type": "json", "default": {}, "description": "The properties given to the asset." }
+    },
+    "when": ["event"],
+    "lowers": "none"
+  },
+  "scene": {
+    "description": "Another scene file instanced under this node, with overrides by path.",
+    "props": {},
+    "when": ["event"],
+    "lowers": "none"
+  }
+}

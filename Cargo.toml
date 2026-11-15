@@ -1,0 +1,37 @@
+# gripforge-build: compiles a GripForge project (project.gripforge) into a game whose scenes are posed by generated
+# Rust (init_scene.rs per scene, index.rs), checked strictly, built native and wasm. One native binary, no runtime.
+#
+# The common core of the project format (gripforge-scene-format: validator, order of posing, references, packing,
+# generator of init_scene.rs) lives in this repository, crates/scene-format (moved from the kits SDK, see PROVENANCE.md).
+[package]
+name = "gripforge-compiler"
+description = "gripforge project build: compiles a GripForge project into a game, native and wasm."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/gripforgeai/compiler"
+publish = false
+
+[[bin]]
+name = "gripforge-build"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+gripforge-scene-format = { path = "crates/scene-format", version = "0.1.0" }
+ureq = "2"
+sha2 = "0.10"
+base64 = "0.22"
+
+[workspace]
+members = [".", "crates/scene-format"]
+
+[workspace.dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

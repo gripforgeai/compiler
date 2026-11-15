@@ -1,0 +1,451 @@
+{
+ "format_version": 1,
+ "project_id": "dev_builder_room",
+ "seed": 7,
+ "fixed_hz": 60,
+ "project": {
+  "id": "dev_builder_room",
+  "name": "Dev builder room",
+  "requires": [
+   "game.engine",
+   "core.light",
+   "core.camera"
+  ],
+  "installed": [
+   {
+    "id": "game.engine",
+    "config": {
+     "startScene": "menu",
+     "flow": {
+      "title": "off"
+     },
+     "sceneFlow": {
+      "menu": "none",
+      "loading": "none",
+      "minLoadingMs": 0
+     }
+    },
+    "version": "1.24.1",
+    "enabled": true
+   },
+   {
+    "id": "core.light",
+    "version": "1.0.0",
+    "enabled": true
+   },
+   {
+    "id": "core.camera",
+    "version": "1.1.0",
+    "enabled": true
+   },
+   {
+    "id": "game.main",
+    "version": "0.1.0",
+    "enabled": true
+   }
+  ],
+  "variables": {
+   "room.doors": 0
+  },
+  "data": {
+   "scenes": [
+    {
+     "id": "menu",
+     "kind": "3d",
+     "role": "menu",
+     "next": "level",
+     "instances": [
+      {
+       "id": "title",
+       "archetype": "gfscene_title",
+       "at": [
+        0,
+        1.5,
+        0
+       ]
+      }
+     ]
+    },
+    {
+     "id": "level",
+     "role": "level",
+     "entries": [
+      {
+       "id": "spawn",
+       "at": [
+        0,
+        0,
+        0
+       ],
+       "yaw": 3.141592653589793
+      }
+     ],
+     "instances": [
+      {
+       "id": "floor",
+       "archetype": "gfscene_floor",
+       "at": [
+        0,
+        0,
+        0
+       ]
+      },
+      {
+       "id": "hall_crate",
+       "archetype": "gfscene_hall_crate",
+       "at": [
+        2,
+        0,
+        -4
+       ]
+      },
+      {
+       "id": "visitor",
+       "archetype": "gfscene_visitor",
+       "tags": [
+        "visitor"
+       ],
+       "at": [
+        4,
+        0.8,
+        4
+       ]
+      },
+      {
+       "id": "hall_door",
+       "archetype": "gfscene_hall_door",
+       "at": [
+        4,
+        0,
+        -2
+       ],
+       "yaw": 3.141592653589793
+      },
+      {
+       "id": "door_frame",
+       "archetype": "gfscene_door_frame",
+       "at": [
+        4,
+        1.1,
+        -2
+       ],
+       "yaw": 3.141592653589793
+      },
+      {
+       "id": "door_leaf",
+       "archetype": "gfscene_door_leaf",
+       "at": [
+        4,
+        1,
+        -2
+       ],
+       "yaw": 3.141592653589793
+      },
+      {
+       "id": "door_lock",
+       "archetype": "gfscene_door_lock",
+       "at": [
+        3.65,
+        1,
+        -2.05
+       ],
+       "yaw": 3.141592653589793
+      },
+      {
+       "id": "shelf_board",
+       "archetype": "gfscene_shelf_board",
+       "at": [
+        -4,
+        1,
+        -4
+       ]
+      },
+      {
+       "id": "shelf_book1",
+       "archetype": "gfscene_shelf_book1",
+       "at": [
+        -4.5,
+        1.25,
+        -4
+       ]
+      }
+     ],
+     "zones": [
+      {
+       "id": "hall_door",
+       "shape": "box",
+       "center": [
+        0,
+        1.5,
+        -8
+       ],
+       "size": [
+        2,
+        3,
+        2
+       ],
+       "watch": [
+        "visitor"
+       ]
+      }
+     ]
+    }
+   ],
+   "archetypes": [
+    {
+     "id": "gfscene_title",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       3,
+       0.6,
+       0.2
+      ],
+      "color": "#3070c0"
+     }
+    },
+    {
+     "id": "gfscene_floor",
+     "kind": "prop",
+     "asset": {
+      "shape": "plane",
+      "size": [
+       20,
+       20
+      ],
+      "color": "#556655"
+     }
+    },
+    {
+     "id": "gfscene_hall_crate",
+     "kind": "prop",
+     "asset": {
+      "slot": "models/crate.glb"
+     },
+     "components": {
+      "model.placement": {
+       "mode": "native"
+      }
+     }
+    },
+    {
+     "id": "gfscene_visitor",
+     "kind": "prop",
+     "asset": {
+      "shape": "capsule",
+      "radius": 0.3,
+      "height": 1.6,
+      "color": "#d0a040"
+     }
+    },
+    {
+     "id": "gfscene_hall_door",
+     "kind": "prop",
+     "states": {
+      "door": {
+       "values": [
+        "closed",
+        "open",
+        "locked"
+       ]
+      }
+     }
+    },
+    {
+     "id": "gfscene_door_frame",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       1.2,
+       2.2,
+       0.1
+      ],
+      "color": "#6b4a2b"
+     }
+    },
+    {
+     "id": "gfscene_door_leaf",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       0.9,
+       2,
+       0.05
+      ],
+      "color": "#a07040"
+     }
+    },
+    {
+     "id": "gfscene_door_lock",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       0.1,
+       0.1,
+       0.1
+      ],
+      "color": "#303030"
+     }
+    },
+    {
+     "id": "gfscene_shelf_board",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       2,
+       0.1,
+       0.6
+      ],
+      "color": "#806040"
+     }
+    },
+    {
+     "id": "gfscene_shelf_book1",
+     "kind": "prop",
+     "asset": {
+      "shape": "box",
+      "size": [
+       0.2,
+       0.4,
+       0.3
+      ],
+      "color": "#a03030"
+     }
+    }
+   ],
+   "scripts": [
+    {
+     "id": "gfscene_menu",
+     "on": "scene:menu",
+     "rules": [
+      {
+       "when": {
+        "event": "room.play"
+       },
+       "then": [
+        {
+         "load_scene": {
+          "scene": "level"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "gfscene_level",
+     "on": "scene:level",
+     "rules": [
+      {
+       "when": {
+        "enter": "hall_door"
+       },
+       "then": [
+        {
+         "emit": {
+          "topic": "room.door_reached"
+         }
+        },
+        {
+         "inc_var": {
+          "path": "room.doors",
+          "delta": 1
+         }
+        }
+       ]
+      },
+      {
+       "when": {
+        "event": "room.walk_in"
+       },
+       "then": [
+        {
+         "teleport": {
+          "entity": {
+           "tag": "visitor"
+          },
+          "to": [
+           0,
+           0.8,
+           -8
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "when": {
+        "interact": "hall_door"
+       },
+       "then": [
+        {
+         "set_state": {
+          "door": "open"
+         },
+         "on": "hall_door"
+        }
+       ],
+       "if": [
+        {
+         "state": {
+          "door": "closed"
+         },
+         "on": "hall_door"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "scene_file_issues": []
+  },
+  "schema": "gripforge.gameproject/1"
+ },
+ "lock": {
+  "schema": "gripforge.gamekits.lock/1",
+  "project": "dev_builder_room",
+  "order": [
+   "game.engine",
+   "core.light",
+   "core.camera",
+   "game.main"
+  ],
+  "kits": {
+   "game.engine": {
+    "version": "1.24.1",
+    "enabled": true,
+    "dependencies": {}
+   },
+   "core.camera": {
+    "version": "1.1.0",
+    "enabled": true,
+    "dependencies": {}
+   },
+   "core.light": {
+    "version": "1.0.0",
+    "enabled": true,
+    "dependencies": {}
+   },
+   "game.main": {
+    "version": "0.1.0",
+    "enabled": true,
+    "dependencies": {}
+   }
+  }
+ },
+ "physics": "none",
+ "build": {
+  "schema": "gripforge.build/1",
+  "compiler": "0.1.0",
+  "gameModule": "game.main",
+  "scenes": [
+   "menu",
+   "level"
+  ]
+ }
+}

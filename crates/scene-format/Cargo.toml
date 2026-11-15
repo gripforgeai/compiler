@@ -1,0 +1,21 @@
+# The format of a GripForge project (`<name>.gripforge`) and of its scenes (`<name>.gfscene`): reading (tolerant),
+# validation (stable codes, the node's path, the fix), sub-scenes and their overrides, the lowering of a scene into the
+# documents game.engine already reads, the conversion of an inline `data.scenes` into files, and the packing of a
+# project into the `game.json` today's loaders read. Moved from the kits SDK (PROVENANCE.md); game.engine, the
+# dev.builder kit and the tools all read the same format without one kit depending on another
+# (docs/dev-builder.md). JSON in, JSON out: no host, no kit, no engine.
+[package]
+name = "gripforge-scene-format"
+description = "The GripForge project file (project.gripforge) and scene file (<name>.gfscene) format: tolerant reading, validator, sub-scenes, lowering into game.engine documents, conversion and packing."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = { workspace = true }
+
+[[bin]]
+name = "gfscene"
+path = "src/bin/gfscene.rs"
