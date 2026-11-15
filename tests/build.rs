@@ -148,6 +148,44 @@ fn the_room_generates_the_golden_files() {
     assert_eq!(report["ok"], true);
 }
 
+/// Node types a kit declares (`"nodeType"` on an `expose` entry of its kit.api.json): examples/nodes, a `group` that
+/// carries two `collision` nodes and a `model` that carries an `animation` node, read by the test kit test.nodes. Each
+/// typed node becomes the section of its kit's element, made through the kit's accessor in the generated code.
+#[test]
+fn node_types_declared_by_a_kit_reach_the_generated_code() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/nodes");
+    let dir = tmp().join("nodes");
+    copy_dir(&src, &dir);
+    let out = dir.join(".build");
+    let r = build(&BuildOptions {
+        project: Some(dir),
+        ..Default::default()
+    });
+    assert!(r.ok, "{:?}", r.issues);
+    let yard = std::fs::read_to_string(out.join("game/src/init_scene/yard.rs")).unwrap();
+    assert_eq!(
+        yard.matches("test_nodes::collision::create(").count(),
+        2,
+        "two collision nodes, two elements of test.nodes:\n{yard}"
+    );
+    assert_eq!(
+        yard.matches("test_nodes::clips::create(").count(),
+        1,
+        "one animation node, one element of test.nodes:\n{yard}"
+    );
+    assert!(
+        yard.contains("shape: test_nodes::collision::Shape::Sphere")
+            && yard.contains("r#type: test_nodes::collision::Type::Sensor"),
+        "an enum is named in the element's module of the accessor:\n{yard}"
+    );
+    for f in ["game/src/init_scene.rs", "game/src/init_scene/yard.rs"] {
+        golden(
+            &format!("nodes/{}", f.replace('/', "__")),
+            &std::fs::read_to_string(out.join(f)).unwrap(),
+        );
+    }
+}
+
 fn broken() -> Json {
     let mut p = room();
     scene(&mut p, "level")["kits"]["core.light"]["brightness"] = json!(2);

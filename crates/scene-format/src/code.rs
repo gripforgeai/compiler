@@ -355,9 +355,27 @@ impl Writer<'_> {
         } else {
             w.node.clone()
         };
+        // A node of a type its kit declares (`nodeType`: a collision, an animation) is that kit's section: said so, with
+        // the node it acts on (its parent). The accessors' `Spec` (gripforge-kit-access) does not carry yet the fields
+        // `place::element_spec` adds for dev.builder (type, asset, archetype, entity, parentNode, parentType, parentEntity,
+        // parentAsset, parentArchetype): they are written here when it does.
+        let typed = node.filter(|n| {
+            self.reg
+                .node_types
+                .get(&n.ty)
+                .is_some_and(|t| t.section.is_some())
+        });
+        let what = typed.map_or(String::new(), |n| {
+            let up = if n.parent.is_empty() {
+                "the scene".to_string()
+            } else {
+                n.parent.clone()
+            };
+            format!(" (node of type {}, acting on {up})", n.ty)
+        });
         let _ = writeln!(
             s,
-            "    // kits.{} on {place}: the element {} of {}.",
+            "    // kits.{} on {place}{what}: the element {} of {}.",
             w.kit, el.name, w.kit
         );
         let transform = node.map_or("None".to_string(), |n| {
@@ -392,7 +410,12 @@ impl Writer<'_> {
             if v == &f.default {
                 continue;
             }
-            let _ = write!(fields, "{}: {}, ", ident(&snake(k)), self.value(f, v, k));
+            let _ = write!(
+                fields,
+                "{}: {}, ",
+                ident(&snake(k)),
+                self.value(f, v, k, &format!("{m}::{em}"))
+            );
         }
         let _ = writeln!(s, "    let r = {m}::{em}::create(h, &spec, &{m}::{em}::Props {{ {fields}..Default::default() }});");
         let _ = writeln!(
@@ -403,7 +426,7 @@ impl Writer<'_> {
     }
 
     /// A property's value as Rust, typed as the accessor declares it (tools/kit-api/langs/rust_facade.mjs).
-    fn value(&mut self, f: &Field, v: &Json, key: &str) -> String {
+    fn value(&mut self, f: &Field, v: &Json, key: &str, module: &str) -> String {
         match f.kind.as_str() {
             "string" | "path" => format!("{:?}.into()", v.as_str().unwrap_or("")),
             "f64" | "f32" | "number" => float(v.as_f64().unwrap_or(0.0)),
@@ -415,7 +438,12 @@ impl Writer<'_> {
                     .collect();
                 format!("[{}]", a.join(", "))
             }
-            "enum" => format!("{}::{}", pascal(key), pascal(v.as_str().unwrap_or(""))),
+            // The enum is declared in the element's module of the accessor (`<kit>::<element>::<Key>`).
+            "enum" => format!(
+                "{module}::{}::{}",
+                pascal(key),
+                pascal(v.as_str().unwrap_or(""))
+            ),
             _ => format!("json!({})", json_lit(v)),
         }
     }

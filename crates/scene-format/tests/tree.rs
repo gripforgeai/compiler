@@ -173,7 +173,13 @@ fn the_json_schema_describes_every_node_type_and_property_of_the_registry() {
     let schema: Json =
         serde_json::from_str(include_str!("../schema/gfscene.schema.json")).expect("schema");
     let reg = Registry::base();
-    let types: Vec<&str> = schema["$defs"]["node"]["properties"]["type"]["enum"]
+    // The base types, then any type a kit declares (`nodeType` on an expose entry of its kit.api.json).
+    let ty = &schema["$defs"]["node"]["properties"]["type"];
+    assert_eq!(
+        ty["anyOf"][1]["type"], "string",
+        "a type a kit declares is written too"
+    );
+    let types: Vec<&str> = ty["anyOf"][0]["enum"]
         .as_array()
         .unwrap()
         .iter()
