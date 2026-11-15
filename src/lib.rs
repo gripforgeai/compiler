@@ -12,3 +12,4 @@ pub mod json;
 pub mod project;
 pub mod report;
 pub mod strict;
+pub mod textures;

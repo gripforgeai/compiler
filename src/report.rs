@@ -68,5 +68,6 @@ pub fn report(r: &crate::build::BuildResult) -> Json {
         "issues": issues,
         "steps": r.steps,
         "artifacts": r.artifacts,
+        "textures": r.textures,
     })
 }
