@@ -1,5 +1,13 @@
 # Changes
 
+## [Unreleased]
+
+- The project is resolved before it is checked and packed (`gripforge_scene_format::include::resolve_project`): `includes`
+  (another `.gripforge` merged, with `as`, `variables`, `hide`, `overrides`, `replace`), node variables `<id>.<name>`,
+  `{ "$var" }` in `visible`, a variable's start value and `data.scenes[].enabled`. New codes: `include_missing`,
+  `include_cycle`, `include_conflict`, `include_unknown_variable`, `node_variables_without_id`, `var_ref_not_allowed`,
+  `var_unknown`. Same function as module-kits (PR #1792).
+
 ## [0.1.1]
 
 - The generated crate takes the public part of the kits SDK (`gripforge-abi`, `gripforge-kit-guest`,

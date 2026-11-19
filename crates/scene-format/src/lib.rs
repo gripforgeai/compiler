@@ -23,6 +23,7 @@
 pub mod build;
 pub mod code;
 pub mod expand;
+pub mod include;
 pub mod issue;
 pub mod jsontext;
 pub mod lower;

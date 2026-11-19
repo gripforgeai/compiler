@@ -41,7 +41,14 @@ const FLOW_KEYS: &[&str] = &[
 ];
 
 /// Check a whole project: the file itself, its required kits, each scene file and what game.engine will get of it.
+/// The project is resolved first (crate::include: its includes, its nodes' variables, its `$var`).
 pub fn validate_project(project: &Json, files: Files, reg: &Registry) -> Vec<Issue> {
+    let (resolved, mut out) = crate::include::resolve_project(project, files);
+    out.extend(validate_resolved(&resolved, files, reg));
+    out
+}
+
+fn validate_resolved(project: &Json, files: Files, reg: &Registry) -> Vec<Issue> {
     // The sub-scene files a project in one file carries (`data.scene_files`) come before the disk.
     let carried = crate::build::carried(project);
     let all = |p: &str| carried.get(p).cloned().or_else(|| files(p));
@@ -243,7 +250,9 @@ pub fn pack_with(
     version: &dyn Fn(&str) -> Option<String>,
     keep_errors: bool,
 ) -> Result<(Json, Vec<Issue>), Vec<Issue>> {
-    let mut issues = Vec::new();
+    // Resolved once with the plain reader: the included files are not sub-scenes to carry.
+    let (resolved, mut issues) = crate::include::resolve_project(project, files);
+    let project = &resolved;
     let read: RefCell<Vec<(String, Json)>> = RefCell::new(Vec::new());
     let recording = |p: &str| {
         let f = files(p);
@@ -254,7 +263,7 @@ pub fn pack_with(
         }
         f
     };
-    issues.extend(validate_project(project, &recording, reg));
+    issues.extend(validate_resolved(project, &recording, reg));
     let mut p = project.clone();
     let mut order = Vec::new();
     let mut kits = Map::new();

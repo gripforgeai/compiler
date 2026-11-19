@@ -12,6 +12,10 @@
   `the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder_does` of `tests/lower.rs`, at commit
   `108031bf9f6ca9a5ea811a55058c3600b2c5227d` (`place::node_kind`, the accessors' `Spec` with the node's kind and its parent); the same
   change made to `src/code.rs`, which differs from the source here.
+  Then `src/include.rs`, `src/include/instances.rs` and `tests/include.rs` (without the test of the bench's proof room,
+  which reads files of the kits repository; one assertion on `fixed_hz` dropped: this copy's default tick differs),
+  taken unchanged from module-kits branch `feat/banc-format` (PR #1792, the format's `includes`, node variables and
+  `$var`), with the same calls added to `src/lib.rs` and `src/project.rs` (`validate_project` and `pack_with` resolve first).
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).
