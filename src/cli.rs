@@ -3,12 +3,12 @@
 //! it in process.
 //!
 //!   gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>]
-//!                   [--check | --resolve] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
+//!                   [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
 
 use crate::build::{build, BuildOptions};
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check | --resolve] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
+pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
 
 /// What a command line asks.
 #[derive(Debug, Default, PartialEq)]
@@ -20,6 +20,7 @@ pub struct Args {
     pub sdk_rev: Option<String>,
     pub check: bool,
     pub resolve: bool,
+    pub dev: bool,
     pub lenient: bool,
     pub json: bool,
     pub compress_textures: bool,
@@ -41,6 +42,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--sdk-rev" => a.sdk_rev = Some(value(x)?),
             "--check" => a.check = true,
             "--resolve" => a.resolve = true,
+            "--dev" => a.dev = true,
             "--lenient" => a.lenient = true,
             "--json" => a.json = true,
             "--compress-textures" => a.compress_textures = true,
@@ -95,6 +97,7 @@ pub fn main(argv: &[String], out: &mut dyn FnMut(&str), err: &mut dyn FnMut(&str
         sdk_rev: a.sdk_rev,
         lenient: a.lenient,
         check: a.check,
+        dev: a.dev,
         compress_textures: a.compress_textures,
         compress_textures_url: a.compress_textures_url,
     });

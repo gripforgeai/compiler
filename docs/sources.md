@@ -70,9 +70,28 @@ started, nor change what the host mounts. `tests/accept/fps-shooter` plays it: `
 ### In the development mode
 
 The development mode (`dev.builder` in the player, a `project.gripforge` played without a build) compiles nothing: it
-reads `sources` (the same check of the format) and does not run them. The game's code runs in a built game only
-(`gripforge-build`, then the CLI for the web). What the development mode should do with the declared files is proposed
-in module-kits (`docs/design/sources-du-jeu.md`), to be decided.
+**loads the module of the game's code compiled apart**, like any kit module, on the web (the default) and native, and
+refuses to play a project that declares `sources` without it. The module is the one of the development mode:
+
+```sh
+gripforge-build my-game --dev --sdk path/to/module-kits    # .build/dev/game: the game's code only
+```
+
+- `.build/dev/game` holds the files of `sources` (by path, as above) and a `module.rs` that hands **every** hook to the
+  module of the game, `scene_enter` and `scene_exit` included: dev.builder poses the scenes, there is no `init_scene`
+  and no `game.json`. It is still `game.main`, last of the lock (module-kits `sources::with_game_module`), so the hooks
+  run at the same moments as in the table above.
+- The module keeps **the digest of the files it compiles** (`src/sources_digest.rs`, the common core's function, copied,
+  computed at compile time from the bytes `include_bytes!` reads): the custom section `gripforge.sources` of the wasm,
+  the symbol `GRIPFORGE_SOURCES` of the native library. The built module (`.build/game`) carries it too.
+- The CLI compiles it (PROPOSAL to the CLI, gripforge#420: the place and the command are its choice): the wasm and
+  `.build/dev/web/kit-modules.json` (module-kits `tools/kit-modules/game-module.mjs` is the reference), the native
+  library and `.build/dev/native/`.
+- The development mode then refuses, with the code first: `game_main_missing` (no compiled module found),
+  `game_main_stale` (its digest is not the one of the files now: a file changed since it was compiled),
+  `source_missing` (a declared file is not there). The same rule in module-kits (`core/scene-format`
+  `sources::dev_module_issue`, `core/gateway-web/dev-game-main.mjs`), checked on the same values
+  (`tests/sources-digest.json`, a copy).
 
 ## Errors
 
@@ -92,6 +111,7 @@ nothing is written.
 | `sources_module_missing` | no source declares `pub struct X;` with `impl KitModule for X` |
 | `sources_module_ambiguous` | several do (named) |
 | `source_undeclared` (warning) | a `.rs` beside the project that `sources` does not list: not compiled |
+| `dev_without_sources` | `--dev` on a project that declares no `sources`: nothing to compile |
 
 ## See also
 

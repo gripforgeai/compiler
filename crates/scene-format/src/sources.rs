@@ -7,8 +7,10 @@
 //! ```
 //!
 //! The compiler (`gripforge-build`) adds them to the game's module `game.main`; the development mode, which compiles
-//! nothing, only reads them. This is the check of the format, the same for both (files are not opened here: whether
-//! they exist and stay inside the project is the compiler's check, it reads the disk).
+//! nothing, loads that module compiled apart (`gripforge-build --dev`, then the CLI) and refuses the project without it
+//! or with a module of other files ([`dev_module_issue`], the digest of crate::sources_digest). This is the check of
+//! the format, the same for both (whether the files exist and stay inside the project is the compiler's check, it reads
+//! the disk).
 
 use crate::issue::Issue;
 use serde_json::Value as Json;
@@ -109,6 +111,97 @@ pub fn check(project: &Json) -> Vec<Issue> {
         seen.push(n);
     }
     out
+}
+
+/// The digest of the declared files as they are now ([`crate::sources_digest::digest`]): `read(path)` gives the bytes
+/// of a file relative to the project (`None`: not there). Only the paths [`check`] accepts count, in the declared
+/// order. A declared file that cannot be read is the issue `source_missing`.
+#[allow(
+    clippy::result_large_err,
+    reason = "a refusal is rare and handed to a person or an AI as it is: boxing it buys nothing (as in ops.rs)"
+)]
+pub fn digest_of(project: &Json, read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<String, Issue> {
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for (i, path) in accepted(project).into_iter().enumerate() {
+        let Some(bytes) = read(&path) else {
+            return Err(Issue::error(
+                "source_missing",
+                format!("{KEY}[{i}] ({path}) is not there"),
+                "write the file beside the project, or take it out of sources",
+            )
+            .at("", &format!("{KEY}[{i}]")));
+        };
+        files.push((path, bytes));
+    }
+    let pairs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(p, b)| (p.as_str(), b.as_slice()))
+        .collect();
+    Ok(String::from_utf8_lossy(&crate::sources_digest::digest(&pairs)).into_owned())
+}
+
+/// The declared paths [`check`] accepts, in the normal form, in order.
+pub fn accepted(project: &Json) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for s in declared(project) {
+        if let Some(n) = normal(&s).filter(|n| n.ends_with(".rs")) {
+            if !seen.contains(&n) {
+                seen.push(n);
+            }
+        }
+    }
+    seen
+}
+
+/// What keeps the development mode from playing a project with its code: the project declares `sources` and
+/// `built` (the digest the compiled module of the game's code carries; `None`: no compiled module found) is missing
+/// (`game_main_missing`) or is not the digest of the files now (`game_main_stale`). `None`: nothing to say (no
+/// sources, or the module is the one of these files). The same rule in the page (core/gateway-web/dev-game-main.mjs
+/// `gameMainIssue`) and in the compiler's docs (docs/sources.md): never a game run without its code.
+pub fn dev_module_issue(
+    project: &Json,
+    built: Option<&str>,
+    read: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Option<Issue> {
+    if accepted(project).is_empty() {
+        return None;
+    }
+    let Some(built) = built else {
+        return Some(Issue::error("game_main_missing",
+            format!("the project declares its code in {KEY} but the compiled module of the game's code was not found"),
+            "build the game's module: gripforge-build --dev, then compile .build/dev/game (the CLI writes .build/dev/web/kit-modules.json and .build/dev/native)").at("", KEY));
+    };
+    let now = match digest_of(project, read) {
+        Ok(d) => d,
+        Err(i) => return Some(i),
+    };
+    (now != built).then(|| Issue::error("game_main_stale",
+        format!("the compiled module of the game's code ({built}) is not the code the project declares now ({now})"),
+        "compile the game's module again (gripforge-build --dev, then the CLI): a file of sources changed since").at("", KEY))
+}
+
+/// The game of the development mode (the envelope of crate::project::pack) with the compiled module of the game's
+/// code: `id` and `version` as the module says them (its kit.api.json: the format names no module here), added last
+/// to `project.installed` and to the lock, as in a built game (gripforge-build), so its `setup` runs after every kit's
+/// and before the first scene. Nothing changes when the lock already has it.
+pub fn with_game_module(game: &mut Json, id: &str, version: &str) {
+    let has = game["lock"]["order"]
+        .as_array()
+        .is_some_and(|o| o.iter().any(|k| k.as_str() == Some(id)));
+    if has {
+        return;
+    }
+    let entry = serde_json::json!({ "id": id, "version": version, "enabled": true });
+    match game["project"]["installed"].as_array_mut() {
+        Some(list) => list.push(entry),
+        None => game["project"]["installed"] = serde_json::json!([entry]),
+    }
+    match game["lock"]["order"].as_array_mut() {
+        Some(o) => o.push(Json::String(id.into())),
+        None => game["lock"]["order"] = serde_json::json!([id]),
+    }
+    game["lock"]["kits"][id] =
+        serde_json::json!({ "version": version, "enabled": true, "dependencies": {} });
 }
 
 #[cfg(test)]

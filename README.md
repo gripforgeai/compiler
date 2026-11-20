@@ -39,6 +39,7 @@ On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 ```sh
 gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
 gripforge-build path/to/my-game --check      # the strict check only, nothing written
+gripforge-build path/to/my-game --dev        # the module of the game's code only, for the development mode (.build/dev/game)
 gripforge-build path/to/my-game --resolve    # the project resolved (includes, variables, $var) and the tolerant issues, JSON
 gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
 gripforge-build path/to/my-game --compress-textures   # also a KTX2 copy of each GLB, by the public texture route (below)
@@ -53,6 +54,7 @@ gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of 
 | `--sdk <dir>` | a local SDK: the generated crate takes its SDK crates (`gripforge-kit-guest`, `gripforge-kit-access`) by path, from this repository's `sdk/` (crates at its top) or a checkout of the kits repository (under `core/`) |
 | `--sdk-rev <tag, commit or branch>` | without `--sdk`: the revision of this repository whose `sdk/` the generated crate takes by git (default the compiler's tag, `v<version>`) |
 | `--check` | the strict check only |
+| `--dev` | the crate of the game's code for the development mode of the kits (`dev.builder` plays `project.gripforge` and poses the scenes): `<out>/dev/game`, the files of `sources` only, no `init_scene`, no `game.json`; refused without `sources` (`dev_without_sources`). [docs/sources.md](docs/sources.md#in-the-development-mode) |
 | `--resolve` | the project resolved by the common core (its included `.gripforge` files read beside it, the variables of its nodes, its `$var`) and the tolerant validator's issues, as JSON (`ok`, `project`, `resolveIssues`, `issues`); nothing written, nothing promoted |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
