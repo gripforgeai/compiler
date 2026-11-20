@@ -125,6 +125,22 @@ jobs:
           cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target"
           if grep -n module-kits Cargo.lock; then exit 1; fi
           ls -l "$RUNNER_TEMP/target/debug/libgfkit_game_main.so" "$RUNNER_TEMP/target/wasm32-unknown-unknown/release/gfkit_game_main.wasm"
+      - name: The room with the game's code (sources of project.gripforge), native and wasm
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -eu
+          room="$RUNNER_TEMP/room-code"
+          cp -r "$EXAMPLE_ROOM" "$room"
+          cp tests/game-code/rules.rs "$room/rules.rs"
+          jq '. + { sources: ["rules.rs"] }' "$EXAMPLE_ROOM/project.gripforge" > "$room/project.gripforge"
+          before="$(sha256sum "$room/rules.rs")"
+          target/debug/gripforge-build "$room" --sdk "$GITHUB_WORKSPACE/sdk"
+          grep -q 'pub mod rules;' "$room/.build/game/src/lib.rs"
+          cd "$room/.build/game"
+          cargo build --target-dir "$RUNNER_TEMP/target"
+          cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target"
+          [ "$(sha256sum "$room/rules.rs")" = "$before" ]
       - name: The room on sdk/ by git (this repository at the tested commit), native and wasm
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
