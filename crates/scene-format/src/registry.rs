@@ -37,11 +37,6 @@ pub struct NodeType {
     /// `"element": "<element>"`, and are checked against what the kit exposes, never here. A collision shape, an
     /// animation: a node of the tree like any other, read by the kit that knows it.
     pub section: Option<(String, String)>,
-    /// A node of this type gives its parent its collision (`"parentCollision"` of its declaration): `Some(except)`,
-    /// where `except` lists the property values (`{ "type": "sensor" }`) for which it does not (a trigger volume is a
-    /// body of its own). The lowering then tells game.engine the parent's collision is its nodes' (`solid.shape:
-    /// nodes`), so the automatic solid of the parent never adds a second body. `None`: not a collision.
-    pub parent_collision: Option<Map<String, Json>>,
 }
 
 /// Where an element lives: on a node of a scene (`kits.<kit>` of the node) or on the scene itself (`kits.<kit>` of the
@@ -195,7 +190,6 @@ impl Registry {
                     when,
                     lowers,
                     section,
-                    parent_collision: parent_collision(t),
                 },
             );
         }
@@ -229,7 +223,6 @@ impl Registry {
                         when: vec!["event".to_string()],
                         lowers: "none".to_string(),
                         section: Some((kit.to_string(), el.name.clone())),
-                        parent_collision: parent_collision(e),
                     },
                 );
             }
@@ -249,17 +242,6 @@ impl Registry {
     pub fn add_entries(&mut self, kit: &str, entries: &Json) {
         self.add_kit_api(&serde_json::json!({ "id": kit, "expose": entries }));
     }
-}
-
-/// `parentCollision` of a node type's declaration: `{ "except": { <prop>: <value> } }` (`{}`: no exception).
-fn parent_collision(t: &Json) -> Option<Map<String, Json>> {
-    let o = t.get("parentCollision")?.as_object()?;
-    Some(
-        o.get("except")
-            .and_then(Json::as_object)
-            .cloned()
-            .unwrap_or_default(),
-    )
 }
 
 /// Whether an `expose` entry is meant for scenes.

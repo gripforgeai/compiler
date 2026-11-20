@@ -2,5 +2,5 @@
   "schema": "gripforge.compiler-scene-format/1",
   "doc": "crates/scene-format is the common core of the project format of the kits repository (core/scene-format), copied unchanged by tools/sync-scene-format at this revision, with the fixtures its tests read and the parity cases (tests/parity). Check: tools/sync-scene-format <module-kits checkout> --check.",
   "source": "gripforgeai/module-kits",
-  "rev": "6b433125a5aa05d81b42ad1a409de2db33f177c9"
+  "rev": "b450b788aee71e6db3b3103bc04cbd06959bc17a"
 }

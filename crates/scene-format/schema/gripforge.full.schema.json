@@ -4603,6 +4603,11 @@
               "default": "none",
               "description": "The genre of a speaker that declares none (none: the voice and its timing only)."
             },
+            "cueLines": {
+              "type": "boolean",
+              "default": false,
+              "description": "A timed line is said as a dated intention of core.audio (cue, key audio.speech:<speaker>:<n>): the mouth then follows the voice really heard (lipsync heard). Off by default while core.audio does not read the cues at its tick (the voice is then not in core.audio.voices: no ducking, no out-of-context rule); on: the speaker A or B plays it."
+            },
             "debugger": {
               "type": "object",
               "description": "The look of this kit's tab in the F9 debugger, over the kit's own (its expose entries' `debugger`): `icon` of the tab (an icon name, an image of the kit or an emoji), `assets` { name: url }, `entries` { <entry id>: { curve: 'large', actions: { <action>: { view: 'presets' | 'clock', options: { <value>: { icon, label } } } } } }. Optional: without it, the kit's defaults (kits/debug_inspector/README.md « Option debugger »).",
@@ -5176,6 +5181,17 @@
               },
               "description": "Two simple eyes on the front of the entities (a test bench, a prototype without a face), so that one sees where they look: enabled (false by default) gives them to every entity animated by the kit; setEyes(entity, params | false | null) to any entity. height (m above the root), spacing (between the eyes), radius, forward (in front of the axis), color, pupil, bone and boneOffset. The render side draws them on the node `bone` of the model (the head), else under the entity's root (presentation module of the blank players; the kit's Bevy crate keeps the root), NEVER on a model that has eyes already (a node named oeil or eye), and turns them toward the target of the entity's look source (lookAt), else along the front of the body. Read in the var core.animation.eyes, written only when they change."
             },
+            "clipSounds": {
+              "type": "object",
+              "default": {},
+              "description": "The sound markers of the clips, by clip name: { length (s, the loop; 0: the clip plays once), marks: [{ at (s in the clip), sound (core.audio's bank), volume, pitch, late, lateMax }] }. Scheduled ahead from the clock line of the base clip and posed as dated intentions of core.audio (cue, clock tick): the sound comes out when the image that shows the marker is displayed. A new decision stops what is not out yet. Without core.audio nothing is posed."
+            },
+            "clipSoundsAhead": {
+              "type": "number",
+              "default": 0.25,
+              "minimum": 0,
+              "description": "Seconds of the clock line of a base clip whose markers are posed ahead at each tick."
+            },
             "mode": {
               "type": "string",
               "enum": [
@@ -5518,7 +5534,7 @@
             },
             "sounds": {
               "type": "object",
-              "description": "The bank: { id: { src: [files] (several: variants, never the same twice in a row), bus, volume (0 to 2), pitch (0.25 to 4), volumeJitter, pitchJitter, loop, spatial (a 3D profile, \"\": 2D), priority (0 to 100), limit (voices of this sound at once, 0: none), duration (seconds, 0: the speaker tells the end), role, tags } }. A wrong sound is said and the bank refused, never corrected."
+              "description": "The bank: { id: { src: [files] (several: variants, never the same twice in a row), bus, volume (0 to 2), pitch (0.25 to 4), volumeJitter, pitchJitter, loop, spatial (a 3D profile, \"\": 2D), priority (0 to 100), limit (voices of this sound at once, 0: none), duration (seconds, 0: the speaker tells the end), role, tags, late (what a dated cue of it does when late: drop, play, skip; \"\": intents.late), lateMax (s; 0: intents.lateMax) } }. A wrong sound is said and the bank refused, never corrected."
             },
             "maxVoices": {
               "type": "integer",
@@ -5540,7 +5556,52 @@
             },
             "speaker": {
               "type": "object",
-              "description": "What the speaker of each engine reads beside the mix (published in core.audio.mix): { moveStep (metres a listener or a 3D voice moves before the speaker asks hearAt again), moveSeconds (the glide of a voice's gain and cutoff then), meterHz (how often the speaker measures its buses for the debugger; only while the debugger is loaded), fftSize (the analysers' window), loudness: { blockSeconds, overlap, absoluteGate, relativeGate } (the gated loudness of ITU-R BS.1770) }."
+              "description": "What the speaker of each engine reads beside the mix (published in core.audio.mix): { moveStep (metres a listener or a 3D voice moves before the speaker asks hearAt again), moveSeconds (the glide of a voice's gain and cutoff then), meterHz (how often the speaker measures its buses for the debugger; only while the debugger is loaded), fftSize (the analysers' window), loudness: { blockSeconds, overlap, absoluteGate, relativeGate } (the gated loudness of ITU-R BS.1770), web (which web speaker plays: auto, the AudioWorklet mixer where the memory is shared, else the Web Audio nodes with the reason said; worklet; nodes) }."
+            },
+            "intents": {
+              "type": "object",
+              "description": "The audio intentions in the zone, read in place by every speaker (docs/design/core-audio-intentions.md): lanes (one per kind of writer: the kit, the page, the physics, the render), cueSlots (rows of one lane of core.audio.cues), boundSlots (held sounds following a value, core.audio.bound), heardSlots (voices whose position heard is published, core.audio.heard), sourceSlots (drawn poses of the sources, core.audio.shown), late (what a dated cue does when its time has passed: drop, play, skip; a sound of the bank may say its own) and lateMax (s: how late a drop may still play).",
+              "properties": {
+                "lanes": {
+                  "type": "integer",
+                  "minimum": 4,
+                  "maximum": 16
+                },
+                "cueSlots": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 65536
+                },
+                "boundSlots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "heardSlots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "sourceSlots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "late": {
+                  "type": "string",
+                  "enum": [
+                    "drop",
+                    "play",
+                    "skip"
+                  ]
+                },
+                "lateMax": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 60
+                }
+              },
+              "additionalProperties": false
             },
             "transition": {
               "type": "object",
@@ -8949,7 +9010,7 @@
                       "null"
                     ],
                     "default": "",
-                    "description": "box, sphere, capsule, mesh (the collision parts of the asset's passport, through asset.meta) or heightmap (a fixed ground of the grid heights, type static only, the one collision node of its parent); empty: the archetype's, else box (any other value is refused)."
+                    "description": "box, sphere, capsule, cylinder (radius, height, along +Y), cone (radius of its base at -height/2, apex at +height/2), triangle (points: 3 points), wedge (a ramp: size, its floor x by z, its slope rising from -Z to +Z up to y), pyramid (size, apex at the top), tetrahedron (size, apex at the top), hull (points: 4 or more; none: the parts of the asset's passport, as mesh), plane (normal, an endless fixed ground, type static only), mesh (the collision parts of the asset's passport, through asset.meta) or heightmap (a fixed ground of the grid heights, type static only, the one collision node of its parent); each alone or with the other collision nodes of its parent in one compound; empty: the archetype's, else box (any other value is refused)."
                   },
                   "type": {
                     "type": [
@@ -8974,7 +9035,7 @@
                       0,
                       0
                     ],
-                    "description": "The full size of a box, metres, times the node's scale (a heightmap: its scale [x, y, z], 1 = as given); [0,0,0]: the archetype's, else 1 m."
+                    "description": "The full size of a box, a wedge, a pyramid or a tetrahedron, metres, times the node's scale (a heightmap: its scale [x, y, z], 1 = as given); [0,0,0]: the archetype's, else 1 m."
                   },
                   "radius": {
                     "type": [
@@ -8983,7 +9044,7 @@
                     ],
                     "default": 0,
                     "minimum": 0,
-                    "description": "The radius of a sphere or a capsule, metres; 0: the archetype's, else 0.5."
+                    "description": "The radius of a sphere, a capsule, a cylinder or a cone (its base), metres, times the node's largest scale; 0: the archetype's, else 0.5."
                   },
                   "height": {
                     "type": [
@@ -8992,7 +9053,24 @@
                     ],
                     "default": 0,
                     "minimum": 0,
-                    "description": "The total height of a capsule, metres; 0: the archetype's, else 1."
+                    "description": "The total height of a capsule, a cylinder or a cone, metres, times the node's largest scale; 0: the archetype's, else 1."
+                  },
+                  "border": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "The radius a box, a cylinder, a cone, a wedge, a pyramid or a tetrahedron is rounded by, inside its size (a hull and a triangle: added around them), metres, times the node's largest scale; 0: the archetype's, else sharp."
+                  },
+                  "points": {
+                    "default": null,
+                    "description": "The points [[x, y, z], ...] of a triangle (3) or a hull (4 or more), in the node's frame, times its scale per axis; null: the archetype's (a hull without points: the parts of its asset's passport)."
+                  },
+                  "normal": {
+                    "default": null,
+                    "description": "The normal [x, y, z] of a plane in the node's frame, solid under it; null: the archetype's, else up [0, 1, 0]."
                   },
                   "mass": {
                     "type": [
@@ -9335,7 +9413,7 @@
                   "null"
                 ],
                 "default": "",
-                "description": "box, sphere, capsule, mesh (the collision parts of the asset's passport, through asset.meta) or heightmap (a fixed ground of the grid heights, type static only, the one collision node of its parent); empty: the archetype's, else box (any other value is refused)."
+                "description": "box, sphere, capsule, cylinder (radius, height, along +Y), cone (radius of its base at -height/2, apex at +height/2), triangle (points: 3 points), wedge (a ramp: size, its floor x by z, its slope rising from -Z to +Z up to y), pyramid (size, apex at the top), tetrahedron (size, apex at the top), hull (points: 4 or more; none: the parts of the asset's passport, as mesh), plane (normal, an endless fixed ground, type static only), mesh (the collision parts of the asset's passport, through asset.meta) or heightmap (a fixed ground of the grid heights, type static only, the one collision node of its parent); each alone or with the other collision nodes of its parent in one compound; empty: the archetype's, else box (any other value is refused)."
               },
               "type": {
                 "type": [
@@ -9360,7 +9438,7 @@
                   0,
                   0
                 ],
-                "description": "The full size of a box, metres, times the node's scale (a heightmap: its scale [x, y, z], 1 = as given); [0,0,0]: the archetype's, else 1 m."
+                "description": "The full size of a box, a wedge, a pyramid or a tetrahedron, metres, times the node's scale (a heightmap: its scale [x, y, z], 1 = as given); [0,0,0]: the archetype's, else 1 m."
               },
               "radius": {
                 "type": [
@@ -9369,7 +9447,7 @@
                 ],
                 "default": 0,
                 "minimum": 0,
-                "description": "The radius of a sphere or a capsule, metres; 0: the archetype's, else 0.5."
+                "description": "The radius of a sphere, a capsule, a cylinder or a cone (its base), metres, times the node's largest scale; 0: the archetype's, else 0.5."
               },
               "height": {
                 "type": [
@@ -9378,7 +9456,24 @@
                 ],
                 "default": 0,
                 "minimum": 0,
-                "description": "The total height of a capsule, metres; 0: the archetype's, else 1."
+                "description": "The total height of a capsule, a cylinder or a cone, metres, times the node's largest scale; 0: the archetype's, else 1."
+              },
+              "border": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "default": 0,
+                "minimum": 0,
+                "description": "The radius a box, a cylinder, a cone, a wedge, a pyramid or a tetrahedron is rounded by, inside its size (a hull and a triangle: added around them), metres, times the node's largest scale; 0: the archetype's, else sharp."
+              },
+              "points": {
+                "default": null,
+                "description": "The points [[x, y, z], ...] of a triangle (3) or a hull (4 or more), in the node's frame, times its scale per axis; null: the archetype's (a hull without points: the parts of its asset's passport)."
+              },
+              "normal": {
+                "default": null,
+                "description": "The normal [x, y, z] of a plane in the node's frame, solid under it; null: the archetype's, else up [0, 1, 0]."
               },
               "mass": {
                 "type": [
