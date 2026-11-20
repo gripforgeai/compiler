@@ -27,15 +27,14 @@ mod physics;
 // Not `render_yaw`: that name is the layout of gripforge-abi, re-exported above by `pub use gripforge_abi::ports::*`.
 mod render_yaw_claim;
 mod scene_proxy;
+mod zone_table;
 
 pub use assets::AssetsProxy;
 pub use drawn_pose::{DrawnPose, DrawnPoseView, CAMERA, ENTITY, OBJECT};
 pub use input::{InputPort, RawRecord};
-pub use machine::{
-    AudioProxy, ClockProxy, DisplayProxy, Platform, PointerProxy, SaveStores, StoreHandle,
-};
+pub use machine::{ClockProxy, DisplayProxy, Platform, PointerProxy, SaveStores, StoreHandle};
 pub use physics::PhysicsProxy;
-pub use render_yaw_claim::{RenderYaw, LOOK};
+pub use render_yaw_claim::RenderYaw;
 pub use scene_proxy::SceneProxy;
 
 // ---- helpers -----------------------------------------------------------------------------------------------------

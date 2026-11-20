@@ -1,4 +1,5 @@
-//! The shapes of the physics (box, sphere, capsule, mesh, hull, compound, heightfield, plane) and their geometry (half height,
+//! The shapes of the physics (box, sphere, capsule, mesh, hull, compound, heightfield, plane, cylinder, cone, triangle) and
+//! their geometry (half height,
 //! triangles, rotation helpers), shared by the kit façade and the core like `port_types.rs` (compiled once in
 //! `gripforge-abi`, `ports/mod.rs`). Split out of `port_types.rs` as is.
 
@@ -22,10 +23,12 @@ pub enum Shape {
         indices: Vec<u32>,
     },
     /// A convex hull (the collision tool's `convex`, docs/usage/collision.md): its points, and its faces as
-    /// triangles over them (what a host whose physics only takes meshes builds).
+    /// triangles over them (what a host whose physics only takes meshes builds). `border`: the radius it is rounded
+    /// by, metres, added around the hull (0: sharp). A rounded box, a wedge, a pyramid, a tetrahedron are hulls.
     Convex {
         vertices: Vec<f32>,
         indices: Vec<u32>,
+        border: f64,
     },
     /// Several shapes in one body (`compound`, a convex decomposition), each at its place in the body. Kept packed
     /// (`Shape::compound`, `Shape::parts`) so the scalar wires pass it by address like a mesh.
@@ -45,7 +48,30 @@ pub enum Shape {
     Plane {
         normal: V3,
     },
+    /// A cylinder along local +Y, centred: `radius`, total `height`, rounded by `border` (0: sharp edges; the
+    /// rounding is inside the given size).
+    Cylinder {
+        radius: f64,
+        height: f64,
+        border: f64,
+    },
+    /// A cone along local +Y, centred: its base of `radius` at -height/2, its apex at +height/2, rounded by `border`
+    /// (inside the given size).
+    Cone {
+        radius: f64,
+        height: f64,
+        border: f64,
+    },
+    /// A triangle of three points in the body's space (x, y, z of each, its float stream on the wires), thickened
+    /// by `border` (0: a flat face, no volume).
+    Triangle {
+        points: [f32; 9],
+        border: f64,
+    },
 }
+
+/// Sides of the polygon a cylinder or a cone is drawn with by a physics or a view that only takes meshes.
+pub const ROUND_SIDES: u32 = 16;
 
 /// Half the side of the slab a physics or a view that only takes boxes or meshes gives a plane, metres.
 pub const PLANE_HALF: f64 = 5000.0;
@@ -84,7 +110,8 @@ pub fn mesh_problem(vertices: &[f32], indices: &[u32]) -> Option<String> {
 }
 
 impl Shape {
-    /// The code of the shape on the scalar wires (0 box, 1 sphere, 2 capsule, 3 mesh, 4 convex, 5 compound).
+    /// The code of the shape on the scalar wires (0 box, 1 sphere, 2 capsule, 3 mesh, 4 convex, 5 compound,
+    /// 6 heightfield, 7 plane, 8 cylinder, 9 cone, 10 triangle).
     pub fn code(&self) -> u32 {
         match self {
             Shape::Box { .. } => 0,
@@ -95,9 +122,15 @@ impl Shape {
             Shape::Compound { .. } => 5,
             Shape::HeightField { .. } => 6,
             Shape::Plane { .. } => 7,
+            Shape::Cylinder { .. } => 8,
+            Shape::Cone { .. } => 9,
+            Shape::Triangle { .. } => 10,
         }
     }
-    /// The three numbers of a primitive on the scalar wires (box size, sphere radius, capsule radius and height).
+    /// The highest code a reader takes ([`Shape::code`]); a code past it is not a shape.
+    pub const LAST_CODE: u32 = 10;
+    /// The three numbers of a primitive on the scalar wires (box size, sphere radius, capsule radius and height;
+    /// cylinder and cone radius, height, border; a hull's and a triangle's border first).
     pub fn numbers(&self) -> V3 {
         match self {
             Shape::Box { size } => *size,
@@ -105,6 +138,17 @@ impl Shape {
             Shape::Capsule { radius, height } => [*radius, *height, 0.0],
             Shape::HeightField { cols, cell, .. } => [cell[0], cell[1], *cols as f64],
             Shape::Plane { normal } => *normal,
+            Shape::Cylinder {
+                radius,
+                height,
+                border,
+            }
+            | Shape::Cone {
+                radius,
+                height,
+                border,
+            } => [*radius, *height, *border],
+            Shape::Convex { border, .. } | Shape::Triangle { border, .. } => [*border, 0.0, 0.0],
             _ => [0.0; 3],
         }
     }
@@ -119,11 +163,13 @@ impl Shape {
     /// The float and index streams a mesh, a hull or a compound carries (passed by address on the scalar wires).
     pub fn streams(&self) -> Option<(&[f32], &[u32])> {
         match self {
-            Shape::Mesh { vertices, indices } | Shape::Convex { vertices, indices } => {
-                Some((vertices, indices))
-            }
+            Shape::Mesh { vertices, indices }
+            | Shape::Convex {
+                vertices, indices, ..
+            } => Some((vertices, indices)),
             Shape::Compound { floats, indices } => Some((floats, indices)),
             Shape::HeightField { heights, .. } => Some((heights, &[])),
+            Shape::Triangle { points, .. } => Some((points, &[])),
             _ => None,
         }
     }
@@ -142,6 +188,7 @@ impl Shape {
             4 => Shape::Convex {
                 vertices: floats.to_vec(),
                 indices: indices.to_vec(),
+                border: n[0],
             },
             5 => Shape::Compound {
                 floats: floats.to_vec(),
@@ -153,6 +200,20 @@ impl Shape {
                 heights: floats.to_vec(),
             },
             7 => Shape::Plane { normal: n },
+            8 => Shape::Cylinder {
+                radius: n[0],
+                height: n[1],
+                border: n[2],
+            },
+            9 => Shape::Cone {
+                radius: n[0],
+                height: n[1],
+                border: n[2],
+            },
+            10 => Shape::Triangle {
+                points: std::array::from_fn(|i| floats.get(i).copied().unwrap_or(0.0)),
+                border: n[0],
+            },
             _ => Shape::Box { size: n },
         }
     }
@@ -233,21 +294,28 @@ impl Shape {
         match self {
             Shape::Box { size } => size[1] / 2.0,
             Shape::Sphere { radius } => *radius,
-            Shape::Capsule { height, .. } => height / 2.0,
+            Shape::Capsule { height, .. }
+            | Shape::Cylinder { height, .. }
+            | Shape::Cone { height, .. } => height / 2.0,
             _ => 0.0,
         }
     }
     /// The shape as triangles in the body's space (vertices xyz, indices), for a physics or a view that only takes
-    /// meshes: a box its 12 triangles, a sphere and a capsule a coarse polyhedron, a hull its faces, a compound its
-    /// parts placed.
+    /// meshes: a box its 12 triangles, a sphere and a capsule a coarse polyhedron, a hull its faces, a cylinder and a
+    /// cone a prism and a pyramid of [`ROUND_SIDES`] sides, a triangle itself (both faces), a compound its parts
+    /// placed. A border (a rounding) is not drawn: the triangles are of the shape it rounds.
     pub fn triangles(&self) -> (Vec<f32>, Vec<u32>) {
         let (mut v, mut t) = (Vec::new(), Vec::new());
         for (shape, p, q) in self.parts() {
             let base = (v.len() / 3) as u32;
             let (lv, lt) = match &shape {
-                Shape::Mesh { vertices, indices } | Shape::Convex { vertices, indices } => {
-                    (vertices.clone(), indices.clone())
-                }
+                Shape::Mesh { vertices, indices }
+                | Shape::Convex {
+                    vertices, indices, ..
+                } => (vertices.clone(), indices.clone()),
+                Shape::Cylinder { radius, height, .. } => ring_triangles(*radius, *radius, *height),
+                Shape::Cone { radius, height, .. } => ring_triangles(*radius, 0.0, *height),
+                Shape::Triangle { points, .. } => (points.to_vec(), vec![0, 1, 2, 0, 2, 1]),
                 Shape::Box { size } => box_triangles(*size),
                 Shape::Sphere { radius } => round_triangles(*radius, 0.0),
                 Shape::Capsule { radius, height } => {
@@ -327,6 +395,30 @@ fn grid_triangles(cols: usize, cell: [f64; 2], heights: &[f32]) -> (Vec<f32>, Ve
             let (b, c) = (a + 1, a + cols as u32);
             t.extend([a, c, c + 1, a, c + 1, b]);
         }
+    }
+    (v, t)
+}
+
+/// A prism (`top` = `bottom`: a cylinder) or a pyramid (`top` = 0: a cone) of [`ROUND_SIDES`] sides along Y, centred,
+/// `height` tall, its bottom ring of `bottom`, its top ring of `top` (a point when 0), both ends closed.
+fn ring_triangles(bottom: f64, top: f64, height: f64) -> (Vec<f32>, Vec<u32>) {
+    let n = ROUND_SIDES;
+    let h = (height / 2.0) as f32;
+    let mut v = Vec::with_capacity((2 * n as usize + 2) * 3);
+    for (r, y) in [(bottom, -h), (top, h)] {
+        for s in 0..n {
+            let a = std::f64::consts::TAU * s as f64 / n as f64;
+            v.extend_from_slice(&[(r * a.cos()) as f32, y, (r * a.sin()) as f32]);
+        }
+    }
+    // The centres of both ends.
+    let (cb, ct) = (2 * n, 2 * n + 1);
+    v.extend_from_slice(&[0.0, -h, 0.0, 0.0, h, 0.0]);
+    let mut t = Vec::with_capacity(n as usize * 12);
+    for s in 0..n {
+        let (a, b) = (s, (s + 1) % n);
+        let (c, d) = (a + n, b + n);
+        t.extend_from_slice(&[a, c, b, b, c, d, cb, a, b, ct, d, c]);
     }
     (v, t)
 }

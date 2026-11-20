@@ -82,8 +82,12 @@ pub trait ScenePort {
 /// watched entity, written on the render side after each drawn frame, read in place at the tick (docs/boucles-et-fils.md:
 /// written at the render, read at the tick). Nothing is written while nobody watches.
 ///
-/// A record (64 bytes, at the offset `watch_pose` answers): `frame u64` (the drawn frame that wrote it, counted from 1;
-/// 0: not drawn yet), position `f64 × 3`, rotation quaternion `f64 × 4` (xyzw), world space of the kits.
+/// The block at the offset `watch_pose` answers follows the contract `abi.scene.drawn` (core/abi/contracts/
+/// abi.scene.drawn.json: a `TableHead`, then one row `frame`, `position`, `rotation`), read and written through the
+/// generated accessors of gripforge-contracts; only the kinds of watch stay here.
+///
+/// History: until #1865 (20/11) a record of 64 bytes at positions written here (`FRAME`, `POSITION`,
+/// `ROTATION`, `BYTES`); rebuild kithost.core, the native player and the kit modules.
 pub mod drawn {
     /// What a watch names: an engine object by handle (`kithost.scene@1` handles).
     pub const OBJECT: u32 = 1;
@@ -91,30 +95,22 @@ pub mod drawn {
     pub const ENTITY: u32 = 2;
     /// The camera the engine draws with ([`super::ScenePort::camera`]), whichever it is at that frame; handle 0.
     pub const CAMERA: u32 = 3;
-    pub const FRAME: u32 = 0;
-    pub const POSITION: u32 = 8;
-    pub const ROTATION: u32 = 32;
-    pub const BYTES: u32 = 64;
 }
 
-/// A yaw applied at the render (`kithost.scene@1.2` `claim_render_yaw`): a kit claims, once, that the yaw an entity is
-/// drawn with comes from a look read at the render, not from its ticks — the body of a first-person player turns in
-/// the same frame as the mouse. The render side applies it on the drawn pose of the entity (its interpolated position
-/// kept): `yaw = anchor - look × sensitivity`, the look read in place in the zone (`INPUT` buffer of core.input,
-/// `look + (pointer - taken) × gain`). Nothing is computed while no entity is claimed. The tick reads the yaw the frame
-/// drew back through [`drawn`] (`watch_pose` of the same entity): one yaw, applied once.
-///
-/// A record (24 bytes, at the offset `claim_render_yaw` answers), written in place by the kit at any time and read by
-/// the render: `anchor f64` (the yaw drawn when the look is 0), `sensitivity f64` (radians per unit of the look; right
-/// turns right: the yaw falls), `source u32` (where the look comes from).
-pub mod render_yaw {
-    /// The horizontal look of player 0 of core.input (its action `look`, x).
-    pub const LOOK: u32 = 1;
-    pub const ANCHOR: u32 = 0;
-    pub const SENSITIVITY: u32 = 8;
-    pub const SOURCE: u32 = 16;
-    pub const BYTES: u32 = 24;
-}
+// A yaw applied at the render (`kithost.scene@1.2` `claim_render_yaw`): a kit claims, once, that the yaw an entity is
+// drawn with comes from a look read at the render, not from its ticks — the body of a first-person player turns in
+// the same frame as the mouse. The render side applies it on the drawn pose of the entity (its interpolated position
+// kept): `yaw = anchor - look × sensitivity`, the look read in place in the zone: the x of a neutral `PointerFollow`
+// block (`zone::pointer_follow`, `sum + (pointer - taken) × gain`) a kit published (#1766: no kit named here). Nothing is computed while no entity is claimed. The tick reads the yaw the frame
+// drew back through [`drawn`] (`watch_pose` of the same entity): one yaw, applied once.
+//
+// The block at the offset `claim_render_yaw` answers follows the contract `abi.scene.render_yaw` (core/abi/contracts/
+// abi.scene.render_yaw.json: a `TableHead`, then one row `anchor`, `sensitivity`, `source`), read and written through
+// the generated accessors of gripforge-contracts.
+//
+// History: until #1766 `source` was a code (`LOOK = 1` named core.input's look); until #1865 (20/11)
+// a record of 24 bytes at positions written here (module `render_yaw`, removed); rebuild kithost.core, the native
+// player and the kit modules.
 
 /// No tree wired: every read answers none.
 #[derive(Default)]

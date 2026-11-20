@@ -16,7 +16,6 @@ impl Host {
         self.physics.enter();
         self.assets.enter();
         self.platform.enter();
-        self.audio.enter();
         self.display.enter();
         self.pointer.enter();
     }

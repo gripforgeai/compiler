@@ -120,12 +120,8 @@ macro_rules! isolated_kit {
         pub extern "C" fn gf_calls_init() {
             $crate::host::init_entries($module(), $version, $hooks);
         }
-        $crate::kitcall::structs_section!();
-        /// The structures of the contract as this build laid them out, folded into one number.
-        #[no_mangle]
-        pub extern "C" fn gf_layout() -> u64 {
-            $crate::kitcall::layout::probe()
-        }
+        // The contracts this module reads or writes, checked by the host at load (gripforge_abi::contract).
+        $crate::kitcall::contracts_section!($crate::contracts::USES);
         /// 1: this module speaks to the core across two memories on the structures of the contract.
         #[no_mangle]
         pub extern "C" fn gf_iso_abi() -> u32 {

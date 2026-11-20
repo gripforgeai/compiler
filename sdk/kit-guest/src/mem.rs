@@ -259,13 +259,6 @@ macro_rules! common_memory {
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
         pub static __heap_end: u8 = 0;
-        /// The structures of the contract as this build laid them out, folded into one number: the host compares
-        /// it with the core's before the kit is linked.
-        #[cfg(target_arch = "wasm32")]
-        #[no_mangle]
-        pub extern "C" fn gf_layout() -> u64 {
-            $crate::kitcall::layout::probe()
-        }
         /// What this module did with the fixed-layout blocks it received: 0 copied whole into a value it keeps,
         /// 1 written over a copy it had, 2 read in place (the QA reads it, per kit).
         #[cfg(target_arch = "wasm32")]

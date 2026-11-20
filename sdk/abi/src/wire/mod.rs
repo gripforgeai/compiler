@@ -8,6 +8,7 @@
 //!   [`frame::FrameWriter`] writes it from the logic's state, [`frame::Mirror`] applies it on the reader's side.
 
 pub mod frame;
+pub mod frame_records;
 pub mod value;
 
 /// Appends `v` as an unsigned LEB128 varint.

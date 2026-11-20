@@ -57,7 +57,6 @@ pub struct Host {
     pub assets: crate::ports::AssetsProxy,
     pub stores: crate::ports::SaveStores,
     pub platform: crate::ports::Platform,
-    pub audio: crate::ports::AudioProxy,
     pub display: crate::ports::DisplayProxy,
     pub pointer: crate::ports::PointerProxy,
     pub kits: Kits,
@@ -112,7 +111,6 @@ impl Host {
             assets: Default::default(),
             stores: Default::default(),
             platform: Default::default(),
-            audio: Default::default(),
             display: Default::default(),
             pointer: Default::default(),
             kits: Kits {
@@ -804,9 +802,17 @@ macro_rules! export_kit {
     ($module:path, $version:expr, $hooks:expr) => {
         $crate::export_kit!($module, $version, $hooks, || {});
     };
-    // `$links`: run once at the module's start — the direct links to the providers of the capabilities this kit
-    // calls (`service_links!`, docs/kit-modules.md §7).
+    // `contracts` / `$kit`: the kit's own `(DECL, role)` (kits/<kit>/contracts/), declared after the façade's. `$links`:
+    // run once at the module's start — the direct links to the providers it calls (`service_links!`, kit-modules §7).
+    ($module:path, $version:expr; contracts: $kit:expr) => {
+        $crate::export_kit!($module, $version, $crate::host::HOOKS_ALL, || {}, $kit);
+    };
     ($module:path, $version:expr, $hooks:expr, $links:expr) => {
+        $crate::export_kit!($module, $version, $hooks, $links, &[]);
+    };
+    // `$contracts`: `(DECL, role)` of the shared contracts this kit alone reads or writes (gripforge-contracts), declared
+    // with the façade's own (`contracts::USES`) in the one section the host checks at load.
+    ($module:path, $version:expr, $hooks:expr, $links:expr, $contracts:expr) => {
         $crate::gripforge_abi::calls::export_calls!();
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
@@ -838,8 +844,8 @@ macro_rules! export_kit {
         pub extern "C" fn gfx_svc_id() -> u32 {
             $crate::svc::id()
         }
-        // The structures of the contract as this build laid them out (checked by the tool and by the host).
-        $crate::kitcall::structs_section!();
+        // The contracts this module reads or writes, checked by the host at load (gripforge_abi::contract).
+        $crate::kitcall::contracts_section!($crate::contracts::USES, $contracts);
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
         pub extern "C" fn gfx_kit_hook(

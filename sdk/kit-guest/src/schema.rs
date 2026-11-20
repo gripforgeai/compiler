@@ -457,6 +457,63 @@ fn walk(schema: &Json, value: &Json, path: &str, ctx: &mut Ctx, depth: usize) {
         }
         return;
     }
+    // A list of types (`["string", "null"]`): the value is checked against the listed type it is (`null` passes when
+    // listed); a value of none of them says the types allowed. A correct value is never refused.
+    if let Some(list) = s.get("type").and_then(Json::as_array) {
+        let names: Vec<&str> = list.iter().filter_map(Json::as_str).collect();
+        if value.is_null() && names.contains(&"null") {
+            return;
+        }
+        let fits = |t: &str| match t {
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            "number" => value.is_number(),
+            "integer" => value.as_f64().is_some_and(|n| n == n.trunc()),
+            _ => false,
+        };
+        let Some(t) = names.iter().find(|t| fits(t)) else {
+            return ctx.issue(
+                path,
+                format!("expected {}, got {}", names.join(" or "), type_name(value)),
+            );
+        };
+        let mut one = s.clone();
+        one.insert("type".into(), Json::String((*t).to_string()));
+        return walk(&Json::Object(one), value, path, ctx, depth + 1);
+    }
+    // No `type`: any value; only the keywords that need none are read (`enum`, `anyOf`, `allOf`, and `properties` on an
+    // object).
+    if !s.contains_key("type") {
+        if let Some(list) = s.get("enum").and_then(Json::as_array) {
+            if !list.contains(value) {
+                ctx.issue(path, format!("expected one of {}", enum_text(list)));
+            }
+        }
+        if let Some(alts) = s.get("anyOf").and_then(Json::as_array) {
+            if !alts
+                .iter()
+                .any(|alt| validate_with(alt, value, path, ctx.defs).is_empty())
+            {
+                ctx.issue(path, "matches none of the alternatives");
+            }
+        }
+        for alt in s
+            .get("allOf")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+        {
+            walk(alt, value, path, ctx, depth + 1);
+        }
+        if value.is_object() && s.contains_key("properties") {
+            let mut one = s.clone();
+            one.insert("type".into(), Json::String("object".into()));
+            walk(&Json::Object(one), value, path, ctx, depth + 1);
+        }
+        return;
+    }
     let kind = to_js_string(s.get("type"));
     match kind.as_str() {
         "object" => {

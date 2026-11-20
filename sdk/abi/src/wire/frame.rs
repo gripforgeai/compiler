@@ -1,16 +1,18 @@
 //! The delta frame of a shared memory region (docs/wire-format.md « Frame »), v1. Little-endian.
 //!
-//! Header, 48 bytes, fixed:
-//! `0 magic u32 "GFW1"`, `4 version u16`, `6 flags u16` (bit 0: keyframe — the reader drops what it kept),
-//! `8 seq u32` (odd while the writer writes: a reader of a SharedArrayBuffer retries), `12 length u32` (header
-//! included), `16 tick u64`, `24 elapsed f64`, `32 renderTime f64`, `40 entities u32` (alive), `44 sections u32`.
+//! Header: the contract `abi.wire.frame` (core/abi/contracts/abi.wire.frame.json; positions generated, docs/contrats-abi.md):
+//! its contract id and major first (what tells a frame from the WORLD header, magic `GFW1`, and refuses a writer of
+//! another major), the flags (bit 0: keyframe — the reader drops what it kept), `seq` (odd while the writer writes: a
+//! reader of a SharedArrayBuffer retries), `length` (header included), `tick`, `elapsed`, `render_time`, `entities`
+//! (alive), `sections`.
 //!
-//! Then the sections, each `kind u16, 0 u16, length u32`, its body padded to 4 bytes:
+//! Then the sections, each an `abi.wire.section` head (kind, 0, length), its body padded to 4 bytes:
 //! - 1 STRINGS: n, then n strings (the next ids of the stream's table, from 0 at a keyframe);
 //! - 2 SPAWN: n × (slot, id ref, kind ref, tag count, tag refs) — slot: the entity's index in the region;
 //! - 3 DESPAWN: n × slot;
-//! - 4 TRANSFORM: u32 n, then n × `{ slot u32, x f32, y f32, z f32, yaw f32 }` (20 bytes, aligned: read in place);
-//! - 5 VELOCITY: u32 n, then n × `{ slot u32, vx f32, vy f32, vz f32 }` (16 bytes);
+//! - 4 TRANSFORM: u32 n, then n × `abi.wire.transform` (slot, position, rotation: aligned, read in place; the
+//!   rotation a unit quaternion, docs/design/pose-quaternion.md);
+//! - 5 VELOCITY: u32 n, then n × `abi.wire.velocity` (slot, velocity);
 //! - 6 TAGS: n × (slot, count, refs) — the whole list when it changed;
 //! - 7 COMPONENT: n × (slot, name ref, 0 removed | 1 + value);
 //! - 8 VARS: n × (path ref, 0 unset | 1 + value);
@@ -20,14 +22,15 @@
 //! - 12 PORTS: n × (port ref, value) — the calls of the browser ports (`audio`, `display`, `pointer`, `saves`).
 //!
 //! Counts, slots and refs are LEB128 varints but in TRANSFORM and VELOCITY; values are `value.rs` (tags 0-9).
-//! A transform is sent when one of its four floats changed (as f32), a component when its encoded bytes changed.
+//! A transform is sent when one of its seven floats changed (as f32), a component when its encoded bytes changed.
 
 use crate::wire::{put_uvar, Cursor};
 use std::collections::HashMap;
 
-pub const MAGIC: u32 = u32::from_le_bytes(*b"GFW1");
-pub const VERSION: u16 = 1;
-pub const HEADER: usize = 48;
+use super::frame_records as rec;
+/// The header of a frame, a section's head and the records of TRANSFORM / VELOCITY: contracts (`abi.wire.*`), their
+/// bytes written and read in [`super::frame_records`].
+pub use super::frame_records::{header, section, transform, velocity, HEADER};
 pub const KEYFRAME: u16 = 1;
 
 pub const STRINGS: u16 = 1;
@@ -88,7 +91,7 @@ impl Strings {
 
 #[derive(Default, Clone)]
 struct Kept {
-    transform: Option<[f32; 4]>,
+    transform: Option<[f32; 7]>,
     velocity: Option<[f32; 3]>,
     tags: Vec<u32>,
     /// name ref → the encoded value last sent.
@@ -254,7 +257,7 @@ impl FrameWriter {
         id: &str,
         kind: &str,
         tags: &[String],
-        transform: [f64; 4],
+        transform: [f64; 7],
         velocity: Option<[f64; 3]>,
         components: impl Iterator<Item = (&'a str, &'a serde_json::Value)>,
     ) {
@@ -307,21 +310,13 @@ impl FrameWriter {
         let t = transform.map(|v| v as f32);
         if kept.transform != Some(t) {
             kept.transform = Some(t);
-            let b = &mut self.transform.body;
-            b.extend_from_slice(&slot.to_le_bytes());
-            for v in t {
-                b.extend_from_slice(&v.to_le_bytes());
-            }
+            rec::push_transform(&mut self.transform.body, slot, t);
             self.transform.n += 1;
         }
         let v = velocity.map(|v| v.map(|x| x as f32));
         if let Some(v) = v.filter(|v| kept.velocity != Some(*v)) {
             kept.velocity = Some(v);
-            let b = &mut self.velocity.body;
-            b.extend_from_slice(&slot.to_le_bytes());
-            for x in v {
-                b.extend_from_slice(&x.to_le_bytes());
-            }
+            rec::push_velocity(&mut self.velocity.body, slot, v);
             self.velocity.n += 1;
         }
         if !same_tags && kept.tags != tag_ids {
@@ -604,10 +599,7 @@ impl FrameWriter {
                 if counted {
                     put_uvar(&mut head, s.n as u64);
                 }
-                let len = head.len() + s.body.len();
-                out.extend_from_slice(&kind.to_le_bytes());
-                out.extend_from_slice(&0u16.to_le_bytes());
-                out.extend_from_slice(&(len as u32).to_le_bytes());
+                rec::push_section(out, kind, (head.len() + s.body.len()) as u32);
                 out.extend_from_slice(&head);
                 out.extend_from_slice(&s.body);
                 while !out.len().is_multiple_of(4) {
@@ -624,18 +616,18 @@ impl FrameWriter {
         } else {
             0
         };
-        let len = out.len() as u32;
-        let h = &mut out[..HEADER];
-        h[0..4].copy_from_slice(&MAGIC.to_le_bytes());
-        h[4..6].copy_from_slice(&VERSION.to_le_bytes());
-        h[6..8].copy_from_slice(&flags.to_le_bytes());
-        h[8..12].copy_from_slice(&seq.to_le_bytes());
-        h[12..16].copy_from_slice(&len.to_le_bytes());
-        h[16..24].copy_from_slice(&tick.to_le_bytes());
-        h[24..32].copy_from_slice(&elapsed.to_le_bytes());
-        h[32..40].copy_from_slice(&render_time.to_le_bytes());
-        h[40..44].copy_from_slice(&self.alive.to_le_bytes());
-        h[44..48].copy_from_slice(&sections.to_le_bytes());
+        let (length, entities) = (out.len() as u32, self.alive);
+        let h = rec::Head {
+            flags,
+            seq,
+            length,
+            tick,
+            elapsed,
+            render_time,
+            entities,
+            sections,
+        };
+        out[..HEADER].copy_from_slice(&rec::header_bytes(&h));
     }
 }
 
@@ -647,7 +639,7 @@ pub struct MirrorEntity {
     pub id: String,
     pub kind: String,
     pub tags: Vec<String>,
-    pub transform: [f32; 4],
+    pub transform: [f32; 7],
     pub velocity: Option<[f32; 3]>,
     #[cfg(feature = "json")]
     pub components: Vec<(String, serde_json::Value)>,
@@ -692,18 +684,9 @@ impl Mirror {
     /// Applies one frame; an error names what was malformed (the mirror is then to be dropped).
     pub fn apply(&mut self, bytes: &[u8]) -> Result<(), String> {
         use crate::wire::value::decode;
-        let mut c = Cursor::new(bytes);
         let bad = |what: &str| format!("wire frame: bad {what}");
-        if c.u32().ok_or_else(|| bad("header"))? != MAGIC {
-            return Err(bad("magic"));
-        }
-        let version =
-            u16::from_le_bytes(c.take(2).ok_or_else(|| bad("header"))?.try_into().unwrap());
-        if version != VERSION {
-            return Err(format!("wire frame: version {version}"));
-        }
-        let flags = u16::from_le_bytes(c.take(2).ok_or_else(|| bad("header"))?.try_into().unwrap());
-        let keyframe = flags & KEYFRAME != 0;
+        let h = rec::read_header(bytes)?;
+        let keyframe = h.flags & KEYFRAME != 0;
         if keyframe {
             *self = Mirror::default();
         }
@@ -712,26 +695,21 @@ impl Mirror {
         self.touched_whole.clear();
         self.changed_vars.clear();
         self.changed_state.clear();
-        self.seq = c.u32().ok_or_else(|| bad("header"))?;
-        let len = c.u32().ok_or_else(|| bad("header"))? as usize;
-        self.tick = u64::from_le_bytes(c.take(8).ok_or_else(|| bad("header"))?.try_into().unwrap());
-        self.elapsed = c.f64().ok_or_else(|| bad("header"))?;
-        self.render_time = c.f64().ok_or_else(|| bad("header"))?;
-        let _alive = c.u32();
-        let sections = c.u32().ok_or_else(|| bad("header"))?;
+        let (len, sections) = (h.length as usize, h.sections);
+        (self.seq, self.tick, self.elapsed, self.render_time) =
+            (h.seq, h.tick, h.elapsed, h.render_time);
         self.events.clear();
         self.views.clear();
         self.ports.clear();
         let bytes = bytes.get(..len).ok_or_else(|| bad("length"))?;
         let mut at = HEADER;
         for _ in 0..sections {
-            let head = bytes.get(at..at + 8).ok_or_else(|| bad("section"))?;
-            let kind = u16::from_le_bytes([head[0], head[1]]);
-            let n = u32::from_le_bytes(head[4..8].try_into().unwrap()) as usize;
+            let (kind, n) = rec::section_at(bytes, at).ok_or_else(|| bad("section"))?;
+            let from = at + section::SIZE;
             let body = bytes
-                .get(at + 8..at + 8 + n)
+                .get(from..from + n)
                 .ok_or_else(|| bad("section length"))?;
-            at = (at + 8 + n + 3) & !3;
+            at = (from + n).next_multiple_of(4);
             self.section(kind, body)
                 .ok_or_else(|| format!("wire frame: bad section {kind}"))?;
         }
@@ -786,14 +764,12 @@ impl Mirror {
                     self.touched_whole.push(slot);
                 }
                 TRANSFORM => {
-                    let slot = c.u32()? as usize;
-                    let t = [c.f32()?, c.f32()?, c.f32()?, c.f32()?];
+                    let (slot, t) = rec::transform_of(c.take(transform::SIZE)?)?;
                     self.entities.get_mut(slot)?.as_mut()?.transform = t;
                     self.touched.push(slot);
                 }
                 VELOCITY => {
-                    let slot = c.u32()? as usize;
-                    let v = [c.f32()?, c.f32()?, c.f32()?];
+                    let (slot, v) = rec::velocity_of(c.take(velocity::SIZE)?)?;
                     self.entities.get_mut(slot)?.as_mut()?.velocity = Some(v);
                     self.touched.push(slot);
                 }

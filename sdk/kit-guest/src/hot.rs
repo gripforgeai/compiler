@@ -172,7 +172,14 @@ pub(crate) struct Kept {
     /// The entity's `core.shape@1` when this copy was the entity (its last change that is more than new x, y, z,
     /// yaw; 0: not known): while the entity's row still says that value, the copy differs by its base at most.
     pub other: u64,
+    /// The revision of the body whose pose its transform carries ([`NO_BODY`]: the entity's own pose), and the check
+    /// it was last compared at: a pose the physics owns is written in the copy when the body moved, never per tick.
+    pub body: u64,
+    pub body_seen: u64,
 }
+
+/// [`Kept::body`] of a copy whose transform is the entity's own (no body owns it, or not known yet).
+pub(crate) const NO_BODY: u64 = u64::MAX;
 
 /// Strictly the same value (what the core would store): `0.0` is not `-0.0`, an object's keys are in the same order.
 pub(crate) fn same(a: &Json, b: &Json) -> bool {

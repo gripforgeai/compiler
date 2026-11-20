@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Copies the public part of the kits SDK (gripforge-abi, gripforge-kit-guest, gripforge-kit-access and the Rust
-# toolchain) from a checkout of the kits repository (gripforgeai/module-kits) into sdk/, at a given revision, or checks
+# Copies the public part of the kits SDK (gripforge-abi, gripforge-kit-guest, gripforge-kit-access, gripforge-contracts and the
+# Rust toolchain) from a checkout of the kits repository (gripforgeai/module-kits) into sdk/, at a given revision, or checks
 # that sdk/ is exactly that copy (--check, what the maintainers run before a release).
 #
 #   tools/sync-sdk <module-kits checkout> [--rev <commit>] [--check]
@@ -45,6 +45,8 @@ MAP=(
   "core/kit-guest/src:kit-guest/src"
   "core/kit-access/Cargo.toml:kit-access/Cargo.toml"
   "core/kit-access/src:kit-access/src"
+  "core/contracts/Cargo.toml:contracts/Cargo.toml"
+  "core/contracts/src:contracts/src"
   "rust-toolchain.toml:rust-toolchain.toml"
 )
 OWN=(Cargo.toml README.md sdk.json)
@@ -87,7 +89,7 @@ if $check; then
   exit 0
 fi
 
-for d in abi kit-guest kit-access; do rm -rf "${sdk:?}/$d"; done
+for d in abi kit-guest kit-access contracts; do rm -rf "${sdk:?}/$d"; done
 rm -f "$sdk/rust-toolchain.toml"
 mkdir -p "$sdk"
 cp -R "$tmp/sdk/." "$sdk/"

@@ -2,38 +2,33 @@
 //! physics, render), a circular queue in shared memory with one writer and one reader.
 //!
 //! The writer (a kit's `Counters::set`, the debugger's events) appends a record at the end and never waits: no lock,
-//! no allocation, no system call, O(1), 32 bytes and one atomic store with release. When the pipe is full the record
+//! no allocation, no system call, O(1), one record and one atomic store with release. When the pipe is full the record
 //! is dropped and counted (`lost`), the reader's head being read again only then. The reader (the panel, at its
 //! rhythm) empties the pipe at once: one atomic load of the write head, the whole range `[read, written)` handled in
-//! place (two slices at most, the queue wraps), one atomic store of the read head. No call per record.
+//! place (two spans at most, the queue wraps), one atomic store of the read head. No call per record.
 //!
-//! Layout 1 (little-endian, the block aligned on 64 bytes, each head on its own cache line: no false sharing):
-//!
-//! - line 0, bytes 0..64, constant: `u32 layout` (1), `u32 slots` (a power of two), `u32 record_bytes` (32),
-//!   `u32 thread` (0 tick, 1 physics, 2 render, 3.. others);
-//! - line 1, bytes 64..128, the writer's: `u64 head` at 64 (low 32 bits: records written, high 32 bits: records lost,
-//!   both wrapping), `u32 seen` at 72 (the read head as the writer last read it);
-//! - line 2, bytes 128..192, the reader's: `u32 read` at 128 (records released);
-//! - records from byte 192: `slots` records of 32 bytes: `u16 kit`, `u16 item`, `u32 kind`, `u64 tick`, `f64 value`,
-//!   `u64 extra` (record `k` in slot `k % slots`).
+//! Layout: the table contract `abi.debug.pipe` (core/abi/contracts/abi.debug.pipe.json, reference docs/contrats-abi.md;
+//! docs/decisions/2026-11-20-abi-par-contrat.md, lot 5b). A `TableHead` (the slots, the stride of a record, read once
+//! at bind), then the head: the constant line (`thread`), the writer's line (`written`: low 32 bits records written,
+//! high 32 bits records lost, both wrapping; `seen`: the read head as the writer last read it), the reader's line
+//! (`read`: records released), each on its own cache line (no false sharing); then `slots` records, record `k` in slot
+//! `k % slots`, at the stride the writer announced. Every position is a generated constant; none is written here.
 //!
 //! The writer writes only slots the reader released and the reader reads only slots the writer published (acquire /
 //! release on the two heads): a record is never read while written, so nothing is torn.
 //!
 //! Used by: `debug_expose.rs` (`Counters::set`), kits/debug_inspector/logic (`pipes.rs`: the pipes, the events, the
-//! fallback reader), kits/debug_inspector/present/web/pipes.mjs (the same layout read and written from JavaScript).
+//! fallback reader), kits/debug_inspector/present/web/pipes.mjs (the same contract read and written from JavaScript).
 
+use gripforge_contracts::abi_debug_pipe as pipe;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-/// The layout of the pipes (`pipes()` answers it).
-pub const LAYOUT: u32 = 1;
-/// Bytes of a record.
-pub const RECORD: usize = 32;
-/// Bytes before the first record (three cache lines).
-pub const HEADER: usize = 192;
-const HEAD: usize = 64;
-const SEEN: usize = 72;
-const READ: usize = 128;
+/// One fact of a pipe: a row of `abi.debug.pipe` (`kit`, `item`, `kind`, `tick`, `value`, `extra`).
+pub use pipe::Row as Record;
+
+/// The contract of a pipe (`pipes()` answers it).
+pub const CONTRACT: &str = pipe::NAME;
 
 /// A counter's value (`item`: the counter's index in the kit's block).
 pub const KIND_VALUE: u32 = 0;
@@ -42,29 +37,37 @@ pub const KIND_EVENT: u32 = 1;
 /// A mark a writer adds (`item` and `extra` its own: a begin or end of a span, a frame).
 pub const KIND_MARK: u32 = 2;
 
-/// One fact of a pipe.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Record {
-    pub kit: u16,
-    pub item: u16,
-    pub kind: u32,
-    pub tick: u64,
-    pub value: f64,
-    pub extra: u64,
-}
+/// A cache line: the alignment of a pipe, and what keeps the writer's head and the reader's apart.
+const LINE: usize = 64;
+const _: () = {
+    let (written, seen, read) = (
+        pipe::at::head::WRITTEN,
+        pipe::at::head::SEEN,
+        pipe::at::head::READ,
+    );
+    assert!(
+        written / LINE == seen / LINE,
+        "the writer's two words share its line"
+    );
+    assert!(
+        written / LINE != read / LINE,
+        "the writer's head and the reader's on lines of their own"
+    );
+    assert!(
+        written / LINE != 0 && read / LINE != 0,
+        "the heads off the constant line"
+    );
+};
 
-const _: () = assert!(std::mem::size_of::<Record>() == RECORD);
-
-/// The bytes of a pipe of `slots` records (`slots` rounded up to a power of two, at least 2).
+/// The bytes of a pipe of `slots` records (`slots` rounded up to a power of two, at least 2), whole cache lines.
 pub fn bytes_for(slots: usize) -> usize {
-    HEADER + slots.max(2).next_power_of_two() * RECORD
+    pipe::bytes(slots.max(2).next_power_of_two() as u32).div_ceil(LINE) * LINE
 }
 
 /// A cache line, for the alignment of the block.
 #[repr(C, align(64))]
 #[derive(Clone, Copy)]
-struct Line([u8; 64]);
+struct Line([u8; LINE]);
 
 /// A pipe's memory, owned by who allocated it (the debugger: "who allocates frees"); its address goes to the writers
 /// and the reader.
@@ -76,26 +79,27 @@ impl PipeMem {
     /// A pipe of `slots` records (rounded up to a power of two) for the thread `thread`, empty.
     pub fn new(slots: usize, thread: u32) -> Self {
         let slots = slots.max(2).next_power_of_two();
-        let mut lines = vec![Line([0; 64]); bytes_for(slots) / 64].into_boxed_slice();
-        let h = &mut lines[0].0;
-        h[0..4].copy_from_slice(&LAYOUT.to_le_bytes());
-        h[4..8].copy_from_slice(&(slots as u32).to_le_bytes());
-        h[8..12].copy_from_slice(&(RECORD as u32).to_le_bytes());
-        h[12..16].copy_from_slice(&thread.to_le_bytes());
+        let mut lines = vec![Line([0; LINE]); bytes_for(slots) / LINE].into_boxed_slice();
+        let block = lines.as_mut_ptr() as *mut u8;
+        // SAFETY: a zeroed block of `bytes_for(slots)` bytes, 64-aligned, nobody reads it yet.
+        unsafe {
+            pipe::init(block, slots as u32);
+            pipe::head_mut(block).thread = thread;
+        }
         Self { lines }
     }
     pub fn ptr(&self) -> usize {
         self.lines.as_ptr() as usize
     }
     pub fn len(&self) -> usize {
-        self.lines.len() * 64
+        self.lines.len() * LINE
     }
     pub fn is_empty(&self) -> bool {
         false
     }
     /// The writer of this pipe (one thread at a time).
     pub fn writer(&self) -> Writer {
-        // SAFETY: a block of this layout, alive while `self` is.
+        // SAFETY: a block of this contract, alive while `self` is.
         unsafe { Writer::at(self.ptr()) }
     }
     /// The reader of this pipe (one only).
@@ -105,37 +109,56 @@ impl PipeMem {
     }
 }
 
-/// The parts of a pipe at `ptr`.
+/// The parts of a pipe at `ptr`, its TableHead read once.
 #[derive(Clone, Copy, Debug)]
 struct Place {
     ptr: usize,
+    rows: usize,
+    stride: usize,
     mask: u32,
 }
 
 impl Place {
     /// # Safety
-    /// `ptr` is a pipe of layout 1 (`PipeMem`), 64-aligned, alive while the place is used.
+    /// `ptr` is 0 or a block of `abi.debug.pipe` (`PipeMem`), alive while the place is used.
     unsafe fn at(ptr: usize) -> Option<Self> {
-        if ptr == 0 || !ptr.is_multiple_of(64) {
+        if ptr == 0 || !ptr.is_multiple_of(LINE) {
             return None;
         }
-        let word = |o: usize| std::ptr::read((ptr + o) as *const u32);
-        let slots = word(4);
-        (word(0) == LAYOUT && slots.is_power_of_two() && word(8) == RECORD as u32).then_some(Self {
+        // Refused (another contract, a writer that does not know a field read here): not a pipe, every push ignored.
+        let t = pipe::Table::bind(ptr as *const u8).ok()?;
+        let slots = t.slots();
+        if !slots.is_power_of_two() {
+            return None;
+        }
+        // In place as this build's record: the writer knows every field of it (else not a pipe for this build).
+        let first = t.rows()?.get(0) as *const Record as usize;
+        Some(Self {
             ptr,
+            rows: first,
+            stride: t.stride(),
             mask: slots - 1,
         })
     }
     fn atomic64(&self, o: usize) -> &AtomicU64 {
-        // SAFETY: `o` is a 8-aligned word of the header of a live pipe (`at`).
+        // SAFETY: `o` is a 8-aligned word of the head of a live pipe (`at`).
         unsafe { &*((self.ptr + o) as *const AtomicU64) }
     }
     fn atomic32(&self, o: usize) -> &AtomicU32 {
         // SAFETY: as in `atomic64`, 4-aligned.
         unsafe { &*((self.ptr + o) as *const AtomicU32) }
     }
+    fn written(&self) -> &AtomicU64 {
+        self.atomic64(pipe::at::head::WRITTEN)
+    }
+    fn seen(&self) -> &AtomicU32 {
+        self.atomic32(pipe::at::head::SEEN)
+    }
+    fn read(&self) -> &AtomicU32 {
+        self.atomic32(pipe::at::head::READ)
+    }
     fn slot(&self, k: u32) -> *mut Record {
-        (self.ptr + HEADER + (k & self.mask) as usize * RECORD) as *mut Record
+        (self.rows + (k & self.mask) as usize * self.stride) as *mut Record
     }
     fn slots(&self) -> u32 {
         self.mask + 1
@@ -150,7 +173,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    /// The writer of the pipe at `ptr` (none when it is not a pipe of layout 1: every push ignored).
+    /// The writer of the pipe at `ptr` (none when it is not a pipe this build can write: every push ignored).
     ///
     /// # Safety
     /// `ptr` is 0 or a pipe (`PipeMem`) alive while the writer is used, written from one thread at a time.
@@ -167,13 +190,13 @@ impl Writer {
         let Some(p) = self.place else {
             return false;
         };
-        let head = p.atomic64(HEAD);
+        let head = p.written();
         let h = head.load(Ordering::Relaxed);
         let w = h as u32;
-        let seen = p.atomic32(SEEN);
+        let seen = p.seen();
         if w.wrapping_sub(seen.load(Ordering::Relaxed)) >= p.slots() {
             // Full as far as the writer knows: the reader's head read again, only now.
-            let read = p.atomic32(READ).load(Ordering::Acquire);
+            let read = p.read().load(Ordering::Acquire);
             seen.store(read, Ordering::Relaxed);
             if w.wrapping_sub(read) >= p.slots() {
                 head.store(h.wrapping_add(1 << 32), Ordering::Release);
@@ -181,7 +204,7 @@ impl Writer {
             }
         }
         // SAFETY: slot `w` is free: the reader released it (`w - read < slots`) and reads it only after the release
-        // below.
+        // below; a slot holds a whole record (the stride, checked at bind).
         unsafe { std::ptr::write(p.slot(w), r) };
         head.store(
             (h & 0xffff_ffff_0000_0000) | u64::from(w.wrapping_add(1)),
@@ -198,6 +221,64 @@ pub struct Drained {
     pub lost: u32,
 }
 
+/// Records of a pipe in place, one after the other at the stride its writer announced (no copy).
+#[derive(Clone, Copy, Debug)]
+pub struct Span<'a> {
+    first: *const Record,
+    stride: usize,
+    n: usize,
+    _m: PhantomData<&'a Record>,
+}
+
+impl<'a> Span<'a> {
+    /// The records of the span.
+    pub fn len(&self) -> usize {
+        self.n
+    }
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+    /// Record `i`, in place.
+    pub fn get(&self, i: usize) -> &'a Record {
+        assert!(i < self.n, "record {i} of {}", self.n);
+        // SAFETY: i < n, the records of the span lie at the stride in a pipe alive during the drain.
+        unsafe { &*((self.first as usize + i * self.stride) as *const Record) }
+    }
+    /// The records, oldest first.
+    pub fn iter(&self) -> Iter<'a> {
+        Iter { span: *self, i: 0 }
+    }
+}
+
+/// The records of a [`Span`], oldest first, in place.
+#[derive(Clone, Copy, Debug)]
+pub struct Iter<'a> {
+    span: Span<'a>,
+    i: usize,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a Record;
+    fn next(&mut self) -> Option<&'a Record> {
+        (self.i < self.span.n).then(|| {
+            self.i += 1;
+            self.span.get(self.i - 1)
+        })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let left = self.span.n - self.i;
+        (left, Some(left))
+    }
+}
+
+impl<'a> IntoIterator for Span<'a> {
+    type Item = &'a Record;
+    type IntoIter = Iter<'a>;
+    fn into_iter(self) -> Iter<'a> {
+        self.iter()
+    }
+}
+
 /// The reading end of a pipe: one reader only, which keeps its own position.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Reader {
@@ -210,32 +291,34 @@ impl Reader {
     /// `ptr` is 0 or a pipe (`PipeMem`) alive while the reader is used; no other reader reads it.
     pub unsafe fn at(ptr: usize) -> Self {
         let place = Place::at(ptr);
-        let read = place.map_or(0, |p| p.atomic32(READ).load(Ordering::Relaxed));
+        let read = place.map_or(0, |p| p.read().load(Ordering::Relaxed));
         Self { place, read }
     }
 
-    /// Empties the pipe at once: one atomic load of the write head, `f` given the whole range in place (two slices
-    /// at most, the oldest first), one atomic store of the read head. Nothing is copied.
-    pub fn drain(&mut self, f: impl FnOnce(&[Record], &[Record])) -> Drained {
+    /// Empties the pipe at once: one atomic load of the write head, `f` given the whole range in place (two spans at
+    /// most, the oldest first), one atomic store of the read head. Nothing is copied.
+    pub fn drain(&mut self, f: impl FnOnce(Span<'_>, Span<'_>)) -> Drained {
         let Some(p) = self.place else {
             return Drained::default();
         };
-        let h = p.atomic64(HEAD).load(Ordering::Acquire);
+        let h = p.written().load(Ordering::Acquire);
         #[cfg(test)]
         tests::READER_ATOMICS.with(|c| c.set(c.get() + 1));
         let (w, lost) = (h as u32, (h >> 32) as u32);
         let n = w.wrapping_sub(self.read);
         let start = self.read & p.mask;
         let first = n.min(p.slots() - start);
-        // SAFETY: records `read .. w` were published by the release of the head and are not written again before the
-        // store of the read head below.
-        unsafe {
-            let a = std::slice::from_raw_parts(p.slot(start) as *const Record, first as usize);
-            let b = std::slice::from_raw_parts(p.slot(0) as *const Record, (n - first) as usize);
-            f(a, b);
-        }
+        let span = |at: u32, n: u32| Span {
+            first: p.slot(at),
+            stride: p.stride,
+            n: n as usize,
+            _m: PhantomData,
+        };
+        // Records `read .. w` were published by the release of the head and are not written again before the store
+        // of the read head below.
+        f(span(start, first), span(0, n - first));
         self.read = w;
-        p.atomic32(READ).store(w, Ordering::Release);
+        p.read().store(w, Ordering::Release);
         #[cfg(test)]
         tests::READER_ATOMICS.with(|c| c.set(c.get() + 1));
         Drained { records: n, lost }
@@ -281,8 +364,8 @@ mod tests {
         READER_ATOMICS.with(|c| c.set(0));
         let d = r.drain(|a, b| {
             assert!(!b.is_empty(), "the range wraps: two slices");
-            got.extend_from_slice(a);
-            got.extend_from_slice(b);
+            got.extend(a.iter().copied());
+            got.extend(b.iter().copied());
         });
         assert_eq!(
             d,
@@ -322,6 +405,42 @@ mod tests {
         );
         assert_eq!(got, (0..8).collect::<Vec<_>>(), "the oldest kept, in order");
         assert!(w.push(rec(20)), "room again after the drain");
+    }
+
+    #[test]
+    fn a_block_of_another_contract_is_not_a_pipe() {
+        let pipe = PipeMem::new(8, 0);
+        // SAFETY: the TableHead of a live pipe, nobody reads it now.
+        let head = unsafe { &mut *(pipe.ptr() as *mut gripforge_contracts::table_head::TableHead) };
+        head.contract ^= 1;
+        assert!(
+            !pipe.writer().push(rec(1)),
+            "refused at bind: every push ignored"
+        );
+        assert_eq!(pipe.reader().drain(|_, _| {}), Drained::default());
+    }
+
+    #[test]
+    fn a_wider_writer_is_read_at_its_stride() {
+        // A newer writer whose records are 8 bytes longer: the same pipe read at the stride its TableHead announces.
+        let pipe = PipeMem::new(16, 0);
+        // SAFETY: the TableHead of a live pipe, nobody reads it now; 16 slots of the wider stride fit (32 of 32 bytes).
+        let head = unsafe { &mut *(pipe.ptr() as *mut gripforge_contracts::table_head::TableHead) };
+        head.stride += 8;
+        head.slots = 8;
+        let stride = head.stride as usize;
+        let w = pipe.writer();
+        for i in 0..5 {
+            assert!(w.push(rec(i)));
+        }
+        let mut got = Vec::new();
+        pipe.reader()
+            .drain(|a, b| got.extend(a.iter().chain(b).copied()));
+        assert_eq!(got, (0..5).map(rec).collect::<Vec<_>>());
+        // SAFETY: inside the pipe: the second record at the wider stride.
+        let second =
+            unsafe { &*((pipe.ptr() + pipe::HEAD_BYTES as usize + stride) as *const Record) };
+        assert_eq!(*second, rec(1));
     }
 
     #[test]

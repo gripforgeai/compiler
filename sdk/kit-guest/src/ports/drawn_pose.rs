@@ -1,5 +1,5 @@
-//! The drawn pose of an entity, read in place at the tick (`kithost.scene@1.1` `watch_pose`, layout: gripforge-abi
-//! `ports::drawn`): a kit watches an entity once, then reads at every tick the pose the last frame drew — from the
+//! The drawn pose of an entity, read in place at the tick (`kithost.scene@1.1` `watch_pose`, contract
+//! `abi.scene.drawn`: core/abi/contracts/abi.scene.drawn.json): a kit watches an entity once, then reads at every tick the pose the last frame drew — from the
 //! zone where the render side wrote it, no call, nothing copied. Who uses it: a kit that moves or aims relative to
 //! what is on screen (the walking character reads the heading of the camera it is given).
 
@@ -7,13 +7,15 @@ use super::codec::scene_fn as f;
 use super::{args, ask, SceneProxy};
 use crate::zone::{zone_read_f64, zone_read_u64};
 pub use gripforge_abi::ports::drawn::{CAMERA, ENTITY, OBJECT};
-use gripforge_abi::ports::drawn::{FRAME, POSITION, ROTATION};
+use gripforge_contracts::abi_scene_drawn::{at as field, SPEC};
 
-/// A watched entity: where its record is in the zone. Read with [`DrawnPoseView::read`] at any tick; given back
-/// with [`SceneProxy::unwatch_pose`].
+/// A watched entity: where its block is in the zone, and where its row begins (bound once at the watch). Read with
+/// [`DrawnPoseView::read`] at any tick; given back with [`SceneProxy::unwatch_pose`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DrawnPoseView {
+    /// The block (`TableHead`, then the row), what `watch_pose` answered.
     pub at: u32,
+    row: u32,
 }
 
 /// The pose as one frame drew it: world space of the kits (metres, right-handed, +Y up).
@@ -29,10 +31,10 @@ pub struct DrawnPose {
 impl DrawnPoseView {
     /// The pose of the last frame that drew the entity; `None` before the first.
     pub fn read(&self) -> Option<DrawnPose> {
-        let frame = zone_read_u64(self.at + FRAME);
+        let frame = zone_read_u64(self.row + field::FRAME as u32);
         (frame != 0).then(|| {
-            let v = |i: u32| zone_read_f64(self.at + POSITION + 8 * i);
-            let r = |i: u32| zone_read_f64(self.at + ROTATION + 8 * i);
+            let v = |i: u32| zone_read_f64(self.row + field::POSITION as u32 + 8 * i);
+            let r = |i: u32| zone_read_f64(self.row + field::ROTATION as u32 + 8 * i);
             DrawnPose {
                 frame,
                 position: [v(0), v(1), v(2)],
@@ -76,7 +78,17 @@ impl SceneProxy {
             }),
             |r| r.u32(),
         );
-        (at != 0).then_some(DrawnPoseView { at })
+        if at == 0 {
+            return None;
+        }
+        // Bound once: a block of another contract, or of a writer that lays out fewer fields, is given back.
+        match super::zone_table::bind(&SPEC, at) {
+            Some(row) => Some(DrawnPoseView { at, row }),
+            None => {
+                self.unwatch_pose(DrawnPoseView { at, row: at });
+                None
+            }
+        }
     }
     /// One watcher less; the record is freed with its last watcher.
     pub fn unwatch_pose(&self, view: DrawnPoseView) -> bool {

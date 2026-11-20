@@ -25,9 +25,9 @@
   `kit.api.json` of the kits at the same commit. The accessor of each kit (`kits/<kit>/access/rust/`) is written from that
   frozen `kit.api.json` by the generator of the kits SDK (`tools/kit-api/langs/rust_facade.mjs`, branch
   `feat/kit-accessors-published`), as the kit's package ships it.
-- `sdk/` (the public part of the kits SDK: `abi/`, `kit-guest/`, `kit-access/` and `rust-toolchain.toml`) is copied by
-  `tools/sync-sdk` from `gripforgeai/module-kits` (`core/abi`, `core/kit-guest`, `core/kit-access`,
-  `rust-toolchain.toml`) at the commit of `sdk/sdk.json` (`e6d744cb9160f723f0936f0e4880a3b55265ac86` at this writing), unchanged but for
+- `sdk/` (the public part of the kits SDK: `abi/`, `kit-guest/`, `kit-access/`, `contracts/` and `rust-toolchain.toml`) is copied by
+  `tools/sync-sdk` from `gripforgeai/module-kits` (`core/abi`, `core/kit-guest`, `core/kit-access`, `core/contracts`,
+  `rust-toolchain.toml`) at the commit of `sdk/sdk.json` (`67a42985d32fc477b34069a9842a7a987eee4a72` at this writing), unchanged but for
   `kit-access/Cargo.toml`, which loses its `kithost` feature (the kit host's side, `gripforge-kit-api`, stays in the
   kits repository). `sdk/Cargo.toml` (their workspace), `sdk/README.md` and `sdk/sdk.json` are this repository's own.
   `tools/sync-sdk <module-kits checkout> --check` says whether `sdk/` is still exactly that copy.

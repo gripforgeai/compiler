@@ -404,20 +404,12 @@ fn invoke_scalar(
     method: &str,
     lent: &[gripforge_abi::fast::Scalar],
 ) -> Option<(u32, gripforge_abi::fast::Scalar)> {
-    use gripforge_abi::fast::{Scalar, ServiceCall};
+    use gripforge_abi::fast::ServiceCall;
     // From an open call to `svc_end` the provider's `Kx` runs.
     let (entry, ctx) = svc_open(cap, provider)?;
-    let mut call = ServiceCall {
-        ctx,
-        capability: capability.as_ptr(),
-        capability_len: capability.len(),
-        method: method.as_ptr(),
-        method_len: method.len(),
-        // The provider reads no more than `count`.
-        args: lent.as_ptr(),
-        count: lent.len(),
-        out: Scalar::NULL,
-    };
+    // The provider reads no more than `count` arguments; addresses are u64 on every target (abi.fast.service).
+    let mut call = ServiceCall::new(capability.as_bytes(), method.as_bytes(), lent);
+    call.ctx = ctx as usize as u64;
     // SAFETY: the provider's entry of this exact type; it reads `call` and what it lends in place, and gives its
     // answer in `call.out`.
     let status = unsafe {
@@ -433,7 +425,7 @@ fn invoke_scalar(
 /// entry, no argument lent, no method run, no answer.
 #[cfg(all(feature = "entry-probe", feature = "common-memory"))]
 pub fn probe(n: u64) {
-    use gripforge_abi::fast::{Scalar, ServiceCall, PROBE_COUNT};
+    use gripforge_abi::fast::{ServiceCall, PROBE_COUNT};
     let Some(l) = LINKS.with(|v| v.borrow().iter().find(|l| l.provider.get() >= 2).copied()) else {
         return;
     };
@@ -444,16 +436,9 @@ pub fn probe(n: u64) {
             let Some((entry, ctx)) = svc_open(cap, provider) else {
                 return;
             };
-            let mut call = ServiceCall {
-                ctx,
-                capability: l.capability.as_ptr(),
-                capability_len: l.capability.len(),
-                method: l.capability.as_ptr(),
-                method_len: 0,
-                args: std::ptr::null(),
-                count: PROBE_COUNT,
-                out: Scalar::NULL,
-            };
+            let mut call = ServiceCall::new(l.capability.as_bytes(), &[], &[]);
+            call.ctx = ctx as usize as u64;
+            call.count = PROBE_COUNT;
             std::hint::black_box(entry(&mut call));
             core::svc_end();
         }
@@ -485,7 +470,7 @@ pub unsafe extern "C" fn serve_scalar(call: *mut gripforge_abi::fast::ServiceCal
     use gripforge_abi::fast::{Scalar, MAX_ARGS};
     use std::mem::{ManuallyDrop, MaybeUninit};
     let c = &mut *call;
-    let ctx: Ctx = (*c.ctx).into();
+    let ctx: Ctx = (*c.ctx()).into();
     #[cfg(feature = "entry-probe")]
     if c.count == gripforge_abi::fast::PROBE_COUNT {
         // Measures only: the provider entered (its instance, `Host::enter`), no method run.
@@ -502,10 +487,14 @@ pub unsafe extern "C" fn serve_scalar(call: *mut gripforge_abi::fast::ServiceCal
         }
     };
     let (cap, method) = (
-        text(c.capability, c.capability_len),
-        text(c.method, c.method_len),
+        text(
+            c.capability as usize as *const u8,
+            c.capability_len as usize,
+        ),
+        text(c.method as usize as *const u8, c.method_len as usize),
     );
-    let count = c.count.min(MAX_ARGS);
+    let count = (c.count as usize).min(MAX_ARGS);
+    let lent = c.args as usize as *const Scalar;
     // The module by address (kept alive by `MODULE`): no count touched; the instance: as `serve`.
     let (Some(m), Some(ptr)) = (
         crate::host::module_ptr(),
@@ -531,7 +520,7 @@ pub unsafe extern "C" fn serve_scalar(call: *mut gripforge_abi::fast::ServiceCal
         use gripforge_abi::fast::{S_FALSE, S_FLOAT, S_INT, S_NULL, S_STR, S_TRUE};
         let mut typed = [Arg::Null; MAX_ARGS];
         let all = (0..count).all(|i| {
-            let a = &*c.args.add(i);
+            let a = &*lent.add(i);
             typed[i] = match a.kind {
                 S_NULL => Arg::Null,
                 S_FALSE => Arg::Bool(false),
@@ -563,7 +552,7 @@ pub unsafe extern "C" fn serve_scalar(call: *mut gripforge_abi::fast::ServiceCal
     // Bit `i`: argument `i` was lent as a block and copied here — this module's value, dropped after the call.
     let mut copied = 0u32;
     for (i, slot) in args.iter_mut().enumerate().take(count) {
-        let a = &*c.args.add(i);
+        let a = &*lent.add(i);
         slot.write(match a.copied() {
             Some(v) => {
                 copied |= 1 << i;

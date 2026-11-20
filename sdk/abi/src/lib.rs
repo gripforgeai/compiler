@@ -24,7 +24,11 @@
 
 use serde_json::{Map, Number, Value as Json};
 /// The contract version of this crate (`major << 16 | minor`).
-pub const ABI: u32 = 1 << 16;
+pub const ABI: u32 = ABI_DEV;
+/// The value of every ABI number of the core during development (docs/decisions/2026-11-20-abi-dev.md): a binary of
+/// the head answers it and a host of the head accepts only it. The real number is written at the tag by
+/// tools/publish/abi-stamp.mjs (core/abi/abi-versions.json); no PR raises a number.
+pub const ABI_DEV: u32 = u32::MAX;
 
 /// The name the core module is declared under.
 pub const CORE_MODULE: &str = "kithost.core";
@@ -53,11 +57,18 @@ pub const KIT: Iface = Iface {
 };
 
 ifaces! {
+    // History of kithost.world, the value unchanged (docs/decisions/versions-dev.md: the number is given at the tag):
+    // - #1766: play_anim_once 0x32, play_anim_once_layered 0x34, action_movement 0x35, set_action_layers 0x36 and
+    //   action_layer_movement 0x38 retired (the layers, masks and fades of an action are core.animation's, the scale
+    //   of the move core.locomotion's; nothing called them). Recompile the player and the kit modules.
+    // - #1766: anim_override 0x30, set_anim 0x31, cancel_anim 0x33 and the direct link w_set_anim retired (a clip by
+    //   name in `model.anim`: every clip the player draws is a weight of core.animation's block; nothing called them;
+    //   the native link table loses a slot). Recompile the player and every kit module.
     WORLD = "kithost.world" @ "1.8.0", 1;
     STATE = "kithost.state" @ "2.0.0", 2;
     // Retired, never reused: 3 was kithost.zones@1 (the kit world.zones, issue #1206), 4 was kithost.objectives@1
     // (the missions: the story.quest kit's).
-    PHYSICS = "kithost.physics" @ "1.11.0", 5;
+    PHYSICS = "kithost.physics" @ "1.12.0", 5;
     SERVICES = "kithost.services" @ "1.7.0", 6;
     INPUT = "kithost.input" @ "2.0.0", 7;
     ASSETS = "kithost.assets" @ "1.0.0", 8;
@@ -68,15 +79,19 @@ ifaces! {
     SCENE = "kithost.scene" @ "1.4.0", 13;
 }
 
+/// The state of the actions written outside every tick: the host applies the bindings at each event (`zone::action_bindings` → `zone::action_state`).
+pub mod actions;
 pub mod alloc;
 /// The calls between modules (`gripforge:calls@1`): zone, headers, statuses, the module side (feature `guest`).
 pub mod calls;
+/// The contracts a module reads or writes and their check at load (docs/decisions/2026-11-20-abi-par-contrat.md §8).
+pub mod contract;
 /// The pure types of the kit ports (physics, the shape table, assets) and the physics link between threads.
 pub mod ports;
 /// The binary format of the frames (values and delta frames), shared by the host, the player and the network.
 pub mod wire;
 /// The structures of the contract and of the engine table as `repr(C)` types, generated (tools/kit-modules/structs.mjs).
-// Written by tools/kit-modules/structs.mjs and compared byte for byte (`--check`): kept as generated.
+// Written by tools/contracts/structs.mjs and compared byte for byte (`generate --check`): kept as generated.
 #[rustfmt::skip]
 pub mod engine_structs;
 pub mod events;
@@ -90,7 +105,12 @@ pub mod mem;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 pub mod near;
+pub mod ring;
+/// The roles the core calls in place of kit names (docs/design/noyau-sans-noms-de-kits.md).
+pub mod roles;
 pub mod rows;
+/// The orientation of a pose: a quaternion, the cap computed from it (docs/design/pose-quaternion.md).
+pub mod turn;
 pub mod zone;
 pub use fns_world::{services, state, world};
 

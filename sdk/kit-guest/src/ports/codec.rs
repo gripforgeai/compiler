@@ -9,8 +9,10 @@
 #![allow(dead_code)]
 
 use crate::ports::{
-    Answer, BodyDesc, BodyKind, BodyState, CharacterOptions, Contact, ContactEvent, JointDesc,
-    Quat, QueryFilter, RayHit, Shape, JOINT_WORDS, V3,
+    Answer, BodyDesc, BodyKind, BodyState, BuoyancyDesc, CharacterOptions, Contact, ContactEvent,
+    FluidDesc, JointDesc, Quat, QueryFilter, RayHit, Shape, VehicleDesc, BUOYANCY_HEAD_WORDS,
+    BUOYANCY_MAX_POINTS, BUOYANCY_POINT_WORDS, FLUID_HEAD_WORDS, FLUID_MAX_PATH, FLUID_MAX_WAVES,
+    JOINT_WORDS, V3, VEHICLE_HEAD_WORDS, VEHICLE_MAX_WHEELS, VEHICLE_WHEEL_WORDS, WAVE_WORDS,
 };
 use gripforge_abi::{Reader, Writer, ASSETS, INPUT, PHYSICS, PLATFORM, SCENE};
 
@@ -83,6 +85,10 @@ pub mod physics_fn {
     pub const SHAPES_VIEW: u32 = B | 55;
     // 1.11: hold or release one body (entity, mode u32) → bool.
     pub const HOLD_BODY: u32 = B | 56;
+    // 57-61 (the vehicles, what floats) and 0xf0-0xf1 (an order and a question of the bus) are gone (#1761): a kit
+    // writes these messages straight into the physics' box (docs/decisions/2026-11-19-canaux-directs.md).
+    // dev (numbered at the tag): the capabilities published () → string (JSON), the codes of the messages of a box.
+    pub const BUS_CAPABILITIES: u32 = B | 0xf2;
 }
 
 /// `kithost.input@2`: the neutral transport of the devices (the core holds no table of actions: core.input does).
@@ -120,12 +126,6 @@ pub mod platform_fn {
     pub const STORE_SET: u32 = B | 19;
     pub const STORE_REMOVE: u32 = B | 20;
     pub const STORE_KEYS: u32 = B | 21;
-    pub const AUDIO_START: u32 = B | 32;
-    pub const AUDIO_UPDATE: u32 = B | 33;
-    pub const AUDIO_STOP: u32 = B | 34;
-    pub const AUDIO_BUS: u32 = B | 35;
-    pub const AUDIO_RECORDED: u32 = B | 36;
-    pub const AUDIO_ACOUSTICS: u32 = B | 37;
     pub const DISPLAY_AVAILABLE: u32 = B | 48;
     pub const DISPLAY_NEEDS_GESTURE: u32 = B | 49;
     pub const DISPLAY_REQUEST: u32 = B | 50;
@@ -251,6 +251,10 @@ pub fn w_shape(w: &mut Writer, s: &Shape) {
             for i in indices {
                 w.u32(*i);
             }
+            // A hull's rounding after its streams.
+            if let Shape::Convex { border, .. } = s {
+                w.f64(*border);
+            }
         }
         Shape::HeightField {
             cols,
@@ -266,6 +270,17 @@ pub fn w_shape(w: &mut Writer, s: &Shape) {
         Shape::Plane { normal } => {
             w.u8(7);
             w_v3(w, *normal);
+        }
+        Shape::Cylinder { .. } | Shape::Cone { .. } => {
+            w.u8(s.code() as u8);
+            w_v3(w, s.numbers());
+        }
+        Shape::Triangle { points, border } => {
+            w.u8(10);
+            for p in points {
+                w.f32(*p);
+            }
+            w.f64(*border);
         }
     }
 }
@@ -290,7 +305,11 @@ pub fn r_shape(r: &mut Reader) -> R<Shape> {
             }
             match code {
                 3 => Shape::Mesh { vertices, indices },
-                4 => Shape::Convex { vertices, indices },
+                4 => Shape::Convex {
+                    vertices,
+                    indices,
+                    border: r.f64()?,
+                },
                 _ => Shape::Compound {
                     floats: vertices,
                     indices,
@@ -311,11 +330,22 @@ pub fn r_shape(r: &mut Reader) -> R<Shape> {
             }
         }
         7 => Shape::Plane { normal: r_v3(r)? },
+        code @ (8 | 9) => Shape::from_wire(code as u32, r_v3(r)?, &[], &[]),
+        10 => {
+            let mut points = [0.0f32; 9];
+            for p in &mut points {
+                *p = r.f32()?;
+            }
+            Shape::Triangle {
+                points,
+                border: r.f64()?,
+            }
+        }
         k => return Err(format!("kitcall: unknown shape {k}")),
     })
 }
 
-/// A joint: its [`JointDesc::words`] (17 f64).
+/// A joint: its [`JointDesc::words`] ([`JOINT_WORDS`] f64).
 pub fn w_joint(w: &mut Writer, j: &JointDesc) {
     for x in j.words() {
         w.f64(x);
@@ -327,6 +357,71 @@ pub fn r_joint(r: &mut Reader) -> R<JointDesc> {
         *x = r.f64()?;
     }
     JointDesc::of_words(&words).ok_or_else(|| "kitcall: unknown joint".into())
+}
+
+/// A vehicle: its [`VehicleDesc::words`], a u32 count first.
+pub fn w_vehicle(w: &mut Writer, d: &VehicleDesc) {
+    let words = d.words();
+    w.u32(words.len() as u32);
+    for x in words {
+        w.f64(x);
+    }
+}
+pub fn r_vehicle(r: &mut Reader) -> R<VehicleDesc> {
+    let n = r.u32()? as usize;
+    if n > VEHICLE_HEAD_WORDS + VEHICLE_MAX_WHEELS * VEHICLE_WHEEL_WORDS {
+        return Err("kitcall: a vehicle of too many words".into());
+    }
+    let words = (0..n).map(|_| r.f64()).collect::<R<Vec<f64>>>()?;
+    VehicleDesc::of_words(&words).ok_or_else(|| "kitcall: unknown vehicle".into())
+}
+/// A list of words, a u32 count first (a buoyancy, a fluid).
+/// The most words of one order or question of the bus (the link counts them in 16 bits).
+pub const BUS_MAX_WORDS: usize = 1024;
+
+fn w_counted(w: &mut Writer, words: &[f64]) {
+    w.u32(words.len() as u32);
+    for x in words {
+        w.f64(*x);
+    }
+}
+fn r_counted(r: &mut Reader, most: usize, what: &str) -> R<Vec<f64>> {
+    let n = r.u32()? as usize;
+    if n > most {
+        return Err(format!("kitcall: a {what} of too many words"));
+    }
+    (0..n).map(|_| r.f64()).collect()
+}
+/// A buoyancy: its [`BuoyancyDesc::words`], a u32 count first.
+pub fn w_buoyancy(w: &mut Writer, d: &BuoyancyDesc) {
+    w_counted(w, &d.words());
+}
+pub fn r_buoyancy(r: &mut Reader) -> R<BuoyancyDesc> {
+    let most = BUOYANCY_HEAD_WORDS + BUOYANCY_MAX_POINTS * BUOYANCY_POINT_WORDS;
+    let words = r_counted(r, most, "buoyancy")?;
+    BuoyancyDesc::of_words(&words).ok_or_else(|| "kitcall: unknown buoyancy".into())
+}
+/// A fluid source: its [`FluidDesc::words`], a u32 count first.
+pub fn w_fluid(w: &mut Writer, d: &FluidDesc) {
+    w_counted(w, &d.words());
+}
+pub fn r_fluid(r: &mut Reader) -> R<FluidDesc> {
+    let most = FLUID_HEAD_WORDS + FLUID_MAX_WAVES * WAVE_WORDS + 2 * FLUID_MAX_PATH;
+    let words = r_counted(r, most, "fluid")?;
+    FluidDesc::of_words(&words).ok_or_else(|| "kitcall: unknown fluid".into())
+}
+/// Fixed words: the commands of a vehicle, its state.
+pub fn w_words(w: &mut Writer, words: &[f64]) {
+    for x in words {
+        w.f64(*x);
+    }
+}
+pub fn r_words<const N: usize>(r: &mut Reader) -> R<[f64; N]> {
+    let mut out = [0.0; N];
+    for x in &mut out {
+        *x = r.f64()?;
+    }
+    Ok(out)
 }
 
 pub fn w_desc(w: &mut Writer, d: &BodyDesc) {

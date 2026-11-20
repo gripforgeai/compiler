@@ -16,6 +16,8 @@
 //!   the module fills it and marks it ready; the user reads it in place and frees it.
 //! - [`Triple`]: the state the module publishes (three buffers: the module writes one, the user reads one, the
 //!   third is the latest complete one). Neither side ever waits for the other; the user reads a consistent whole.
+//!   [`Quad`] adds a fourth: the user also keeps its previous publication, stable while it reads it (the physics'
+//!   published state, docs/decisions/2026-11-18-proprietaire-position.md).
 //!
 //! A module that wants its loop driven from JavaScript exposes `entry(link, now_ms) -> wait_ms` and the Worker calls
 //! it in a loop, sleeping `wait_ms` on the word [`Head::WAKE`] between two calls (`web/module-calls-worker.mjs`
@@ -51,12 +53,15 @@ pub const QUIT: u32 = 2;
 /// A single-producer single-consumer ring of records in shared memory. A record is a whole number of 8-byte words:
 /// `[u32 words][u32 kind]` then its payload; it never wraps (a record [`Ring::PAD`] fills the end when the next one
 /// does not fit there). Positions count words since the start and wrap at `u32`.
+///
+/// Laid as the contract of the block that holds it says (the physics link: `orders_*`, `events_*` of
+/// `abi.physics.link`, checked field by field in physics_link.rs): the address a u64 in wasm32 as natively.
 #[repr(C)]
 pub struct Ring {
-    pub buf: usize,
+    /// The address of its words.
+    pub buf: u64,
     /// Words; a power of two.
     pub cap: u32,
-    pub _pad: u32,
     /// Read position (the consumer's).
     pub head: AtomicU32,
     /// Write position (the producer's).
@@ -70,16 +75,15 @@ impl Ring {
     pub fn new(buf: *mut u64, cap: u32) -> Ring {
         debug_assert!(cap.is_power_of_two());
         Ring {
-            buf: buf as usize,
+            buf: buf as usize as u64,
             cap,
-            _pad: 0,
             head: AtomicU32::new(0),
             tail: AtomicU32::new(0),
         }
     }
 
     fn word(&self, pos: u32) -> *mut u64 {
-        (self.buf as *mut u64).wrapping_add((pos & (self.cap - 1)) as usize)
+        (self.buf as usize as *mut u64).wrapping_add((pos & (self.cap - 1)) as usize)
     }
 
     /// Writes one record of `words` words (header included) filled by `fill` (its slice starts after the header);
@@ -152,7 +156,13 @@ fn header(words: u32, kind: u32) -> u64 {
 
 // ─── the answers of the tickets ─────────────────────────────────────────────
 
-/// A record of [`Answers`]: an answer of the module, read in place.
+/// The rows of [`Answers`] (contract `abi.physics.answers`, core/abi/contracts/abi.physics.answers.json): one block,
+/// a `TableHead` then a row per ticket record, read and written at the stride the block announces.
+pub use gripforge_contracts::abi_physics_answers as answers;
+use gripforge_contracts::table_head::{Refused, TableHead, Why};
+
+/// A row of [`Answers`]: an answer of the module, read in place. Its layout is the contract's row (`answers::Row`,
+/// checked below field by field); it is its own type for the atomic state and the methods.
 #[repr(C)]
 pub struct AnswerRec {
     /// [`FREE`], [`ASKED`] or [`READY`].
@@ -162,15 +172,27 @@ pub struct AnswerRec {
     /// The kind of the question (the module's numbering).
     pub kind: u32,
     /// What the answer counts (found or not, the number of names).
-    pub count: u32,
+    pub found: u32,
     pub nums: [f64; 10],
     /// Names found, as the module's slot numbers; past [`AnswerRec::SLOTS`], the rest at `more` (`more_len`
     /// numbers the module allocated; the user frees them when it frees the record).
-    pub slots: [u32; AnswerRec::SLOTS],
-    pub more: usize,
+    pub first_slots: [u32; AnswerRec::SLOTS],
+    pub more: u64,
     pub more_len: u32,
     pub _pad: u32,
 }
+const _: () = {
+    use std::mem::{offset_of, size_of};
+    assert!(size_of::<AnswerRec>() == answers::STRIDE as usize);
+    assert!(offset_of!(AnswerRec, state) == answers::at::STATE);
+    assert!(offset_of!(AnswerRec, generation) == answers::at::GENERATION);
+    assert!(offset_of!(AnswerRec, kind) == answers::at::KIND);
+    assert!(offset_of!(AnswerRec, found) == answers::at::FOUND);
+    assert!(offset_of!(AnswerRec, nums) == answers::at::NUMS);
+    assert!(offset_of!(AnswerRec, first_slots) == answers::at::FIRST_SLOTS);
+    assert!(offset_of!(AnswerRec, more) == answers::at::MORE);
+    assert!(offset_of!(AnswerRec, more_len) == answers::at::MORE_LEN);
+};
 
 impl AnswerRec {
     pub const SLOTS: usize = 22;
@@ -180,10 +202,12 @@ pub const FREE: u32 = 0;
 pub const ASKED: u32 = 1;
 pub const READY: u32 = 2;
 
-/// A slab of answers: `cap` records at `recs`.
+/// A slab of answers: the `abi.physics.answers` block at `recs` (its `TableHead`, then `cap` rows). Laid as the
+/// `answers*` fields of `abi.physics.link` (checked in physics_link.rs).
 #[repr(C)]
 pub struct Answers {
-    pub recs: usize,
+    /// The address of the block (u64 in wasm32 as natively).
+    pub recs: u64,
     pub cap: u32,
     /// The user's search position (only the user touches it).
     pub cursor: AtomicU32,
@@ -201,7 +225,37 @@ impl Answers {
         reason = "the records live in memory shared between threads, reached through a raw pointer: the caller owns the record by its ticket (see # Safety)"
     )]
     pub unsafe fn rec(&self, i: u32) -> &mut AnswerRec {
-        &mut *(self.recs as *mut AnswerRec).add(i as usize)
+        let recs = self.recs as usize;
+        let h = &*(recs as *const TableHead);
+        &mut *((recs + h.head_bytes as usize + i as usize * h.stride as usize) as *mut AnswerRec)
+    }
+
+    /// A block of `cap` rows, zeroed (every row [`FREE`]), its `TableHead` written: the user's, freed with the link.
+    pub fn block(cap: u32) -> Box<[u64]> {
+        let mut b = vec![0u64; answers::bytes(cap).div_ceil(8)].into_boxed_slice();
+        // SAFETY: the block just allocated, aligned on 8, of the bytes of `cap` rows; nobody reads it yet.
+        unsafe {
+            answers::init(b.as_mut_ptr() as *mut u8, cap);
+            answers::publish(b.as_mut_ptr() as *mut u8, cap);
+        }
+        b
+    }
+
+    /// Checks once, when a side takes a link it did not make, that the block is of its contract and holds this
+    /// build's rows: they are then read and written in place. A refusal names the contract and what does not fit.
+    ///
+    /// # Safety
+    /// `recs` a block made by [`Answers::block`] of any build.
+    pub unsafe fn check(&self) -> Result<(), Refused> {
+        let h = TableHead::read(self.recs as usize as *const u8);
+        h.check(&answers::SPEC)?;
+        if (h.stride as usize) < std::mem::size_of::<AnswerRec>() {
+            return Err(Refused {
+                contract: answers::SPEC.name,
+                why: Why::Stride(h.stride),
+            });
+        }
+        Ok(())
     }
 
     /// Takes a free record for a question of `kind`: its ticket, or 0 when none is free.
@@ -219,7 +273,7 @@ impl Answers {
                     r.generation = 1;
                 }
                 r.kind = kind;
-                r.count = 0;
+                r.found = 0;
                 r.state.store(ASKED, Relaxed);
                 self.cursor.store((i + 1) % self.cap, Relaxed);
                 return r.generation << TICKET_RECORD_BITS | i;
@@ -270,7 +324,7 @@ impl Answers {
             // allocator every module of the memory shares.
             unsafe {
                 drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                    r.more as *mut u32,
+                    r.more as usize as *mut u32,
                     r.more_len as usize,
                 )))
             };
@@ -284,25 +338,27 @@ impl Answers {
 impl AnswerRec {
     /// The module's side: the names found (slot numbers), in the record and past it.
     pub fn set_slots(&mut self, found: &[u32]) {
-        self.count = found.len() as u32;
+        self.found = found.len() as u32;
         let here = found.len().min(AnswerRec::SLOTS);
-        self.slots[..here].copy_from_slice(&found[..here]);
+        self.first_slots[..here].copy_from_slice(&found[..here]);
         if found.len() > here {
             let rest: Box<[u32]> = found[here..].into();
             self.more_len = rest.len() as u32;
-            self.more = Box::into_raw(rest) as *mut u32 as usize;
+            self.more = Box::into_raw(rest) as *mut u32 as usize as u64;
         }
     }
     /// The user's side: the names found.
     pub fn slots_found(&self) -> impl Iterator<Item = u32> + '_ {
-        let here = (self.count as usize).min(AnswerRec::SLOTS);
+        let here = (self.found as usize).min(AnswerRec::SLOTS);
         // SAFETY: `more_len` numbers at `more` when it is set (`set_slots`).
         let rest: &[u32] = if self.more != 0 {
-            unsafe { std::slice::from_raw_parts(self.more as *const u32, self.more_len as usize) }
+            unsafe {
+                std::slice::from_raw_parts(self.more as usize as *const u32, self.more_len as usize)
+            }
         } else {
             &[]
         };
-        self.slots[..here]
+        self.first_slots[..here]
             .iter()
             .copied()
             .chain(rest.iter().copied())
@@ -368,6 +424,70 @@ impl Triple {
     }
 }
 
+/// Four buffers: the [`Triple`]'s three, and the reader's **previous** one, kept as it was while the reader holds the
+/// current one — two dated states read in place, never copied (docs/decisions/2026-11-18-proprietaire-position.md).
+/// The writer's side is the triple buffer's ([`Quad::back`], [`Quad::publish`]); at a latch, the reader's current
+/// buffer becomes its previous one and the previous one goes back to the writer. Laid as the `bufs`, `latest`,
+/// `back`, `front`, `prev` of `abi.physics.set` (checked in physics_link/published.rs): addresses as u64.
+#[repr(C)]
+pub struct Quad {
+    pub bufs: [u64; 4],
+    /// The latest index, and [`Triple::FRESH`] when the reader has not taken it.
+    pub latest: AtomicU32,
+    /// The writer's index (only the writer touches it).
+    pub back: AtomicU32,
+    /// The reader's current index, and its previous one (only the reader touches them).
+    pub front: AtomicU32,
+    pub prev: AtomicU32,
+}
+
+impl Quad {
+    pub fn new(bufs: [usize; 4]) -> Quad {
+        Quad {
+            bufs: bufs.map(|b| b as u64),
+            latest: AtomicU32::new(1),
+            back: AtomicU32::new(0),
+            front: AtomicU32::new(2),
+            prev: AtomicU32::new(3),
+        }
+    }
+
+    /// The writer's buffer.
+    pub fn back(&self) -> usize {
+        self.bufs[self.back.load(Relaxed) as usize] as usize
+    }
+
+    /// The writer: its buffer is complete.
+    pub fn publish(&self) {
+        let old = self
+            .latest
+            .swap(self.back.load(Relaxed) | Triple::FRESH, AcqRel);
+        self.back.store(old & 3, Relaxed);
+    }
+
+    /// The reader: takes the latest buffer when there is a newer one (its current one becomes its previous one, the
+    /// previous one goes to the writer); answers whether it did.
+    pub fn latch(&self) -> bool {
+        if self.latest.load(Acquire) & Triple::FRESH == 0 {
+            return false;
+        }
+        let old = self.latest.swap(self.prev.load(Relaxed), AcqRel);
+        self.prev.store(self.front.load(Relaxed), Relaxed);
+        self.front.store(old & 3, Relaxed);
+        true
+    }
+
+    /// The reader's current buffer.
+    pub fn front(&self) -> usize {
+        self.bufs[self.front.load(Relaxed) as usize] as usize
+    }
+
+    /// The reader's previous buffer (the one it held before its last latch), unchanged while it holds it.
+    pub fn prev(&self) -> usize {
+        self.bufs[self.prev.load(Relaxed) as usize] as usize
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,10 +520,40 @@ mod tests {
     }
 
     #[test]
-    fn a_ticket_answers_once_and_its_record_is_taken_again() {
-        let mut recs: Vec<AnswerRec> = (0..2).map(|_| unsafe { std::mem::zeroed() }).collect();
+    fn the_answers_are_read_at_the_stride_of_their_block_and_a_narrower_one_is_refused() {
+        // A writer with a field added at the end (stride + 8): accepted, every row read at its stride.
+        let wide = answers::STRIDE + 8;
+        let mut b = vec![0u64; (answers::HEAD_BYTES + 2 * wide).div_ceil(8) as usize];
+        let at = b.as_mut_ptr() as usize;
+        unsafe {
+            answers::init(at as *mut u8, 2);
+            (*(at as *mut TableHead)).stride = wide;
+        }
         let a = Answers {
-            recs: recs.as_mut_ptr() as usize,
+            recs: at as u64,
+            cap: 2,
+            cursor: AtomicU32::new(0),
+        };
+        unsafe {
+            assert!(a.check().is_ok());
+            let t = a.take(5);
+            assert_eq!(t & (ANSWERS_MAX - 1), 0);
+            let t = a.take(6);
+            a.to_fill(t).unwrap().nums[0] = 7.0;
+            let second = (at + answers::HEAD_BYTES as usize + wide as usize) as *const AnswerRec;
+            assert_eq!(((*second).kind, (*second).nums[0]), (6, 7.0));
+            // A row narrower than this build's (a field taken away): refused by name.
+            (*(at as *mut TableHead)).stride = answers::STRIDE - 8;
+            let e = a.check().unwrap_err();
+            assert_eq!(e.contract, "abi.physics.answers");
+        }
+    }
+
+    #[test]
+    fn a_ticket_answers_once_and_its_record_is_taken_again() {
+        let mut recs = Answers::block(2);
+        let a = Answers {
+            recs: recs.as_mut_ptr() as usize as u64,
             cap: 2,
             cursor: AtomicU32::new(0),
         };
@@ -423,6 +573,30 @@ mod tests {
             let (t2, t3) = (a.take(1), a.take(1));
             assert!(t2 != 0 && t3 != 0 && a.take(1) == 0, "two records");
             assert_ne!(t2, t, "a record taken again is another ticket");
+        }
+    }
+
+    #[test]
+    fn the_fourth_buffer_keeps_the_reader_s_previous_state_out_of_the_writer_s_reach() {
+        let q = Quad::new([10, 11, 12, 13]);
+        let first = q.back();
+        q.publish();
+        assert!(q.latch());
+        assert_eq!(q.front(), first);
+        for _ in 0..3 {
+            let next = q.back();
+            assert_ne!(next, q.front(), "never the reader's current buffer");
+            q.publish();
+            let (cur, before) = (q.front(), q.prev());
+            assert!(q.latch());
+            assert_eq!((q.front(), q.prev()), (next, cur));
+            assert_ne!(q.prev(), before);
+            // The writer goes on: neither of the reader's two buffers is ever handed to it.
+            for _ in 0..4 {
+                let w = q.back();
+                assert!(w != q.front() && w != q.prev());
+                q.publish();
+            }
         }
     }
 

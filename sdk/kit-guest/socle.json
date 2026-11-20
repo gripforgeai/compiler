@@ -105,7 +105,6 @@
   "w_has_tag",
   "w_scope_pop",
   "w_scope_push",
-  "w_set_anim",
   "w_transform",
   "zone_copy_in",
   "zone_copy_out",
@@ -353,79 +352,6 @@
       "name": "entries",
       "offset": 16,
       "size": 240
-     }
-    ]
-   },
-   {
-    "name": "ZoneInputHeader",
-    "id": 18,
-    "version": "1.0",
-    "size": 32,
-    "align": 8,
-    "fields": [
-     {
-      "name": "rev",
-      "offset": 0,
-      "size": 4
-     },
-     {
-      "name": "spec_rev",
-      "offset": 4,
-      "size": 4
-     },
-     {
-      "name": "glob_rev",
-      "offset": 8,
-      "size": 4
-     },
-     {
-      "name": "capacity",
-      "offset": 12,
-      "size": 4
-     },
-     {
-      "name": "reserved",
-      "offset": 16,
-      "size": 16
-     }
-    ]
-   },
-   {
-    "name": "ZoneInputRecord",
-    "id": 19,
-    "version": "1.0",
-    "size": 32,
-    "align": 8,
-    "fields": [
-     {
-      "name": "rev",
-      "offset": 0,
-      "size": 4
-     },
-     {
-      "name": "flags",
-      "offset": 4,
-      "size": 4
-     },
-     {
-      "name": "presses",
-      "offset": 8,
-      "size": 4
-     },
-     {
-      "name": "reserved",
-      "offset": 12,
-      "size": 4
-     },
-     {
-      "name": "axis",
-      "offset": 16,
-      "size": 8
-     },
-     {
-      "name": "axis_inf",
-      "offset": 24,
-      "size": 8
      }
     ]
    },

@@ -90,7 +90,7 @@ pub const PROBE_SVC: u32 = 1 << 28;
 /// core's, two calls to the core).
 pub const PROBE_ALLOC: u32 = 1 << 27;
 /// The `count` of a [`ServiceCall`] that enters the provider and runs no method (measures only, as above).
-pub const PROBE_COUNT: usize = usize::MAX;
+pub const PROBE_COUNT: u32 = u32::MAX;
 
 /// The kinds of a [`Scalar`].
 pub const S_NULL: u32 = 0;
@@ -330,19 +330,72 @@ impl Scalar {
 }
 
 /// A scalar service call, by address: the provider reads everything in place and writes its answer in `out`.
+///
+/// Its layout is the record contract `abi.fast.service` (core/abi/contracts/abi.fast.service.json, held in
+/// src/layout.rs): addresses are `u64` and lengths `u32` on every target, so the call is the same 72 bytes in wasm32
+/// and natively (until lot 5 it held pointers and `usize`: 56 bytes in wasm32, 80 natively).
 #[repr(C)]
 pub struct ServiceCall {
-    /// The context of the provider's instance, as a hook entry carries it (written by the core).
-    pub ctx: *const HookCtx,
-    pub capability: *const u8,
-    pub capability_len: usize,
-    pub method: *const u8,
-    pub method_len: usize,
-    /// `count` arguments (≤ [`MAX_ARGS`]), lent.
-    pub args: *const Scalar,
-    pub count: usize,
+    /// The address of the context of the provider's instance ([`HookCtx`]), as a hook entry carries it (written by
+    /// the core).
+    pub ctx: u64,
+    /// The address of the capability's name.
+    pub capability: u64,
+    pub capability_len: u32,
+    pub method_len: u32,
+    /// The address of the method's name.
+    pub method: u64,
+    /// The address of `count` arguments ([`Scalar`], ≤ [`MAX_ARGS`]), lent.
+    pub args: u64,
+    pub count: u32,
+    /// 0.
+    pub reserved: u32,
     /// The answer, given away: the value when the status is 0, else the text of the failure.
     pub out: Scalar,
+}
+
+impl ServiceCall {
+    /// A call of `method` of `capability` with `args`, its context not yet written (`ctx` 0) and its answer null.
+    pub fn new(capability: &[u8], method: &[u8], args: &[Scalar]) -> ServiceCall {
+        ServiceCall {
+            ctx: 0,
+            capability: capability.as_ptr() as usize as u64,
+            capability_len: capability.len() as u32,
+            method_len: method.len() as u32,
+            method: method.as_ptr() as usize as u64,
+            args: args.as_ptr() as usize as u64,
+            count: args.len() as u32,
+            reserved: 0,
+            out: Scalar::NULL,
+        }
+    }
+    /// The context of the provider (null before the core wrote it).
+    pub fn ctx(&self) -> *const HookCtx {
+        self.ctx as usize as *const HookCtx
+    }
+    /// The capability's name, its method's name and the arguments, read in place.
+    ///
+    /// # Safety
+    /// The addresses and lengths are those a caller of this memory wrote, valid for the call.
+    pub unsafe fn parts(&self) -> (&[u8], &[u8], &[Scalar]) {
+        let bytes = |at: u64, len: u32| {
+            if len == 0 {
+                &[][..]
+            } else {
+                core::slice::from_raw_parts(at as usize as *const u8, len as usize)
+            }
+        };
+        let args = if self.count == 0 {
+            &[][..]
+        } else {
+            core::slice::from_raw_parts(self.args as usize as *const Scalar, self.count as usize)
+        };
+        (
+            bytes(self.capability, self.capability_len),
+            bytes(self.method, self.method_len),
+            args,
+        )
+    }
 }
 
 /// The scalar service entry of a kit module of the common memory. Answers 0 (`out` is the value) or 1 (`out` is

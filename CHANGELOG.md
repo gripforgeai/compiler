@@ -2,6 +2,8 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The embedded SDK follows the ABI by contract** (module-kits#1865): `sdk/` is taken again from module-kits `67a42985` and gains `gripforge-contracts` (`tools/sync-sdk` copies `core/contracts`). A `game.main` built by the previous SDK had no section `gripforge.contracts` and the host refused it (`contract_missing`); the CI now builds the `--dev` module to wasm and checks the section.
+
 - **The game's code in the development mode** (decision of Damien, voie B of module-kits
   `docs/design/sources-du-jeu.md`): `gripforge-build --dev` writes `.build/dev/game`, the module of the game's code
   only (every hook, `scene_enter` and `scene_exit` included, to the module of the game; no `init_scene`: dev.builder

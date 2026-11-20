@@ -190,14 +190,16 @@ unsafe extern "C" fn view(which: u32) -> u64 {
 }
 
 /// `gfkit_native_load`, what `common_memory!` exports: keeps the host's table, runs the module's start on this thread,
-/// answers the entries. Null: the host speaks another major, or lays out the contract otherwise.
+/// answers the entries. Null: the host speaks another major or gives a table shorter than the fields this module
+/// reads (its `struct_bytes`, [`abi::HOST_TABLE_NEEDS`]). The layout of every structure that crosses is compared
+/// by the host before this runs, contract by contract (`gf_contracts`, [`crate::contracts::USES`]).
 ///
 /// # Safety
 /// `table` is the host's table, alive for the life of the process.
 pub unsafe fn load(table: *const HostTable, start: extern "C" fn()) -> *const KitTable {
     if table.is_null()
+        || !abi::covers((*table).struct_bytes, abi::HOST_TABLE_NEEDS)
         || (*table).abi >> 16 != abi::ABI >> 16
-        || (*table).layout != gripforge_abi::layout::probe()
     {
         return std::ptr::null();
     }
@@ -208,7 +210,7 @@ pub unsafe fn load(table: *const HostTable, start: extern "C" fn()) -> *const Ki
     static KIT: KitTable = KitTable {
         struct_bytes: std::mem::size_of::<KitTable>() as u32,
         abi: abi::ABI,
-        layout: gripforge_abi::layout::PROBE,
+        reserved: 0,
         enter,
         tick,
         svc,

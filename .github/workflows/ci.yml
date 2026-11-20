@@ -141,6 +141,22 @@ jobs:
           cargo build --target-dir "$RUNNER_TEMP/target"
           cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target"
           [ "$(sha256sum "$room/rules.rs")" = "$before" ]
+      - name: The game's code in development mode (--dev) carries its contracts (ABI by contract)
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -eu
+          room="$RUNNER_TEMP/room-dev"
+          cp -r "$EXAMPLE_ROOM" "$room"
+          cp tests/game-code/rules.rs "$room/rules.rs"
+          jq '. + { sources: ["rules.rs"] }' "$EXAMPLE_ROOM/project.gripforge" > "$room/project.gripforge"
+          target/debug/gripforge-build "$room" --dev --sdk "$GITHUB_WORKSPACE/sdk"
+          cd "$room/.build/dev/game"
+          cargo build --release --target wasm32-unknown-unknown --target-dir "$RUNNER_TEMP/target-dev"
+          wasm="$RUNNER_TEMP/target-dev/wasm32-unknown-unknown/release/gfkit_game_main.wasm"
+          # Without the section `gripforge.contracts` the host refuses the module (contract_missing): an SDK older than
+          # the ABI by contract (module-kits#1865) builds a game.main that cannot be loaded.
+          grep -qa 'gripforge.contracts' "$wasm"
       - name: The room on sdk/ by git (this repository at the tested commit), native and wasm
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
