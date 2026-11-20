@@ -47,7 +47,9 @@ fn every_case_of_the_kits_repository_resolves_as_its_reference_reader_does() {
                 project.to_string_lossy().into_owned(),
                 "--resolve".into(),
                 "--kits-path".into(),
-                root.join("examples/room/kits").to_string_lossy().into_owned(),
+                root.join("examples/room/kits")
+                    .to_string_lossy()
+                    .into_owned(),
             ],
             &mut |s| text.push_str(s),
             &mut |_| {},

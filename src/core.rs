@@ -219,7 +219,8 @@ pub fn resolve(req: &Json) -> Json {
         .unwrap_or_default();
     let reg = registry(&kits_of(req));
     let read = |p: &str| files.get(p).cloned();
-    let (resolved, resolve_issues) = gripforge_scene_format::include::resolve_project(&project, &read);
+    let (resolved, resolve_issues) =
+        gripforge_scene_format::include::resolve_project(&project, &read);
     let issues: Vec<Json> = project::validate_project(&project, &read, &reg)
         .iter()
         .map(Issue::to_json)
