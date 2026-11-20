@@ -12,9 +12,11 @@ use serde_json::{json, Map, Value as Json};
 use std::cell::RefCell;
 
 /// The keys of a project file (the `project` block of a game.json, plus `requires` and `run`); `$schema` is for the
-/// editors only (the path of gripforge.full.schema.json, docs/ecrire-un-projet.md), kept and never read.
+/// editors only (the path of gripforge.full.schema.json, docs/ecrire-un-projet.md), kept and never read; `sources`
+/// lists the Rust files of the game's code (crate::sources), compiled into game.main, not packed into the game.
 const PROJECT_KEYS: &[&str] = &[
     "$schema",
+    "sources",
     "id",
     "name",
     "requires",
@@ -82,6 +84,7 @@ fn validate_resolved(project: &Json, files: Files, reg: &Registry) -> Vec<Issue>
             .at("", "id"),
         );
     }
+    out.extend(crate::sources::check(project));
     let installed = installed_of(project);
     let reqs = requires::read(o.get("requires"), &mut out);
     out.extend(requires::check(&reqs, &installed));
@@ -372,6 +375,10 @@ pub fn pack_with(
         .as_object_mut()
         .and_then(|o| o.remove("run"))
         .unwrap_or(json!({}));
+    // The game's code is compiled (game.main), never read at run time.
+    if let Some(o) = p.as_object_mut() {
+        o.remove(crate::sources::KEY);
+    }
     if p.get("schema").is_none() {
         p["schema"] = json!("gripforge.gameproject/1");
     }

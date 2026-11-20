@@ -9,12 +9,16 @@
 //!   game/kit.api.json          the module's card (id game.main, its version), what the hosts read to load it
 //!   game/module.json           its implementations (native library, wasm), like a kit's logic/module.json
 //!   game/src/lib.rs            the exports of a kit module (export_kit!, common_memory!)
-//!   game/src/module.rs         the module: enters a scene by calling its init_scene, gives it back at the exit (was
-//!                              index.rs until 0.1.1: index.rs is now the creator's plugin, see crate::app_gen)
+//!   game/src/module.rs         the module: enters a scene by calling its init_scene, gives it back at the exit; with
+//!                              the game's code (`sources` of the project, crate::sources), hands every hook to the
+//!                              module of the game it declares
 //!   game/src/init_scene/...    written by the generator (one init_scene.rs per scene), as is
+//!
+//! The files of `sources` are never copied: `lib.rs` takes each by path (`#[path]`), `crate::<name of the file>`.
 
 use crate::access::{relative, Access};
 use crate::json::pretty;
+use crate::sources::GameCode;
 use serde_json::{json, Value as Json};
 use std::path::{Path, PathBuf};
 
@@ -190,8 +194,23 @@ strip = true
     )
 }
 
-/// `lib.rs`: the exports every kit module has.
-pub fn lib_rs() -> String {
+/// `lib.rs`: the exports every kit module has, and the files of the game's code by path (`src`: the folder of lib.rs).
+pub fn lib_rs(src: &Path, code: Option<&GameCode>) -> String {
+    let sources: String = code
+        .map(|c| {
+            let mut out = String::from(
+                "\n// The game's code: the files project.gripforge declares in `sources`, taken by path (never copied, never written).\n",
+            );
+            for f in &c.sources {
+                out.push_str(&format!(
+                    "#[path = {}]\npub mod {};\n",
+                    Json::String(relative(src, &f.file).to_string_lossy().replace('\\', "/")),
+                    f.module
+                ));
+            }
+            out
+        })
+        .unwrap_or_default();
     format!(
         r#"{HEADER}
 //! The game's own module ({GAME_MODULE}) as a kit module built native and wasm on core/kit-guest.
@@ -200,15 +219,19 @@ use gripforge_kit_guest::*;
 
 pub mod module;
 pub mod init_scene;
-
+{sources}
 export_kit!(module::module, env!("CARGO_PKG_VERSION"));
 common_memory!();
 "#
     )
 }
 
-/// `module.rs`: enters each scene through the generated `init_scene` and gives back what it posed at the exit.
-pub fn module_rs(entry: &str) -> String {
+/// `module.rs`: enters each scene through the generated `init_scene` and gives back what it posed at the exit; with the
+/// game's code, the module of the game it declares gets every hook ([`delegated_module_rs`]).
+pub fn module_rs(entry: &str, code: Option<&GameCode>) -> String {
+    if let Some(c) = code {
+        return delegated_module_rs(entry, c);
+    }
     format!(
         r#"{HEADER}
 //! The game's module: when game.engine enters a scene, its `init_scene` poses it (nodes, lights, cameras, the kits'
@@ -264,6 +287,135 @@ impl KitModule for Game {{
     )
 }
 
+/// `module.rs` with the game's code: `game.main` poses each scene as without it, and hands every hook of the kit module
+/// contract to the module of the game the sources declare (a unit struct, stateless like every kit module: what it
+/// keeps lives in the host, `Kx::put` / the state of game.engine). Its `scene_enter` runs once the scene is posed, its
+/// `scene_exit` before it is given back. When the host calls each hook: docs/sources.md.
+pub fn delegated_module_rs(entry: &str, c: &GameCode) -> String {
+    format!(
+        r#"{HEADER}
+//! The game's module: when game.engine enters a scene, its `init_scene` poses it (nodes, lights, cameras, the kits'
+//! elements) through the kits' accessors, then the game's code gets the scene; when it leaves it, the game's code gets
+//! it first, then what was posed is given back in the order dev.builder gives it back. Every other hook of the kit
+//! module contract goes to the module of the game, {path} (declared in `sources` of project.gripforge).
+
+use crate::host::{{KitModule, Kx}};
+use gripforge_kit_access::{{Json, Posed}};
+use gripforge_kit_guest::typed::{{Arg, Ret}};
+use gripforge_kit_guest::{{GameEvent, Issue}};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+thread_local! {{
+    /// What each entered scene posed, in the order the scenes were entered.
+    static POSED: RefCell<Vec<Posed>> = const {{ RefCell::new(Vec::new()) }};
+}}
+
+/// The module of the game, from the sources.
+const GAME: {path} = {path};
+
+/// The module.
+pub struct Game;
+
+/// The module as the host takes it.
+pub fn module() -> Rc<dyn KitModule> {{
+    Rc::new(Game)
+}}
+
+impl KitModule for Game {{
+    fn id(&self) -> &'static str {{
+        {id}
+    }}
+    fn services(&self) -> &'static [&'static str] {{
+        GAME.services()
+    }}
+    fn services_for(&self, config: &Json) -> &'static [&'static str] {{
+        GAME.services_for(config)
+    }}
+    fn validate(&self, project: &Json, config: &Json) -> Vec<Issue> {{
+        GAME.validate(project, config)
+    }}
+    fn setup(&self, kx: &mut Kx) {{
+        GAME.setup(kx)
+    }}
+    fn ready(&self, kx: &mut Kx) {{
+        GAME.ready(kx)
+    }}
+    fn update(&self, kx: &mut Kx, dt: f64) {{
+        GAME.update(kx, dt)
+    }}
+    fn late_update(&self, kx: &mut Kx, dt: f64) {{
+        GAME.late_update(kx, dt)
+    }}
+    fn update_idle(&self, kx: &mut Kx, dt: f64) {{
+        GAME.update_idle(kx, dt)
+    }}
+    fn teardown(&self, kx: &mut Kx) {{
+        GAME.teardown(kx)
+    }}
+    fn on_event(&self, kx: &mut Kx, tag: &str, ev: &GameEvent) {{
+        GAME.on_event(kx, tag, ev)
+    }}
+    fn on_timer(&self, kx: &mut Kx, tag: &str, data: &Json) {{
+        GAME.on_timer(kx, tag, data)
+    }}
+    fn action(&self, kx: &mut Kx, verb: &str, args: &Json, ev: Option<&GameEvent>) {{
+        GAME.action(kx, verb, args, ev)
+    }}
+    fn condition(&self, kx: &mut Kx, verb: &str, args: &Json, ev: Option<&GameEvent>) -> bool {{
+        GAME.condition(kx, verb, args, ev)
+    }}
+    fn spawn(&self, kx: &mut Kx, spec: &Json) -> Option<String> {{
+        GAME.spawn(kx, spec)
+    }}
+    fn call(&self, kx: &mut Kx, capability: &str, method: &str, args: &[Json]) -> Result<Json, String> {{
+        GAME.call(kx, capability, method, args)
+    }}
+    fn call_typed(&self, kx: &mut Kx, capability: &str, method: &str, args: &[Arg]) -> Option<Result<Ret, String>> {{
+        GAME.call_typed(kx, capability, method, args)
+    }}
+    fn save(&self, kx: &mut Kx) -> Option<Json> {{
+        GAME.save(kx)
+    }}
+    fn load(&self, kx: &mut Kx, data: &Json) {{
+        GAME.load(kx, data)
+    }}
+    fn component(&self, kx: &mut Kx, name: &str, entity: &str, value: &Json, instance: &Json) {{
+        GAME.component(kx, name, entity, value, instance)
+    }}
+    fn on_var(&self, kx: &mut Kx, tag: &str, path: &str, value: Option<&Json>, prev: Option<&Json>) {{
+        GAME.on_var(kx, tag, path, value, prev)
+    }}
+    fn callback(&self, kx: &mut Kx, name: &str, args: &[Json]) -> Result<Json, String> {{
+        GAME.callback(kx, name, args)
+    }}
+
+    fn scene_enter(&self, kx: &mut Kx, scene: &Json) {{
+        if let Some(posed) = crate::{entry}(kx, scene["id"].as_str().unwrap_or("")) {{
+            POSED.with(|p| p.borrow_mut().push(posed));
+        }}
+        GAME.scene_enter(kx, scene)
+    }}
+
+    fn scene_exit(&self, kx: &mut Kx, scene: &Json) {{
+        GAME.scene_exit(kx, scene);
+        let id = scene["id"].as_str().unwrap_or("");
+        let posed = POSED.with(|p| {{
+            let mut p = p.borrow_mut();
+            let at = p.iter().rposition(|x| x.scene == id)?;
+            Some(p.remove(at))
+        }});
+        if let Some(posed) = posed {{
+            posed.leave(kx);
+        }}
+    }}
+}}
+"#,
+        id = Json::String(GAME_MODULE.into()),
+        path = c.entry_path(),
+    )
+}
+
 /// The card of the module, what the hosts read to load it beside the kits.
 pub fn kit_api(version: &str) -> Json {
     json!({
@@ -288,22 +440,33 @@ fn write(file: &Path, text: &str) -> std::io::Result<()> {
     std::fs::write(file, text)
 }
 
-/// Writes the crate. `generated`: the generator's files (`(path under src/, text)`). The folder `src/init_scene` is
-/// emptied first: a scene removed from the project leaves no file. Answers the files written.
+/// The code of the crate: the generator's files (`(path under src/, text)`), the function each scene module exports,
+/// and the game's code the project declares (`sources`).
+#[derive(Debug, Clone, Copy)]
+pub struct Code<'a> {
+    pub generated: &'a [(String, String)],
+    pub entry: &'a str,
+    pub game: Option<&'a GameCode>,
+}
+
+/// Writes the crate. The folder `src/init_scene` is emptied first: a scene removed from the project leaves no file.
+/// Answers the files written.
 pub fn write_crate(
     dir: &Path,
     project_id: &str,
     version: &str,
     sdk: &Sdk,
     accessors: &[Access],
-    generated: &[(String, String)],
-    entry: &str,
+    code: Code,
 ) -> std::io::Result<Vec<String>> {
+    let Code {
+        generated,
+        entry,
+        game: code,
+    } = code;
     std::fs::create_dir_all(dir)?;
     let _ = std::fs::remove_dir_all(dir.join("src/init_scene"));
     let _ = std::fs::remove_file(dir.join("src/init_scene.rs"));
-    // Written by 0.1.1 and before (now src/module.rs): a crate written again leaves no stale module.
-    let _ = std::fs::remove_file(dir.join("src/index.rs"));
     write(
         &dir.join("Cargo.toml"),
         &cargo_toml(project_id, version, sdk, &access_deps(dir, accessors)),
@@ -319,8 +482,9 @@ pub fn write_crate(
         &dir.join("module.json"),
         &format!("{}\n", pretty(&module_json())),
     )?;
-    write(&dir.join("src/lib.rs"), &lib_rs())?;
-    write(&dir.join("src/module.rs"), &module_rs(entry))?;
+    std::fs::create_dir_all(dir.join("src"))?;
+    write(&dir.join("src/lib.rs"), &lib_rs(&dir.join("src"), code))?;
+    write(&dir.join("src/module.rs"), &module_rs(entry, code))?;
     let mut files: Vec<String> = [
         "Cargo.toml",
         "kit.api.json",

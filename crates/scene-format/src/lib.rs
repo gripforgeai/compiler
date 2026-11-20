@@ -39,6 +39,7 @@ pub mod place;
 pub mod project;
 pub mod registry;
 pub mod requires;
+pub mod sources;
 pub mod states;
 pub mod tree;
 pub mod writeback;
