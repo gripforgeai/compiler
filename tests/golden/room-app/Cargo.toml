@@ -15,11 +15,16 @@ name = "dev-builder-room"
 path = "src/main.rs"
 
 [dependencies]
-# A 3D game with its UI, in a window (no audio: the kits' audio goes through the engine's native player).
-bevy = { version = "0.20", default-features = false, features = ["3d", "ui"] }
+# A 3D game with its UI, in a window: Bevy's 3d and ui profiles without audio (the kits' audio goes through the
+# engine's native player) and without Wayland, which needs its system library to build (feature `wayland` below).
+bevy = { version = "0.20", default-features = false, features = ["default_app", "std", "bevy_gilrs", "bevy_winit", "bevy_clipboard", "default_font", "multi_threaded", "x11", "custom_cursor", "sysinfo_plugin", "3d_bevy_render", "scene", "picking", "ui_api", "ui_bevy_render", "bevy_ui_widgets"] }
 # The kits in a Bevy game (KitsPlugin, KitsSet, KitsWorldExt), the simple shapes and the mouse of the window.
 gfkits-bevy-native = { git = "https://github.com/gripforgeai/module-kits", rev = "e6d744cb9160f723f0936f0e4880a3b55265ac86", features = ["shapes", "pointer"] }
 serde_json = "1"
+
+[features]
+# A window on Wayland too (needs libwayland-client to build).
+wayland = ["bevy/wayland"]
 
 # Its own workspace: never a member of the game's folder.
 [workspace]

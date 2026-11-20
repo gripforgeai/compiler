@@ -30,6 +30,25 @@ pub const GATEWAY_DIR: &str = "gateways/gfkits-bevy-native/native";
 pub const GATEWAY_GIT: &str = "https://github.com/gripforgeai/module-kits";
 /// The Bevy the gateway is built on (its workspace pins `=0.20.1`; a compatible requirement unifies with it).
 pub const BEVY: &str = "0.20";
+/// Its features: the `3d` and `ui` profiles of Bevy 0.20 written out, without `audio` and without `wayland`.
+pub const BEVY_FEATURES: &[&str] = &[
+    "default_app",
+    "std",
+    "bevy_gilrs",
+    "bevy_winit",
+    "bevy_clipboard",
+    "default_font",
+    "multi_threaded",
+    "x11",
+    "custom_cursor",
+    "sysinfo_plugin",
+    "3d_bevy_render",
+    "scene",
+    "picking",
+    "ui_api",
+    "ui_bevy_render",
+    "bevy_ui_widgets",
+];
 /// The inline module that mounts `src/` (its modules re-exported at the root of the crate).
 const SRC_MODULE: &str = "game_src";
 /// The kits repository revision the public SDK was copied from (`sdk/sdk.json`): the gateway's default revision.
@@ -354,11 +373,16 @@ name = "{name}"
 path = "src/main.rs"
 
 [dependencies]
-# A 3D game with its UI, in a window (no audio: the kits' audio goes through the engine's native player).
-bevy = {{ version = "{BEVY}", default-features = false, features = ["3d", "ui"] }}
+# A 3D game with its UI, in a window: Bevy's 3d and ui profiles without audio (the kits' audio goes through the
+# engine's native player) and without Wayland, which needs its system library to build (feature `wayland` below).
+bevy = {{ version = "{BEVY}", default-features = false, features = [{features}] }}
 # The kits in a Bevy game (KitsPlugin, KitsSet, KitsWorldExt), the simple shapes and the mouse of the window.
 {gw}
 serde_json = "1"
+
+[features]
+# A window on Wayland too (needs libwayland-client to build).
+wayland = ["bevy/wayland"]
 {patch}
 # Its own workspace: never a member of the game's folder.
 [workspace]
@@ -375,6 +399,11 @@ strip = true
         name = project_id.replace('_', "-"),
         lib = lib_name(project_id),
         version = Json::String(version.into()),
+        features = BEVY_FEATURES
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(", "),
     );
     (text, by_git)
 }
