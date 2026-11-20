@@ -9,6 +9,10 @@
   `kits/core_physics/kit.api.json`), and the parity cases with their expected resolution (`tools/parity/cases` of the
   kits repository → `tests/parity`). `tools/sync-scene-format <module-kits checkout> --check` says whether they are still
   exactly that copy; the CI of the kits repository checks it against this repository's `main` (tools/parity there).
+  Ahead of the next copy (compiler PR « solid-suit-le-dessin »): `src/lower.rs`, `src/registry.rs`, `tests/lower.rs` and
+  the fixture `kits/core_physics/kit.api.json` carry the change of module-kits branch `feat/solid-suit-le-dessin`
+  (`parentCollision`: collision nodes replace the parent's solid), applied as its diff; the next `tools/sync-scene-format`
+  once it is merged there gives the same files.
   History: first moved from the kits repository at `0c88723ab65b96093b0c5d0a9458855c187e6fa2`, partly taken again at
   `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` and `108031bf9f6ca9a5ea811a55058c3600b2c5227d` and `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema`) with local changes; the
   local changes and the `gfscene` tool are gone since the copy became whole again (the kits repository retired
