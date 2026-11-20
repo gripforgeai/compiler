@@ -8,6 +8,10 @@
     "id"
   ],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "For editors only: the path of the schema the file follows (gripforge.full.schema.json of the kits package); kept as written, never read by a kit."
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$",

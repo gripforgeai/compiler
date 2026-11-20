@@ -18,8 +18,8 @@ const NODE_KEYS: &[&str] = &[
     "name", "id", "type", "position", "rotation", "scale", "visible", "children", "kits", "on",
     "bind", "entity", "reflect",
 ];
-/// The keys of a scene file.
-const FILE_KEYS: &[&str] = &["requires", "nodes", "kits", "on", "meta"];
+/// The keys of a scene file (`$schema`: for the editors only, never read).
+const FILE_KEYS: &[&str] = &["$schema", "requires", "nodes", "kits", "on", "meta"];
 /// How deep sub-scenes may nest before it is surely a loop the path check missed.
 const MAX_DEPTH: usize = 32;
 

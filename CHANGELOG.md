@@ -1,5 +1,11 @@
 # Changes
 
+## [Unreleased] (0.1.2)
+
+- `$schema` (the path of the published schema, for the editors) is accepted at the head of a project and of a scene
+  file: `check` and the build pass, the key is kept as written and never read (decision D03 of
+  gripforgeai/gripforge#420). Taken from module-kits (`core/scene-format`, see `PROVENANCE.md`).
+
 ## [0.1.1]
 
 - The generated crate takes the public part of the kits SDK (`gripforge-abi`, `gripforge-kit-guest`,

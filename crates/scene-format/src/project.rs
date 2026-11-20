@@ -11,8 +11,10 @@ use crate::tree::{check_bindings, resolve, Files};
 use serde_json::{json, Map, Value as Json};
 use std::cell::RefCell;
 
-/// The keys of a project file (the `project` block of a game.json, plus `requires` and `run`).
+/// The keys of a project file (the `project` block of a game.json, plus `requires` and `run`); `$schema` is for the
+/// editors only (the path of gripforge.full.schema.json, docs/ecrire-un-projet.md), kept and never read.
 const PROJECT_KEYS: &[&str] = &[
+    "$schema",
     "id",
     "name",
     "requires",

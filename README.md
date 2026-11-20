@@ -173,6 +173,9 @@ error section_field_unknown — project.gripforge › scene level › property k
 error prop_out_of_range — project.gripforge › scene level › property kits.core.light.exposure: … Expected: …
 ```
 
+`$schema` at the head of a project or of a scene file (the path of the published schema, for the editors) is accepted:
+kept as written, never read, never an error.
+
 | Code | When |
 |---|---|
 | `kit_unknown` | an installed or required kit has no `kit.api.json` in the project |
