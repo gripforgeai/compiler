@@ -13,4 +13,6 @@ serde_json = "1"
 # The folder of kit libraries a gateway loads (kit-modules-native.json), as the templates' check writes it.
 gripforge-kit-common = { path = "@MK@/core/kit-common", features = ["tests"] }
 
+# The generated crates under game/ are workspaces of their own.
 [workspace]
+exclude = ["game"]

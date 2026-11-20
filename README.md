@@ -90,7 +90,8 @@ my-game/
   module name: `src_module_invalid`.
 - `.build/app/` is the game: `src/lib.rs` takes `index.rs` and `src/` by path (`#[path]`), gives `game()` (the
   `game.json` of the build) and `add_game(app, game)`: `KitsPlugin`, then your plugin. `src/main.rs` opens the window
-  (Bevy's default plugins, the mouse by `KitsPointerPlugin`, the keys handed to the kits). The kits load as with any
+  (Bevy's default plugins, the mouse by `KitsPointerPlugin`, the keys handed to the kits). Bevy's `3d` and `ui`
+  profiles, without audio and without Wayland by default (`--features wayland` once `libwayland-client` is installed). The kits load as with any
   native gateway: `kitModules` of the game, else `GRIPFORGE_KIT_MODULES`, else `kit-modules-native` beside the program,
   the game's module `game.main` (`.build/game`, built) among them.
 - The Bevy gateway (`gfkits-bevy-native`) comes from `--sdk <checkout of the kits repository>`

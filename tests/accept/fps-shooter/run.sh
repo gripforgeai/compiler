@@ -51,7 +51,7 @@ cargo build --manifest-path "$root/Cargo.toml" --bin gripforge-build
 echo "== 3. the kits of the template, the physics library, the game's module"
 crates=$(cd "$mk" && node -e '
 const { execFileSync } = require("child_process"); const fs = require("fs"); const path = require("path");
-const meta = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], { encoding: "utf8" }));
+const meta = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], { encoding: "utf8", maxBuffer: 1 << 30 }));
 const byDir = new Map(meta.packages.map((p) => [path.relative(meta.workspace_root, path.dirname(p.manifest_path)), p.name]));
 const t = JSON.parse(fs.readFileSync("templates/kits/fps-shooter/template.json", "utf8"));
 const out = t.kits.map((k) => byDir.get(`kits/${k.id.replace(/[.-]/g, "_")}/logic`) ?? (() => { throw new Error(`no crate for ${k.id}`); })());
@@ -61,7 +61,8 @@ console.log(out.map((c) => `-p ${c}`).join(" "));
 (cd "$mk" && cargo build $crates)
 cargo build --manifest-path "$game/.build/game/Cargo.toml"
 
-echo "== 4. play"
+echo "== 4. the game in a window compiles (.build/app, its bin), then play headless"
+cargo build --manifest-path "$game/.build/app/Cargo.toml"
 sed "s|@MK@|$mk|" "$here/Cargo.toml.in" > "$here/Cargo.toml"
 # The crates the kits repository patches (the [patch.crates-io] of the generated app), at the root of this workspace.
 sed -n '/^\[patch.crates-io\]/,/^$/p' "$game/.build/app/Cargo.toml" >> "$here/Cargo.toml"
