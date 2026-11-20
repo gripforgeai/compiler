@@ -194,8 +194,45 @@ strip = true
     )
 }
 
+/// The digest function of the game's code, the common core's own file (crates/scene-format/src/sources_digest.rs),
+/// written as it is into the crate (`src/sources_digest.rs`): the module computes the digest of the bytes it compiles.
+pub const DIGEST_RS: &str = include_str!("../crates/scene-format/src/sources_digest.rs");
+
+/// The digest of the game's code compiled into the module (the development mode compares it with the files of
+/// `sources` now: module-kits core/gateway-web/dev-game-main.mjs, core/scene-format `sources::dev_module_issue`): the
+/// custom section `gripforge.sources` of the wasm, the symbol `GRIPFORGE_SOURCES` of the native library. Computed at
+/// compile time from the bytes the module compiles (`include_bytes!` of each file, by its path in the normal form).
+pub fn digest_rs(src: &Path, c: &GameCode) -> String {
+    let files: String = c
+        .sources
+        .iter()
+        .map(|f| {
+            format!(
+                "    ({}, include_bytes!({})),\n",
+                Json::String(
+                    gripforge_scene_format::sources::normal(&f.declared)
+                        .unwrap_or_else(|| f.declared.clone())
+                ),
+                Json::String(relative(src, &f.file).to_string_lossy().replace('\\', "/"))
+            )
+        })
+        .collect();
+    format!(
+        r#"
+// The digest of the game's code compiled here, read by the development mode (a module of other files is refused).
+pub mod sources_digest;
+#[cfg_attr(target_arch = "wasm32", link_section = "gripforge.sources")]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+#[used]
+pub static GRIPFORGE_SOURCES: [u8; sources_digest::DIGEST_LEN] = sources_digest::digest(&[
+{files}]);
+"#
+    )
+}
+
 /// `lib.rs`: the exports every kit module has, and the files of the game's code by path (`src`: the folder of lib.rs).
-pub fn lib_rs(src: &Path, code: Option<&GameCode>) -> String {
+/// `dev`: the module of the development mode (`--dev`), the game's code only: no `init_scene` (dev.builder poses).
+pub fn lib_rs(src: &Path, code: Option<&GameCode>, dev: bool) -> String {
     let sources: String = code
         .map(|c| {
             let mut out = String::from(
@@ -208,9 +245,11 @@ pub fn lib_rs(src: &Path, code: Option<&GameCode>) -> String {
                     f.module
                 ));
             }
+            out.push_str(&digest_rs(src, c));
             out
         })
         .unwrap_or_default();
+    let init_scene = if dev { "" } else { "pub mod init_scene;\n" };
     format!(
         r#"{HEADER}
 //! The game's own module ({GAME_MODULE}) as a kit module built native and wasm on core/kit-guest.
@@ -218,8 +257,7 @@ pub fn lib_rs(src: &Path, code: Option<&GameCode>) -> String {
 use gripforge_kit_guest::*;
 
 pub mod module;
-pub mod init_scene;
-{sources}
+{init_scene}{sources}
 export_kit!(module::module, env!("CARGO_PKG_VERSION"));
 common_memory!();
 "#
@@ -228,7 +266,10 @@ common_memory!();
 
 /// `module.rs`: enters each scene through the generated `init_scene` and gives back what it posed at the exit; with the
 /// game's code, the module of the game it declares gets every hook ([`delegated_module_rs`]).
-pub fn module_rs(entry: &str, code: Option<&GameCode>) -> String {
+pub fn module_rs(entry: &str, code: Option<&GameCode>, dev: bool) -> String {
+    if let (true, Some(c)) = (dev, code) {
+        return dev_module_rs(c);
+    }
     if let Some(c) = code {
         return delegated_module_rs(entry, c);
     }
@@ -416,6 +457,54 @@ impl KitModule for Game {{
     )
 }
 
+/// `module.rs` of the development mode (`gripforge-build --dev`): the game's code only. dev.builder poses the scenes
+/// (the project read at run time), so every hook of the kit module contract, `scene_enter` and `scene_exit` included,
+/// goes as it is to the module of the game the sources declare; the same hooks, in the same order of the lock, as the
+/// built module ([`delegated_module_rs`]) without the posing.
+pub fn dev_module_rs(c: &GameCode) -> String {
+    let built = delegated_module_rs("init_scene::enter", c);
+    let start = built
+        .find("impl KitModule for Game {")
+        .expect("the impl of the delegated module");
+    let enter = built
+        .find("    fn scene_enter(")
+        .expect("scene_enter of the delegated module");
+    format!(
+        r#"{HEADER}
+//! The game's module of the development mode: the game's code only, {path} (declared in `sources` of
+//! project.gripforge). dev.builder poses the scenes; every hook of the kit module contract goes to the module of the game.
+
+use crate::host::{{KitModule, Kx}};
+use gripforge_kit_access::Json;
+use gripforge_kit_guest::typed::{{Arg, Ret}};
+use gripforge_kit_guest::{{GameEvent, Issue}};
+use std::rc::Rc;
+
+/// The module of the game, from the sources.
+const GAME: {path} = {path};
+
+/// The module.
+pub struct Game;
+
+/// The module as the host takes it.
+pub fn module() -> Rc<dyn KitModule> {{
+    Rc::new(Game)
+}}
+
+{hooks}    fn scene_enter(&self, kx: &mut Kx, scene: &Json) {{
+        GAME.scene_enter(kx, scene)
+    }}
+
+    fn scene_exit(&self, kx: &mut Kx, scene: &Json) {{
+        GAME.scene_exit(kx, scene)
+    }}
+}}
+"#,
+        path = c.entry_path(),
+        hooks = &built[start..enter],
+    )
+}
+
 /// The card of the module, what the hosts read to load it beside the kits.
 pub fn kit_api(version: &str) -> Json {
     json!({
@@ -425,8 +514,12 @@ pub fn kit_api(version: &str) -> Json {
 }
 
 /// Its implementations, as a kit's logic/module.json says them.
-pub fn module_json() -> Json {
-    let reason = "the scenes of the project posed by compiled code (gripforge project build): nothing at the tick";
+pub fn module_json(dev: bool) -> Json {
+    let reason = if dev {
+        "the game's code of the project for the development mode (gripforge-build --dev): dev.builder poses the scenes"
+    } else {
+        "the scenes of the project posed by compiled code (gripforge project build): nothing at the tick"
+    };
     json!({ "implementations": {
         "bevy-player": { "form": "library", "library": LIBRARY, "mechanism": "the kits called through their accessors", "loop": "tick", "thread": "main", "reason": reason },
         "bevy-web": { "form": "wasm", "library": GAME_MODULE, "mechanism": "the same module in wasm, in the common memory", "loop": "tick", "thread": "main", "reason": reason }
@@ -447,6 +540,8 @@ pub struct Code<'a> {
     pub generated: &'a [(String, String)],
     pub entry: &'a str,
     pub game: Option<&'a GameCode>,
+    /// The module of the development mode (`--dev`): the game's code only, no scene posed.
+    pub dev: bool,
 }
 
 /// Writes the crate. The folder `src/init_scene` is emptied first: a scene removed from the project leaves no file.
@@ -463,6 +558,7 @@ pub fn write_crate(
         generated,
         entry,
         game: code,
+        dev,
     } = code;
     std::fs::create_dir_all(dir)?;
     let _ = std::fs::remove_dir_all(dir.join("src/init_scene"));
@@ -480,11 +576,14 @@ pub fn write_crate(
     )?;
     write(
         &dir.join("module.json"),
-        &format!("{}\n", pretty(&module_json())),
+        &format!("{}\n", pretty(&module_json(dev))),
     )?;
     std::fs::create_dir_all(dir.join("src"))?;
-    write(&dir.join("src/lib.rs"), &lib_rs(&dir.join("src"), code))?;
-    write(&dir.join("src/module.rs"), &module_rs(entry, code))?;
+    write(
+        &dir.join("src/lib.rs"),
+        &lib_rs(&dir.join("src"), code, dev),
+    )?;
+    write(&dir.join("src/module.rs"), &module_rs(entry, code, dev))?;
     let mut files: Vec<String> = [
         "Cargo.toml",
         "kit.api.json",
@@ -494,6 +593,13 @@ pub fn write_crate(
     ]
     .map(String::from)
     .to_vec();
+    if code.is_some() {
+        write(&dir.join("src/sources_digest.rs"), DIGEST_RS)?;
+        files.push("src/sources_digest.rs".into());
+    }
+    if dev {
+        return Ok(files);
+    }
     for (path, text) in generated {
         if path.split(['/', '\\']).any(|p| p == "..") || Path::new(path).is_absolute() {
             return Err(std::io::Error::other(format!(

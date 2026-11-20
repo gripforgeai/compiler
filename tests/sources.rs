@@ -286,3 +286,117 @@ fn a_link_out_of_the_project_is_outside() {
     let r = built(&d);
     assert_eq!(errors(&r), ["source_outside"], "{:?}", r.issues);
 }
+
+/// `--dev`: the module of the game's code for the development mode of the kits (module-kits dev.builder): the game's
+/// code only in `.build/dev/game` (no init_scene, no game.json), every hook to the module of the game, and the digest of
+/// the files compiled kept in the module (`gripforge.sources`), the digest function being the common core's own file.
+#[test]
+fn the_dev_module_is_the_games_code_only_with_the_digest_of_its_files() {
+    let d = room_with(json!(["rules.rs", "./code/score.rs"]));
+    with_rules(&d);
+    let r = build(&BuildOptions {
+        project: Some(d.clone()),
+        dev: true,
+        ..Default::default()
+    });
+    assert!(r.ok, "{:?}", r.issues);
+    let g = d.join(".build/dev/game");
+    assert!(
+        !d.join(".build/game.json").exists(),
+        "no game.json for the development mode"
+    );
+    assert!(!g.join("src/init_scene.rs").exists() && !g.join("src/init_scene").exists());
+    let lib = std::fs::read_to_string(g.join("src/lib.rs")).unwrap();
+    assert!(!lib.contains("pub mod init_scene;"), "{lib}");
+    assert!(
+        lib.contains("link_section = \"gripforge.sources\""),
+        "{lib}"
+    );
+    // By the path in the normal form, as the page and core/scene-format compute it (`./` dropped), in the declared order.
+    let at_rules = lib
+        .find("(\"rules.rs\", include_bytes!(")
+        .expect("rules.rs in the digest");
+    let at_score = lib
+        .find("(\"code/score.rs\", include_bytes!(")
+        .expect("code/score.rs in the digest");
+    assert!(at_rules < at_score, "{lib}");
+    let module = std::fs::read_to_string(g.join("src/module.rs")).unwrap();
+    assert!(
+        !module.contains("init_scene") && !module.contains("POSED"),
+        "{module}"
+    );
+    for hook in [
+        "fn setup(",
+        "fn ready(",
+        "fn update(",
+        "fn scene_enter(",
+        "fn scene_exit(",
+        "fn on_event(",
+    ] {
+        assert!(module.contains(hook), "{hook}: {module}");
+    }
+    assert!(module.contains("GAME.scene_enter(kx, scene)"));
+    // The parity: the function the module compiles is the common core's file, byte for byte.
+    let digest_rs = std::fs::read_to_string(g.join("src/sources_digest.rs")).unwrap();
+    let core = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/scene-format/src/sources_digest.rs"),
+    )
+    .unwrap();
+    assert_eq!(digest_rs, core);
+    // Without code, --dev has nothing to compile.
+    let empty = room_with(json!([]));
+    let r = build(&BuildOptions {
+        project: Some(empty),
+        dev: true,
+        ..Default::default()
+    });
+    assert!(!r.ok);
+    assert_eq!(errors(&r), ["dev_without_sources"]);
+}
+
+/// The built module carries the same digest (a built game is never played by the development mode, but one module
+/// form, one rule).
+#[test]
+fn the_built_module_carries_the_digest_too() {
+    let d = room_with(json!(["rules.rs", "code/score.rs"]));
+    with_rules(&d);
+    let r = built(&d);
+    assert!(r.ok, "{:?}", r.issues);
+    let lib = std::fs::read_to_string(d.join(".build/game/src/lib.rs")).unwrap();
+    assert!(
+        lib.contains("pub mod init_scene;") && lib.contains("GRIPFORGE_SOURCES"),
+        "{lib}"
+    );
+}
+
+/// The digest of the common core gives the shared values (crates/scene-format/tests/sources-digest.json, the same file
+/// in module-kits, checked there by the page too).
+#[test]
+fn the_digest_is_the_one_of_the_shared_values() {
+    let cases: Json = serde_json::from_str(include_str!(
+        "../crates/scene-format/tests/sources-digest.json"
+    ))
+    .unwrap();
+    for c in cases["cases"].as_array().unwrap() {
+        let files: Vec<(String, Vec<u8>)> = c["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| {
+                (
+                    f["path"].as_str().unwrap().into(),
+                    f["text"].as_str().unwrap().as_bytes().to_vec(),
+                )
+            })
+            .collect();
+        let pairs: Vec<(&str, &[u8])> = files
+            .iter()
+            .map(|(p, b)| (p.as_str(), b.as_slice()))
+            .collect();
+        let d = gripforge_scene_format::sources_digest::digest(&pairs);
+        assert_eq!(
+            std::str::from_utf8(&d).unwrap(),
+            c["digest"].as_str().unwrap()
+        );
+    }
+}

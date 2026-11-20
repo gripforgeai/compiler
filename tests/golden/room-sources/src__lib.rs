@@ -12,5 +12,15 @@ pub mod rules;
 #[path = "../../../code/score.rs"]
 pub mod score;
 
+// The digest of the game's code compiled here, read by the development mode (a module of other files is refused).
+pub mod sources_digest;
+#[cfg_attr(target_arch = "wasm32", link_section = "gripforge.sources")]
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+#[used]
+pub static GRIPFORGE_SOURCES: [u8; sources_digest::DIGEST_LEN] = sources_digest::digest(&[
+    ("rules.rs", include_bytes!("../../../rules.rs")),
+    ("code/score.rs", include_bytes!("../../../code/score.rs")),
+]);
+
 export_kit!(module::module, env!("CARGO_PKG_VERSION"));
 common_memory!();

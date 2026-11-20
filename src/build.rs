@@ -39,6 +39,9 @@ pub struct BuildOptions {
     pub lenient: bool,
     /// Only the strict check: nothing written.
     pub check: bool,
+    /// The module of the game's code for the development mode (`<out>/dev/game`): the game's code only, no scene
+    /// posed (dev.builder poses them), no game.json. Refused without `sources`.
+    pub dev: bool,
     /// Sends the GLB without a compressed copy to the public texture route (off by default: the build stays offline).
     pub compress_textures: bool,
     /// The route (default [`crate::textures::DEFAULT_URL`]).
@@ -147,6 +150,13 @@ pub fn build(o: &BuildOptions) -> BuildResult {
         }
     };
     r.issues.extend(beside);
+    // `--dev`: the module of the game's code for the development mode; a project without code has nothing to compile.
+    if o.dev && code.is_none() {
+        r.issues.push(json!({ "level": "error", "code": "dev_without_sources", "field": "sources",
+            "message": "--dev builds the module of the game's code, and the project declares no sources",
+            "fix": "declare the game's code in sources (docs/sources.md), or build without --dev" }));
+        return r;
+    }
     r.ok = true;
     if o.check {
         return r;
@@ -155,6 +165,33 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let out = crate::project::absolute(&o.out.clone().unwrap_or_else(|| dir.join(".build")));
     let written = (|| -> std::io::Result<()> {
         std::fs::create_dir_all(&out)?;
+        if o.dev {
+            // The development mode plays project.gripforge itself (dev.builder poses the scenes): no game.json, only
+            // the crate of the game's code, in `<out>/dev/game` (the CLI compiles it: docs/sources.md).
+            let sdk = sdk_of(o.sdk.as_deref(), o.sdk_rev.as_deref());
+            let dev_dir = out.join("dev/game");
+            let files = write_crate(
+                &dev_dir,
+                project["id"].as_str().unwrap_or("game"),
+                project["version"].as_str().unwrap_or("0.1.0"),
+                &sdk,
+                &accessors,
+                crate::crate_gen::Code {
+                    generated: &[],
+                    entry: "",
+                    game: code.as_ref(),
+                    dev: true,
+                },
+            )?;
+            r.artifacts
+                .insert("crate".into(), json!(dev_dir.to_string_lossy()));
+            r.artifacts.insert("files".into(), json!(files));
+            if let Some(c) = &code {
+                r.artifacts
+                    .insert("gameModule".into(), json!(c.entry_path()));
+            }
+            return Ok(());
+        }
         std::fs::write(
             out.join("game.json"),
             format!("{}\n", pretty(&answer["game"])),
@@ -187,6 +224,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
                 generated: &generated,
                 entry: answer["entry"].as_str().unwrap_or("init_scene::enter"),
                 game: code.as_ref(),
+                dev: false,
             },
         )?;
         r.artifacts
