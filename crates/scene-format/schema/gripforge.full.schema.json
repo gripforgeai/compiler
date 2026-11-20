@@ -18746,13 +18746,18 @@
             },
             "defaultTechnique": {
               "type": "string",
+              "default": "carve",
+              "description": "The technique of a genre that names none (a genre with a negative depth, a bump, is always displaced: carve only removes matter)."
+            },
+            "fallbackTechnique": {
+              "type": "string",
               "default": "displace",
-              "description": "The technique of a genre that names none."
+              "description": "The technique a carve impact takes when carve cannot run (core.material absent), said once by render.mesh_transform.refused { reason: \"carve_unavailable\" }."
             },
             "deformGenres": {
               "type": "object",
               "default": {},
-              "description": "The genres of transformation by name (registry deformGenres): { technique?, radius?, depth?, life? (seconds), fade?, lodLevels?, lodMaxLevel?, applyTo?, …fields the technique reads }; each one given here is taken over the kit's of the same name (notch, hollow, hole: base, kept when the game writes others)."
+              "description": "The genres of transformation by name (registry deformGenres): { technique?, radius?, depth?, life? (seconds), fade?, lodLevels?, lodMaxLevel?, applyTo?, …fields the technique reads }; each one given here is taken over the kit's of the same name (notch, hollow, bump, crush, hole: base, kept when the game writes others)."
             },
             "targets": {
               "type": "array",

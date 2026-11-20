@@ -85,6 +85,7 @@ fn validate_resolved(project: &Json, files: Files, reg: &Registry) -> Vec<Issue>
         );
     }
     out.extend(crate::sources::check(project));
+    out.extend(crate::verbs::check_scripts(project));
     let installed = installed_of(project);
     let reqs = requires::read(o.get("requires"), &mut out);
     out.extend(requires::check(&reqs, &installed));
@@ -282,7 +283,12 @@ fn check_tree(
     }
     let scene_when = ["entered", "left", "event"].map(String::from);
     for i in check_bindings(&Json::Array(tree.on.clone()), &scene_when, "scene") {
-        out.push(i.in_file(file).at("", "on"));
+        let field = if i.field.is_empty() {
+            "on".to_string()
+        } else {
+            i.field.clone()
+        };
+        out.push(i.in_file(file).at("", &field));
     }
     out.extend(
         lower(id, &tree, reg)
