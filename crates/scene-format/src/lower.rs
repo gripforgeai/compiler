@@ -171,6 +171,17 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
                 if let Some(y) = yaw.filter(|y| *y != 0.0) {
                     inst.insert("yaw".into(), json!(y));
                 }
+                // Collision children (a node type declared `parentCollision`: core.physics's `collision`) make the
+                // node's body, a free shape or a composition: game.engine's automatic solid gives way to them.
+                if collided_by_children(n, tree, reg) {
+                    let set = inst.entry("set").or_insert_with(|| json!({}));
+                    if let Some(set) = set.as_object_mut() {
+                        if set.get("solid").is_some_and(|s| !s.is_null()) {
+                            out.issues.push(iss(Issue::warning("solid_replaced", "this node has collision nodes under it: they are its collision, its solid is not read", "remove kits.game.engine.set.solid, or remove the collision nodes to keep the box of the solid")));
+                        }
+                        set.insert("solid".into(), json!({ "shape": "nodes" }));
+                    }
+                }
                 // The points others hang on (docs/attache-sur-un-os.md), as game.engine reads them on an instance.
                 if let Some(s) = n.raw.get("entity").and_then(|e| e.get("sockets")) {
                     inst.insert("sockets".into(), s.clone());
@@ -279,6 +290,27 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
         out.scripts.push(json!({ "id": format!("gfscene_{scene}"), "on": format!("scene:{scene}"), "rules": rules }));
     }
     out
+}
+
+/// Whether a visible child of `n` gives it its collision: its node type declares `parentCollision` and none of the
+/// values it lists as exceptions (`{ "type": "sensor" }`) is the child's.
+fn collided_by_children(n: &Node, tree: &Tree, reg: &Registry) -> bool {
+    tree.nodes
+        .iter()
+        .filter(|c| c.parent == n.path && c.visible)
+        .any(|c| {
+            let Some(except) = reg
+                .node_types
+                .get(&c.ty)
+                .and_then(|t| t.parent_collision.as_ref())
+            else {
+                return false;
+            };
+            let props = c.raw.get(&c.ty);
+            !except
+                .iter()
+                .any(|(k, v)| props.and_then(|p| p.get(k)) == Some(v))
+        })
 }
 
 /// The game.engine id of the nearest ancestor of `n` that was lowered as an instance or an element.
