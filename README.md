@@ -39,6 +39,7 @@ On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 ```sh
 gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
 gripforge-build path/to/my-game --check      # the strict check only, nothing written
+gripforge-build path/to/my-game --dev        # the module of the game's code only, for the development mode (.build/dev/game)
 gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
 gripforge-build path/to/my-game --compress-textures   # also a KTX2 copy of each GLB, by the public texture route (below)
 gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of the kits repository, kits read from the sources
@@ -52,6 +53,7 @@ gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of 
 | `--sdk <dir>` | a local SDK: the generated crate takes its SDK crates (`gripforge-kit-guest`, `gripforge-kit-access`) by path, from this repository's `sdk/` (crates at its top) or a checkout of the kits repository (under `core/`) |
 | `--sdk-rev <tag, commit or branch>` | without `--sdk`: the revision of this repository whose `sdk/` the generated crate takes by git (default the compiler's tag, `v<version>`) |
 | `--check` | the strict check only |
+| `--dev` | the crate of the game's code for the development mode of the kits (`dev.builder` plays `project.gripforge` and poses the scenes): `<out>/dev/game`, the files of `sources` only, no `init_scene`, no `game.json`; refused without `sources` (`dev_without_sources`). [docs/sources.md](docs/sources.md#in-the-development-mode) |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
 | `--compress-textures` | sends the GLB without a compressed copy to the public texture route (see below); off by default |

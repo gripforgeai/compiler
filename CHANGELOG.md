@@ -2,6 +2,15 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The game's code in the development mode** (decision of Damien, voie B of module-kits
+  `docs/design/sources-du-jeu.md`): `gripforge-build --dev` writes `.build/dev/game`, the module of the game's code
+  only (every hook, `scene_enter` and `scene_exit` included, to the module of the game; no `init_scene`: dev.builder
+  poses the scenes), which the CLI compiles and the development mode loads like any kit module, on the web too. Both
+  module forms keep the digest of the files they compile (`src/sources_digest.rs`, the common core's own function,
+  computed at compile time; the custom section `gripforge.sources` of the wasm, the symbol `GRIPFORGE_SOURCES` of the
+  native library): the development mode refuses a module of other files (`game_main_stale`) or none
+  (`game_main_missing`). New code: `dev_without_sources`.
+
 - `$schema` (the path of the published schema, for the editors) is accepted at the head of a project and of a scene
   file: `check` and the build pass, the key is kept as written and never read (decision D03 of
   gripforgeai/gripforge#420). Taken from module-kits (`core/scene-format`, see `PROVENANCE.md`).
