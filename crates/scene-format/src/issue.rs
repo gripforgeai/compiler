@@ -7,7 +7,7 @@ use serde_json::{json, Value as Json};
 /// How bad an issue is. The validator is tolerant (docs/dev-builder.md, « Un validateur tolérant »): a file loads
 /// with what is readable and the schema's defaults fill the rest, so nearly everything is a warning. An error is kept
 /// for what no default can mend: a required kit missing (the scene refused whole), a command that cannot apply, a
-/// pack that cannot write a kit's version.
+/// pack that cannot write a kit's version, a verb game.engine would not compile (its whole rule left out).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
     /// Stops what it touches: the scene, the command, the pack.
