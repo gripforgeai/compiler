@@ -16,6 +16,7 @@
 //! - [`project`]: the project file checked as a whole, and packed into the `game.json` envelope of the development mode.
 //! - [`ops`]: the edit commands of the site's scene patch (`insert`, `remove`, `transform`, `replace`, `update`) and
 //!   the debugging editor's file of patches, applied to the project with the smallest diff ([`jsontext`]).
+//! - [`verbs`]: the verbs of a rule or a binding that game.engine could not compile (its whole rule left out), said first.
 //! - [`writeback`]: one command written back where its scene lives (inline in the project or its file), with the
 //!   revision of a text and the lines that moved (dev.builder `applyToProject`, the CLI, the MCP).
 //!
@@ -40,8 +41,10 @@ pub mod project;
 pub mod registry;
 pub mod requires;
 pub mod sources;
+pub mod sources_digest;
 pub mod states;
 pub mod tree;
+pub mod verbs;
 pub mod writeback;
 
 pub use issue::{Issue, Level};

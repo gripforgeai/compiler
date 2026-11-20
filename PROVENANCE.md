@@ -9,19 +9,15 @@
   `kits/core_physics/kit.api.json`), and the parity cases with their expected resolution (`tools/parity/cases` of the
   kits repository → `tests/parity`). `tools/sync-scene-format <module-kits checkout> --check` says whether they are still
   exactly that copy; the CI of the kits repository checks it against this repository's `main` (tools/parity there).
-  Ahead of the next copy (compiler PR « solid-suit-le-dessin »): `src/lower.rs`, `src/registry.rs`, `tests/lower.rs` and
-  the fixture `kits/core_physics/kit.api.json` carry the change of module-kits branch `feat/solid-suit-le-dessin`
-  (`parentCollision`: collision nodes replace the parent's solid), applied as its diff; the next `tools/sync-scene-format`
-  once it is merged there gives the same files.
   History: first moved from the kits repository at `0c88723ab65b96093b0c5d0a9458855c187e6fa2`, partly taken again at
   `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` and `108031bf9f6ca9a5ea811a55058c3600b2c5227d` and `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema`) with local changes; the
   local changes and the `gfscene` tool are gone since the copy became whole again (the kits repository retired
   `gfscene` and `.gfscene` in `9cbb3a5d9`).
 - `src/sources_digest.rs` and `tests/sources-digest.json` are copies, unchanged, of `core/scene-format/src/sources_digest.rs`
-  and `core/scene-format/tests/sources-digest.json` of the kits repository at commit
-  `7a06355a907d3ea15018c3f3d7fdd184082e67d0` (branch `feat/devbuilder-game-main`, module-kits#1862): the digest of the
-  game's code. They leave for `crates/scene-format` at the next `tools/sync-scene-format` once that branch is merged
-  (the revision of `scene-format.json`, `6b433125a`, does not hold them yet).
+  and `core/scene-format/tests/sources-digest.json` of the kits repository (the same files as the ones of
+  `crates/scene-format`, which `tools/sync-scene-format` now copies at `7b9e4013acb7db7a2ec5cb2b6975aae1d484ad8b`, branch
+  `feat/devbuilder-game-main`, module-kits#1862): the digest of the game's code. They stay at the top of this repository
+  because the generated crate writes `src/sources_digest.rs` as it is (byte for byte the same as `crates/scene-format`'s).
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).

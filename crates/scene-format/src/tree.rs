@@ -527,7 +527,13 @@ impl Walk<'_> {
             when.push("interact".into());
         }
         for i in check_bindings(on, &when, ty) {
-            self.issue(i.at(path, "on"), file);
+            // A verb's issue names its own field (`on[0].do[1].call`); the others are about `on`.
+            let field = if i.field.is_empty() {
+                "on".to_string()
+            } else {
+                i.field.clone()
+            };
+            self.issue(i.at(path, &field), file);
         }
     }
 
@@ -681,6 +687,12 @@ pub fn check_bindings(on: &Json, allowed: &[String], ty: &str) -> Vec<Issue> {
             .is_some_and(|d| !d.is_empty() && d.iter().all(Json::is_object));
         if !ok {
             out.push(Issue::warning("binding_invalid", format!("on[{i}].do is not a list of game.engine verbs"), "write do as a list of verbs: [{ \"emit\": { \"topic\": \"room.door\" } }], [{ \"load_scene\": { \"scene\": \"level\" } }]"));
+        }
+        for key in ["do", "else"] {
+            out.extend(crate::verbs::check_list(
+                b.get(key),
+                &format!("on[{i}].{key}"),
+            ));
         }
     }
     out
