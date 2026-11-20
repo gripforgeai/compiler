@@ -68,10 +68,7 @@ impl Plugin for RoomRules {
 
 fn with_index(d: &Path) {
     write(&d.join("index.rs"), INDEX);
-    write(
-        &d.join("src/rules.rs"),
-        "pub fn count() {}\n",
-    );
+    write(&d.join("src/rules.rs"), "pub fn count() {}\n");
     write(
         &d.join("src/templates/mod.rs"),
         "// The templates copied into this game (tools/packs copy): yours to change.\npub mod door;\n",
@@ -172,15 +169,19 @@ fn the_creators_index_rs_is_taken_by_path_never_written() {
         );
     }
     let lib = std::fs::read_to_string(app.join("src/lib.rs")).unwrap();
-    assert!(lib.contains("#[path = \"../../../index.rs\"]\npub mod index;"), "{lib}");
-    assert!(lib.contains("#[path = \"../../../src/rules.rs\"]\npub mod rules;"), "{lib}");
     assert!(
-        lib.contains("#[path = \"../../../src/templates/mod.rs\"]\npub mod templates;"),
+        lib.contains("#[path = \"../../../index.rs\"]\npub mod index;"),
+        "{lib}"
+    );
+    // src/ mounted at the root of the crate, each module by its own name: crate::rules, crate::templates.
+    assert!(
+        lib.contains("#[path = \"../../../src\"]\nmod game_src {\n    pub mod rules;\n    pub mod templates;\n}\npub use game_src::{rules, templates};"),
         "{lib}"
     );
     let (kits, plugin) = (
         lib.find("KitsPlugin::new(game)").expect("the kits"),
-        lib.find("index::RoomRules").expect("the creator's plugin"),
+        lib.find(".add_plugins(index::RoomRules)")
+            .expect("the creator's plugin"),
     );
     assert!(kits < plugin, "the creator's plugin comes after KitsPlugin");
     let files: Vec<String> = r_files(&d);
@@ -191,7 +192,7 @@ fn r_files(d: &Path) -> Vec<String> {
     let report: Json =
         serde_json::from_str(&std::fs::read_to_string(d.join(".build/build.json")).unwrap())
             .unwrap();
-    report["artifacts"]["app"]
+    report["artifacts"]["appFiles"]
         .as_array()
         .into_iter()
         .flatten()
@@ -236,18 +237,31 @@ fn an_index_rs_without_one_plugin_is_refused_at_check_and_build() {
     write(&d.join("index.rs"), two.0);
     let r = built(&d);
     let m = r.issues[0]["message"].as_str().unwrap();
-    assert!(m.contains('A') && m.contains('B'), "names the candidates: {m}");
+    assert!(
+        m.contains('A') && m.contains('B'),
+        "names the candidates: {m}"
+    );
 }
 
 #[test]
 fn a_crate_root_or_an_index_module_in_src_is_refused() {
-    for f in ["src/lib.rs", "src/main.rs", "src/index.rs", "src/2d.rs"] {
+    for f in [
+        "src/lib.rs",
+        "src/main.rs",
+        "src/index.rs",
+        "src/game_src.rs",
+        "src/2d.rs",
+    ] {
         let d = room();
         with_index(&d);
         write(&d.join(f), "\n");
         let r = built(&d);
         assert_eq!(codes(&r), ["src_module_invalid"], "{f}: {:?}", r.issues);
-        assert!(r.issues[0]["file"].as_str().unwrap().ends_with(f), "{:?}", r.issues);
+        assert!(
+            r.issues[0]["file"].as_str().unwrap().ends_with(f),
+            "{:?}",
+            r.issues
+        );
     }
 }
 
@@ -259,7 +273,9 @@ fn the_gateway_comes_from_the_sdk_checkout_else_by_git_with_a_warning() {
     assert!(r.ok);
     let toml = std::fs::read_to_string(d.join(".build/app/Cargo.toml")).unwrap();
     assert!(
-        toml.contains("gfkits-bevy-native = { git = \"https://github.com/gripforgeai/module-kits\", rev = "),
+        toml.contains(
+            "gfkits-bevy-native = { git = \"https://github.com/gripforgeai/module-kits\", rev = "
+        ),
         "{toml}"
     );
     assert!(
@@ -286,7 +302,8 @@ fn the_gateway_comes_from_the_sdk_checkout_else_by_git_with_a_warning() {
     assert!(
         toml.contains(&format!(
             "gfkits-bevy-native = {{ path = {:?}",
-            sdk.join("gateways/gfkits-bevy-native/native").to_string_lossy()
+            sdk.join("gateways/gfkits-bevy-native/native")
+                .to_string_lossy()
         )),
         "{toml}"
     );

@@ -309,7 +309,8 @@ fn a_project_with_its_schema_checks_clean() {
 fn a_scene_file_with_its_schema_checks_clean() {
     let mut p = room();
     let level = scene(&mut p, "level").clone();
-    let mut file = json!({ "$schema": "../schema/gripforge.full.schema.json", "nodes": level["nodes"] });
+    let mut file =
+        json!({ "$schema": "../schema/gripforge.full.schema.json", "nodes": level["nodes"] });
     if let Some(k) = level.get("kits") {
         file["kits"] = k.clone();
     }
@@ -321,6 +322,8 @@ fn a_scene_file_with_its_schema_checks_clean() {
         s.as_object_mut().unwrap().remove(k);
     }
     s["file"] = json!("scenes/level.gfscene");
-    let a = run(&json!({ "op": "check", "project": p, "files": { "scenes/level.gfscene": file }, "kits": kits() }));
+    let a = run(
+        &json!({ "op": "check", "project": p, "files": { "scenes/level.gfscene": file }, "kits": kits() }),
+    );
     assert_eq!(a["ok"], true, "{a}");
 }

@@ -516,11 +516,7 @@ fn a_project_with_its_schema_passes_check_and_build_untouched() {
     ]);
     assert_eq!(code, 0, "{err}");
     assert!(err.contains("checked (0 warning(s))"), "{err}");
-    let (code, _, err) = run(&[
-        d.to_str().unwrap(),
-        "--kits-path",
-        kits().to_str().unwrap(),
-    ]);
+    let (code, _, err) = run(&[d.to_str().unwrap(), "--kits-path", kits().to_str().unwrap()]);
     assert_eq!(code, 0, "{err}");
     assert_eq!(
         std::fs::read_to_string(d.join("project.gripforge")).unwrap(),

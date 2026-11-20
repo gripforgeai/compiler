@@ -9,7 +9,8 @@
 //!   game/kit.api.json          the module's card (id game.main, its version), what the hosts read to load it
 //!   game/module.json           its implementations (native library, wasm), like a kit's logic/module.json
 //!   game/src/lib.rs            the exports of a kit module (export_kit!, common_memory!)
-//!   game/src/index.rs          the module: enters a scene by calling its init_scene, gives it back at the exit
+//!   game/src/module.rs         the module: enters a scene by calling its init_scene, gives it back at the exit (was
+//!                              index.rs until 0.1.1: index.rs is now the creator's plugin, see crate::app_gen)
 //!   game/src/init_scene/...    written by the generator (one init_scene.rs per scene), as is
 
 use crate::access::{relative, Access};
@@ -197,17 +198,17 @@ pub fn lib_rs() -> String {
 
 use gripforge_kit_guest::*;
 
-pub mod index;
+pub mod module;
 pub mod init_scene;
 
-export_kit!(index::module, env!("CARGO_PKG_VERSION"));
+export_kit!(module::module, env!("CARGO_PKG_VERSION"));
 common_memory!();
 "#
     )
 }
 
-/// `index.rs`: enters each scene through the generated `init_scene` and gives back what it posed at the exit.
-pub fn index_rs(entry: &str) -> String {
+/// `module.rs`: enters each scene through the generated `init_scene` and gives back what it posed at the exit.
+pub fn module_rs(entry: &str) -> String {
     format!(
         r#"{HEADER}
 //! The game's module: when game.engine enters a scene, its `init_scene` poses it (nodes, lights, cameras, the kits'
@@ -301,6 +302,8 @@ pub fn write_crate(
     std::fs::create_dir_all(dir)?;
     let _ = std::fs::remove_dir_all(dir.join("src/init_scene"));
     let _ = std::fs::remove_file(dir.join("src/init_scene.rs"));
+    // Written by 0.1.1 and before (now src/module.rs): a crate written again leaves no stale module.
+    let _ = std::fs::remove_file(dir.join("src/index.rs"));
     write(
         &dir.join("Cargo.toml"),
         &cargo_toml(project_id, version, sdk, &access_deps(dir, accessors)),
@@ -317,13 +320,13 @@ pub fn write_crate(
         &format!("{}\n", pretty(&module_json())),
     )?;
     write(&dir.join("src/lib.rs"), &lib_rs())?;
-    write(&dir.join("src/index.rs"), &index_rs(entry))?;
+    write(&dir.join("src/module.rs"), &module_rs(entry))?;
     let mut files: Vec<String> = [
         "Cargo.toml",
         "kit.api.json",
         "module.json",
         "src/lib.rs",
-        "src/index.rs",
+        "src/module.rs",
     ]
     .map(String::from)
     .to_vec();

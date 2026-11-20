@@ -1,10 +1,12 @@
 //! `gripforge project build` as a function: project.gripforge → strict check by the common core → the game.json of the
 //! built game (scenes lowered for game.engine, dev.builder left out, the game's module in the lock) → the Rust of each
-//! scene by the generator (`init_scene.rs`) → the crate (`index.rs`, `lib.rs`, `Cargo.toml`). Everything lands in
-//! `<out>` (default `.build/` beside the project); nothing is compiled here.
+//! scene by the generator (`init_scene.rs`) → the crate of the game's module (`module.rs`, `lib.rs`, `Cargo.toml`) →
+//! with the creator's `index.rs` beside the project, the Bevy game around it (crate::app_gen). Everything lands in
+//! `<out>` (default `.build/` beside the project); nothing is compiled here, the creator's files are never written.
 //!
 //!   .build/game.json        what the players load (no scene file read at run time)
 //!   .build/game/            the crate of the game's module, compiled by the game's own build
+//!   .build/app/             with index.rs: the Bevy game (the kits, then the creator's plugin), index.rs taken by path
 //!   .build/build.json       the report (gripforge.build-report/1): issues, steps, times, files
 //!
 //! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
@@ -135,6 +137,15 @@ pub fn build(o: &BuildOptions) -> BuildResult {
         }
     };
     steps_access(&mut r, &accessors);
+    // The creator's index.rs (and src/), when there is one: its plugin found, its modules valid, before anything is
+    // written.
+    let creator = match crate::app_gen::creator(&dir) {
+        Ok(c) => c,
+        Err(mut i) => {
+            r.issues.append(&mut i);
+            return r;
+        }
+    };
     r.ok = true;
     if o.check {
         return r;
@@ -177,6 +188,16 @@ pub fn build(o: &BuildOptions) -> BuildResult {
         r.artifacts
             .insert("crate".into(), json!(out.join("game").to_string_lossy()));
         r.artifacts.insert("files".into(), json!(files));
+        if let Some(c) = &creator {
+            let app = out.join("app");
+            let (files, warning) = crate::app_gen::write_app(&app, id, version, &sdk, c)?;
+            r.artifacts
+                .insert("app".into(), json!(app.to_string_lossy()));
+            r.artifacts.insert("appFiles".into(), json!(files));
+            r.artifacts
+                .insert("plugin".into(), json!(format!("index::{}", c.plugin)));
+            r.issues.extend(warning);
+        }
         Ok(())
     })();
     if let Err(e) = written {
