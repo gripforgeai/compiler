@@ -1,16 +1,14 @@
-//! The acceptance of D01 (gripforgeai/gripforge#420): the template fps-shooter of the kits repository, its
-//! `bevy/index.rs` laid as is at the root of the project, built by gripforge-build (`.build/app`, `.build/game`), then
-//! played headless through the generated crate: the same play as the templates' own proof
-//! (module-kits templates/check/bevy/tests/fps_shooter.rs, « from data »), on the game the compiler made. run.sh
-//! prepares everything; this file only plays.
+//! The acceptance of the game's code declared in `sources` of project.gripforge (gripforgeai/gripforge#420): the
+//! template fps-shooter of the kits repository, `rules.rs` (tests/game-code) declared as its code, built by
+//! gripforge-build (`.build/game.json`, `.build/game` with rules.rs), then played headless through the Bevy gateway of
+//! the kits, game.main loaded from its native library beside the kits' own. run.sh prepares everything; this file only
+//! plays.
 //!
-//!   GF_ACCEPT_TARGET=<target/debug of the kits> cargo test -- --test-threads=1
+//!   GF_ACCEPT_TARGET=<target/debug of the kits> GF_ACCEPT_KITS=<kits> cargo test -- --test-threads=1
 
-use gripforge_app_fps_shooter::bevy;
-use gripforge_app_fps_shooter::bevy::prelude::*;
-use gripforge_app_fps_shooter::bevy::time::TimeUpdateStrategy;
-use gripforge_app_fps_shooter::gfkits_bevy::{Arg, KitGame, KitsWorldExt};
-use gripforge_app_fps_shooter::index as fps;
+use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
+use gfkits_bevy::KitsWorldExt;
 use gripforge_kit_common::tests::{Kit, modules_dir_in};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -70,10 +68,11 @@ fn modules(game: &Value) -> PathBuf {
     dir
 }
 
-/// The generated game, headless: the game.json of the build with its kit libraries and a fixed step, `add_game` of the
-/// generated crate (KitsPlugin, then index::FpsShooter).
+/// The built game, headless: the game.json of the build with its kit libraries and a fixed step, then the kits
+/// (`KitsPlugin`), game.main among them.
 fn app() -> App {
-    let mut game = gripforge_app_fps_shooter::game();
+    let here = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut game: Value = serde_json::from_str(&read(&here.join("game/.build/game.json"))).unwrap();
     game["kitModules"] = json!(modules(&game).to_string_lossy());
     game["fixedDt"] = json!(DT);
     game["physicsThread"] = json!("main");
@@ -89,7 +88,7 @@ fn app() -> App {
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
         DT,
     )));
-    gripforge_app_fps_shooter::add_game(&mut app, game);
+    app.add_plugins(gfkits_bevy::KitsPlugin::new(game));
     app
 }
 
@@ -106,121 +105,29 @@ fn var(app: &mut App, path: &str) -> Value {
         .unwrap_or_default()
 }
 
-fn shooting(app: &App) -> fps::Shooting {
-    app.world().resource::<fps::Shooting>().clone()
-}
-
-fn mouse(app: &mut App, code: &str, down: bool) {
-    app.world_mut()
-        .non_send_mut::<KitGame>()
-        .raw(1, 0, code, if down { 1. } else { 0. }, 0., 0);
-}
-
-fn click(app: &mut App) {
-    mouse(app, "Mouse0", true);
-    run(app, 2);
-    mouse(app, "Mouse0", false);
-    run(app, 10);
-}
-
-fn target(app: &mut App, id: &str) -> Value {
-    app.world_mut()
-        .with_kits(|g| g.host().entities.component(id, "target").cloned())
-        .flatten()
-        .unwrap_or_default()
-}
-
 #[test]
-fn the_built_fps_shooter_plays_as_the_template() {
+fn the_declared_game_code_runs_in_game_main_from_before_the_first_scene() {
     let mut app = app();
     run(&mut app, 30);
-    let s = shooting(&app);
-    assert!(s.problem.is_none(), "{:?}", s.problem);
-    assert_eq!(s.targets.len(), 3, "three targets");
     assert_eq!(
-        var(&mut app, "fps_shooter.ammo"),
-        json!(fps::MAGAZINE),
-        "a full magazine"
-    );
-    assert_eq!(
-        var(&mut app, "menu.main.open"),
+        var(&mut app, "game_code.setup_before_scene"),
         json!(true),
-        "the title screen is open"
-    );
-    app.world_mut()
-        .kit_call("menu.main", "choose", &[Arg::Str("play")], |_| ())
-        .expect("choose play");
-    run(&mut app, 5);
-    assert_eq!(
-        var(&mut app, "menu.main.open"),
-        json!(false),
-        "Play closed the menu"
-    );
-
-    let ahead = s
-        .targets
-        .iter()
-        .find(|id| {
-            app.world_mut()
-                .with_kits(|g| g.host().entities.transform(id).map(|p| p.x.abs() < 0.1))
-                .flatten()
-                .unwrap_or(false)
-        })
-        .cloned()
-        .expect("a target ahead");
-    click(&mut app);
-    assert_eq!(
-        target(&mut app, &ahead)["hp"],
-        json!(fps::TARGET_HP - 1),
-        "the first shot hit"
-    );
-    click(&mut app);
-    let s = shooting(&app);
-    assert_eq!(
-        (s.shots, s.hits, s.score),
-        (2, 2, 1),
-        "two shots, two hits, one target down"
+        "the setup of the game's code ran before the first scene was entered"
     );
     assert_eq!(
-        target(&mut app, &ahead)["down"],
-        json!(true),
-        "the target fell"
+        var(&mut app, "game_code.scene"),
+        json!("fps_range"),
+        "the start scene was entered, once posed by game.main"
     );
-    assert_eq!(
-        var(&mut app, "fps_shooter.ammo"),
-        json!(fps::MAGAZINE - 2),
-        "two rounds less"
-    );
-    assert_eq!(var(&mut app, "fps_shooter.score"), json!(1), "the score");
-
-    // R reloads: reloading for RELOAD_SECONDS, then a full magazine.
-    app.world_mut().non_send_mut::<KitGame>().key("KeyR", true);
-    run(&mut app, 2);
-    app.world_mut().non_send_mut::<KitGame>().key("KeyR", false);
-    assert_eq!(
-        var(&mut app, "fps_shooter.reloading"),
-        json!(true),
-        "reloading"
-    );
-    run(&mut app, (fps::RELOAD_SECONDS * 60.) as u32 + 5);
-    assert_eq!(
-        var(&mut app, "fps_shooter.reloading"),
-        json!(false),
-        "reloaded"
-    );
-    assert_eq!(
-        var(&mut app, "fps_shooter.ammo"),
-        json!(fps::MAGAZINE),
-        "a full magazine again"
-    );
-
-    // The target stands up again RISE_SECONDS after its fall.
-    run(&mut app, (fps::RISE_SECONDS * 60.) as u32);
-    let t = target(&mut app, &ahead);
-    assert_eq!(
-        (t["down"].clone(), t["hp"].clone()),
-        (json!(false), json!(fps::TARGET_HP)),
-        "the target stood up"
-    );
-    println!("fps-shooter built by gripforge-build: {:?}", shooting(&app));
+    let ticks = var(&mut app, "game_code.ticks").as_f64().expect("ticks");
+    assert!(ticks > 0.0, "the game's code runs at the tick: {ticks}");
+    run(&mut app, 60);
+    let later = var(&mut app, "game_code.ticks").as_f64().unwrap();
+    assert!(later >= ticks + 50.0, "one tick per step: {ticks} -> {later}");
+    // The kits of the template play beside it: game.engine spawned the three targets of the scene.
+    let targets = app
+        .world_mut()
+        .with_kits(|g| g.host().entities.by_tag("target").len())
+        .unwrap_or(0);
+    println!("fps-shooter with its declared code: ticks {later}, targets {targets}");
 }

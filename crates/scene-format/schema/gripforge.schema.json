@@ -12,6 +12,15 @@
       "type": "string",
       "description": "For editors only: the path of the schema the file follows (gripforge.full.schema.json of the kits package); kept as written, never read by a kit."
     },
+    "sources": {
+      "type": "array",
+      "description": "The Rust files of the game's own code, declared by the project (the only entry: no file is taken by convention). Paths relative to the folder of the project file, with /, each once. gripforge-build adds them to the game's own compiled module (native and wasm); one of them declares the module of the game (`pub struct X;` with `impl KitModule for X`). The development mode compiles nothing and only reads them.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?![/\\\\])(?!.*(^|/)\\.\\.(/|$))(?![A-Za-z]:)[^\\\\]+\\.rs$"
+      },
+      "uniqueItems": true
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$",

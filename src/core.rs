@@ -12,7 +12,7 @@
 //! - `{ "op": "pack", ... }`: the check, then the game.json of the built game: the project packed (core/scene-format
 //!   `pack_with`) and its scenes lowered for game.engine at build time (`expand_project`: no scene JSON resolved at
 //!   run time), the development kits ([`DEV_KITS`]) left out, the game's own module ([`GAME_MODULE`], the compiled
-//!   `init_scene.rs` + `index.rs`) put last in the lock; with the scenes `{ id, module }` the crate is written for.
+//!   `init_scene.rs` + `module.rs`, with the game's code of `sources`) put last in the lock; with the scenes `{ id, module }` the crate is written for.
 //!
 //! `files`: the scene files the project names (project path → parsed JSON), `kits`: the kit.api.json of the catalog.
 //! Nothing here knows a kit: the kits speak through their kit.api.json.
@@ -24,7 +24,7 @@ use serde_json::{json, Map, Value as Json};
 
 use crate::strict;
 
-/// The id of the game's own module in a built game: the compiled `index.rs` and its `init_scene.rs`.
+/// The id of the game's own module in a built game: its `init_scene.rs`, `module.rs` and the game's code (`sources`).
 pub const GAME_MODULE: &str = "game.main";
 /// The kits of the development mode, never shipped in a built game (the compiled code poses the scenes).
 pub const DEV_KITS: &[&str] = &["scene.builder", "dev.builder"];
@@ -269,7 +269,7 @@ pub fn pack(req: &Json) -> Json {
 
 /// The pack, then the Rust of each scene by the generator of core/scene-format (`init_scene.rs`, the same as the
 /// templates'): `files` (`[{ path, text }]`, paths under the crate's `src/`) and `entry` (the function each scene
-/// module exports, which the crate's `index.rs` calls).
+/// module exports, which the crate's `module.rs` calls).
 pub fn code(req: &Json) -> Json {
     let mut r = pack(req);
     if r["ok"] != Json::Bool(true) {
@@ -296,7 +296,7 @@ pub fn code(req: &Json) -> Json {
 
 /// The generator's files for the project: core/scene-format `code::code` (`gfscene code`, the same writer as the
 /// templates'), `init_scene.rs` and `init_scene/<scene>.rs`, whose `init_scene::enter(h, id)` the crate's
-/// `index.rs` calls. Its warnings join the report; an error of it refuses the build.
+/// `module.rs` calls. Its warnings join the report; an error of it refuses the build.
 fn generate(req: &Json, _packed: &Json) -> Result<(Json, &'static str, Vec<Json>), Json> {
     let project = req.get("project").cloned().unwrap_or(Json::Null);
     let files = req
