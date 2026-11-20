@@ -497,3 +497,33 @@ fn the_generated_crate_takes_the_sdk_by_path_or_git() {
     );
     assert!(out.join("game/rust-toolchain.toml").exists());
 }
+
+/// A project written with its `$schema` (D03 of gripforgeai/gripforge#420): `--check` exits 0, a build passes, and the
+/// project file is left exactly as it was (the key is never dropped in silence).
+#[test]
+fn a_project_with_its_schema_passes_check_and_build_untouched() {
+    let d = tmp();
+    let text = format!(
+        "{{\"$schema\":\"./.gripforge/kits/schema/gripforge.full.schema.json\",{}",
+        &room().to_string()[1..]
+    );
+    std::fs::write(d.join("project.gripforge"), &text).unwrap();
+    let (code, _, err) = run(&[
+        d.to_str().unwrap(),
+        "--check",
+        "--kits-path",
+        kits().to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains("checked (0 warning(s))"), "{err}");
+    let (code, _, err) = run(&[
+        d.to_str().unwrap(),
+        "--kits-path",
+        kits().to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(
+        std::fs::read_to_string(d.join("project.gripforge")).unwrap(),
+        text
+    );
+}
