@@ -12,6 +12,15 @@
       "type": "string",
       "description": "For editors only: the path of the schema the file follows (core/scene-format/schema/gripforge.full.schema.json); never read by a kit."
     },
+    "sources": {
+      "type": "array",
+      "description": "The Rust files of the game's own code, declared by the project (the only entry: no file is taken by convention). Paths relative to the folder of the project file, with /, each once. gripforge-build adds them to the game's own compiled module (native and wasm); one of them declares the module of the game (`pub struct X;` with `impl KitModule for X`). The development mode compiles nothing and only reads them.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?![/\\\\])(?!.*(^|/)\\.\\.(/|$))(?![A-Za-z]:)[^\\\\]+\\.rs$"
+      },
+      "uniqueItems": true
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$",
@@ -1693,6 +1702,13 @@
           "description": "The documents of data.translations (core.i18n).",
           "items": {
             "$ref": "gripforge.kit/core.i18n#/$defs/data/translations"
+          }
+        },
+        "renderIntents": {
+          "type": "array",
+          "description": "The documents of data.renderIntents (core.material).",
+          "items": {
+            "$ref": "gripforge.kit/core.material#/$defs/data/renderIntents"
           }
         },
         "core_shader": {
@@ -6916,6 +6932,10 @@
           "presets": {
             "of": "material preset",
             "description": "The presets a game may pick, by name; a game or a mod changes one (config presets.<name>)."
+          },
+          "intents": {
+            "of": "render intention",
+            "description": "The declared render intentions, by id: the kit's defaults (core.material.hit_flash), then data (renderIntents), then config intents.<id>; a later one replaces an earlier one, null removes it. Played by name (playIntent) or started by their condition (when)."
           }
         },
         "sceneConfig": [
@@ -6963,6 +6983,16 @@
               "description": "The surfaces and the behaviours they have (catalogue of surface behaviours, provisional names): { <tag, material or region name>: { region?: { shape: everywhere|rect|disc|path, min/max | center/radius | points/width }, <genre>: { parameters } } }. A surface named by a tag or a material is an OBJECT (the entities that carry the tag, or whose material has that name, take it, as adoptAll takes by tag); one with a region is a REGION (a footprint, no mesh: a lake; its level, waves and flow are parameters of the genre, as the fluid genre of FluidDesc). A genre is what a kit registered (registerSurfaceBehavior); a declaration for a genre not registered yet waits for it. The parameters are given over the defaults of the genre. Empty (the default): no surface.",
               "additionalProperties": {
                 "type": "object"
+              }
+            },
+            "intents": {
+              "type": "object",
+              "description": "The game's own declared render intentions by id, over the project's collection renderIntents and the kit's defaults (a whole declaration replaces the one of that id; null removes it): { <id>: { params, tracks, loop, mode, layer, priority, weight, when } }, the form of a document of renderIntents (README « Les intentions déclarées »). A scene or a mod changes them (moddable).",
+              "additionalProperties": {
+                "type": [
+                  "object",
+                  "null"
+                ]
               }
             },
             "nativeClass": {
@@ -7849,6 +7879,148 @@
                 ],
                 "default": 1,
                 "description": "The seed of the emitter (the same seed, the same particles)."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "data": {
+          "renderIntents": {
+            "description": "A `render intention` document of data.renderIntents.",
+            "type": "object",
+            "required": [
+              "id",
+              "tracks"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 96,
+                "description": "Its name, played by playIntent."
+              },
+              "params": {
+                "type": "object",
+                "description": "Its parameters and their defaults ({ intensity: 1, color: [1, 0.2, 0.1] }), overridden when it is played; written \"$<name>\" where a number or three go."
+              },
+              "tracks": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "target"
+                  ],
+                  "properties": {
+                    "target": {
+                      "type": "string",
+                      "description": "The value it aims at, kit id then value: core.material.emissive, core.material.tint, core.material.opacity (the entity's rendered object), render.post.<prop> (the screen, while the entity is the player)."
+                    },
+                    "curve": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "value",
+                              "line",
+                              "ramp",
+                              "pulse",
+                              "oscillate"
+                            ]
+                          },
+                          "seconds": {
+                            "type": [
+                              "number",
+                              "string"
+                            ],
+                            "description": "The length of the segment (a ramp: its time); absent: a pulse lasts to its last decay, the others go on (last segment only)."
+                          }
+                        },
+                        "additionalProperties": true,
+                        "description": "A base curve with its params named as setIntent's (v, slope, min, max; from, to, curve; peak, decay, pulses; mean, amplitude, hz, phase); a number or three numbers may be \"$<param>\"."
+                      }
+                    },
+                    "keys": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 16,
+                      "items": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2
+                      },
+                      "description": "[[seconds, value], ...], times rising from 0, value a number or three (or \"$<param>\")."
+                    },
+                    "ease": {
+                      "enum": [
+                        "linear",
+                        "smooth"
+                      ]
+                    },
+                    "scale": {
+                      "type": [
+                        "number",
+                        "array",
+                        "string"
+                      ],
+                      "description": "Multiplies each component (a colour times a pulse)."
+                    },
+                    "mode": {
+                      "enum": [
+                        "set",
+                        "add",
+                        "mul"
+                      ]
+                    },
+                    "layer": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "priority": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "loop": {
+                "type": "boolean",
+                "description": "Starts again at its length (every last segment with its seconds)."
+              },
+              "mode": {
+                "enum": [
+                  "set",
+                  "add",
+                  "mul"
+                ],
+                "description": "The default of its tracks (set)."
+              },
+              "layer": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "weight": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "number"
+                },
+                "description": "[from, to, seconds]: a fade of the whole intention."
+              },
+              "when": {
+                "type": "object",
+                "description": "A condition on the published states of the entity (game.engine.state, game.engine.derived): { <state>: value | { op: <, <=, >, >=, !=, value } }. With it, the intention is never played: it starts while the condition holds and stops when it no longer does."
               }
             },
             "additionalProperties": false
