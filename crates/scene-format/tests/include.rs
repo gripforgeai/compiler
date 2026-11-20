@@ -145,12 +145,11 @@ fn a_variable_of_the_entry_hides_the_pillar_and_a_set_var_brings_it_back_at_rend
     let (state, decl) = states.as_object().unwrap().iter().next().unwrap();
     assert_eq!(decl, &json!({ "derived": { "var": "pilier.shown" } }));
     let reflect = pilier["reflect"].as_array().unwrap();
-    assert!(
-        reflect.contains(&json!({ "when": { state.clone(): true }, "set": { "": { "visible": true } } }))
-    );
-    assert!(
-        reflect.contains(&json!({ "when": { state.clone(): false }, "set": { "": { "visible": false } } }))
-    );
+    assert!(reflect
+        .contains(&json!({ "when": { state.clone(): true }, "set": { "": { "visible": true } } })));
+    assert!(reflect.contains(
+        &json!({ "when": { state.clone(): false }, "set": { "": { "visible": false } } })
+    ));
     assert!(pilier.get("variables").is_none());
 }
 

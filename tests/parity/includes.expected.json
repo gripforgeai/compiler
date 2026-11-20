@@ -227,7 +227,9 @@
               "reflect": [
                 {
                   "set": {
-                    "visible": true
+                    "": {
+                      "visible": true
+                    }
                   },
                   "when": {
                     "var_pilier_shown": true
@@ -235,7 +237,9 @@
                 },
                 {
                   "set": {
-                    "visible": false
+                    "": {
+                      "visible": false
+                    }
                   },
                   "when": {
                     "var_pilier_shown": false
