@@ -5,13 +5,22 @@
 - `$schema` (the path of the published schema, for the editors) is accepted at the head of a project and of a scene
   file: `check` and the build pass, the key is kept as written and never read (decision D03 of
   gripforgeai/gripforge#420). Taken from module-kits (`core/scene-format`, see `PROVENANCE.md`).
-- The creator's `index.rs` (decision D01 of gripforgeai/gripforge#420): a Bevy plugin at the root of the project, with
-  their modules in `src/`, never written. With it, the build writes `.build/app/`, the Bevy game: `index.rs` and `src/`
-  taken by path, `KitsPlugin` then the creator's plugin (found by convention: one `pub struct X;` with
-  `impl Plugin for X`), a window (`src/main.rs`). New codes: `index_plugin_missing`, `index_plugin_ambiguous`,
-  `src_module_invalid`, `gateway_by_git` (warning). The gateway `gfkits-bevy-native` from `--sdk`, else by git.
-- The generated module of `game.main` is `src/module.rs` (was `src/index.rs`: that name is now the creator's).
-- `tests/accept/fps-shooter/run.sh`: the template fps-shooter built and played headless (by hand, on a build machine).
+- **The game's code is declared by the project** (decision of gripforgeai/gripforge#420, announced on
+  gripforgeai/compiler#10): `"sources": ["rules.rs", …]` in `project.gripforge`, paths relative to the project file.
+  The build adds each file to the game's module `game.main` (`.build/game`, taken by path, never copied nor written:
+  `crate::<name of the file>`), so the same code runs native and in the official web player (WebGPU, WebGL2). One
+  source declares the module of the game (`pub struct X;` with `impl KitModule for X`); the generated `module.rs` hands
+  it every hook of game.main (`setup`, `ready`, `update`, `on_event`, `scene_enter` once the scene is posed, …). No file
+  is taken by convention any more: the `index.rs` beside the project (a Bevy plugin, compiler#10) and `src/` are not
+  read, and `.build/app/` (the Bevy game around it) is gone: the game plays in the GripForge players, which load
+  game.main beside the kits. New codes: `source_missing`, `source_outside`, `source_duplicate`, `source_not_rust`,
+  `sources_invalid` (the format, by the common core), `source_name_invalid`, `source_unreadable`,
+  `source_mod_undeclared`, `sources_module_missing`, `sources_module_ambiguous`, and the warning `source_undeclared`
+  (a `.rs` beside the project that `sources` does not list). Gone: `index_plugin_missing`, `index_plugin_ambiguous`,
+  `src_module_invalid`, `gateway_by_git`. The rule and when each hook runs: [docs/sources.md](docs/sources.md).
+- The generated module of `game.main` is `src/module.rs` (was `src/index.rs`).
+- `tests/accept/fps-shooter/run.sh`: the template fps-shooter (its scenes in `project.gripforge`) built with a declared
+  source, `game.main` compiled with it and played headless (by hand, on a build machine).
 
 ## [0.1.1]
 
