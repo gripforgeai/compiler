@@ -132,7 +132,7 @@ fn the_room_generates_the_golden_files() {
         "game/kit.api.json",
         "game/module.json",
         "game/src/lib.rs",
-        "game/src/index.rs",
+        "game/src/module.rs",
         "game/src/init_scene.rs",
         "game/src/init_scene/menu.rs",
         "game/src/init_scene/level.rs",

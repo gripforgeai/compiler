@@ -3,8 +3,8 @@
 
 use gripforge_kit_guest::*;
 
-pub mod index;
+pub mod module;
 pub mod init_scene;
 
-export_kit!(index::module, env!("CARGO_PKG_VERSION"));
+export_kit!(module::module, env!("CARGO_PKG_VERSION"));
 common_memory!();
