@@ -3,12 +3,12 @@
 //! it in process.
 //!
 //!   gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>]
-//!                   [--check] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
+//!                   [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
 
 use crate::build::{build, BuildOptions};
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
+pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
 
 /// What a command line asks.
 #[derive(Debug, Default, PartialEq)]
@@ -19,6 +19,7 @@ pub struct Args {
     pub sdk: Option<String>,
     pub sdk_rev: Option<String>,
     pub check: bool,
+    pub resolve: bool,
     pub dev: bool,
     pub lenient: bool,
     pub json: bool,
@@ -40,6 +41,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--sdk" => a.sdk = Some(value(x)?),
             "--sdk-rev" => a.sdk_rev = Some(value(x)?),
             "--check" => a.check = true,
+            "--resolve" => a.resolve = true,
             "--dev" => a.dev = true,
             "--lenient" => a.lenient = true,
             "--json" => a.json = true,
@@ -75,6 +77,17 @@ pub fn main(argv: &[String], out: &mut dyn FnMut(&str), err: &mut dyn FnMut(&str
     if a.version {
         out(crate::core::VERSION);
         return 0;
+    }
+    if a.resolve {
+        // The project resolved and the tolerant validator's issues, as JSON: what the development mode of the kits
+        // makes of it (the parity test of the kits repository compares the two).
+        let answer = crate::build::resolved(&BuildOptions {
+            project: a.project.map(PathBuf::from),
+            kits_path: a.kits_path.map(PathBuf::from),
+            ..Default::default()
+        });
+        out(&crate::json::pretty(&answer));
+        return if answer["ok"] == true { 0 } else { 1 };
     }
     let r = build(&BuildOptions {
         project: a.project.map(PathBuf::from),

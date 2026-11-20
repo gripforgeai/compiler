@@ -156,7 +156,7 @@ pub fn check_section(
             Issue::warning(
                 "section_invalid",
                 format!("{kit} is not a kit id"),
-                "name a section by the id of its kit, like core.physics",
+                "name a section by the id of its kit (<family>.<name>)",
             )
             .at("", &here),
         );

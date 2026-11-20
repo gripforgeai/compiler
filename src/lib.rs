@@ -13,5 +13,6 @@ pub mod json;
 pub mod project;
 pub mod report;
 pub mod sources;
+pub mod sources_digest;
 pub mod strict;
 pub mod textures;

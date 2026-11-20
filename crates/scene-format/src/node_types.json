@@ -59,7 +59,7 @@
     "lowers": "entry"
   },
   "trigger": {
-    "description": "A trigger zone (game.engine zones): bindings run when something enters or leaves it.",
+    "description": "A trigger zone (a zone of the kit world.zones, in the scene's data.zones): bindings run when something enters or leaves it.",
     "props": {
       "shape": { "type": "enum", "choices": ["box", "sphere"], "default": "sphere", "description": "The shape of the zone." },
       "size": { "type": "vec3", "default": [10, 4, 10], "description": "box: its size in metres." },

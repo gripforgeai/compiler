@@ -81,7 +81,7 @@ gripforge-build my-game --dev --sdk path/to/module-kits    # .build/dev/game: th
   module of the game, `scene_enter` and `scene_exit` included: dev.builder poses the scenes, there is no `init_scene`
   and no `game.json`. It is still `game.main`, last of the lock (module-kits `sources::with_game_module`), so the hooks
   run at the same moments as in the table above.
-- The module keeps **the digest of the files it compiles** (`src/sources_digest.rs`, the common core's own function,
+- The module keeps **the digest of the files it compiles** (`src/sources_digest.rs`, the common core's function, copied,
   computed at compile time from the bytes `include_bytes!` reads): the custom section `gripforge.sources` of the wasm,
   the symbol `GRIPFORGE_SOURCES` of the native library. The built module (`.build/game`) carries it too.
 - The CLI compiles it (PROPOSAL to the CLI, gripforge#420: the place and the command are its choice): the wasm and
@@ -91,7 +91,7 @@ gripforge-build my-game --dev --sdk path/to/module-kits    # .build/dev/game: th
   `game_main_stale` (its digest is not the one of the files now: a file changed since it was compiled),
   `source_missing` (a declared file is not there). The same rule in module-kits (`core/scene-format`
   `sources::dev_module_issue`, `core/gateway-web/dev-game-main.mjs`), checked on the same values
-  (`crates/scene-format/tests/sources-digest.json`).
+  (`tests/sources-digest.json`, a copy).
 
 ## Errors
 

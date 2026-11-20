@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Copies the common core of the project format (core/scene-format of the kits repository, gripforgeai/module-kits)
+# into crates/scene-format, at a given revision, or checks that crates/scene-format is exactly that copy (--check).
+# One code for everyone: dev.builder, devGame (its wasm), the validator and gripforge-build read a project.gripforge
+# with the same functions (docs/design/parite-compilateur-dev-builder.md in the kits repository).
+#
+#   tools/sync-scene-format <module-kits checkout> [--rev <commit>] [--check]
+#
+# Without --rev, the revision of crates/scene-format/scene-format.json. The files are taken by `git archive` at the
+# revision (never the working tree), unchanged. crates/scene-format/Cargo.toml and scene-format.json are this
+# repository's own (no workspace inheritance here, the revision). The fixtures the crate's tests read outside the crate
+# (FIXTURES, same relative place) and the parity cases of the kits repository (tools/parity, PARITY) are copied too.
+set -euo pipefail
+export LC_ALL=C
+
+usage() { echo "usage: tools/sync-scene-format <module-kits checkout> [--rev <commit>] [--check]" >&2; exit 2; }
+
+src="" rev="" check=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rev) [ $# -ge 2 ] || usage; rev="$2"; shift 2 ;;
+    --check) check=true; shift ;;
+    -h|--help) usage ;;
+    -*) usage ;;
+    *) [ -z "$src" ] || usage; src="$1"; shift ;;
+  esac
+done
+[ -n "$src" ] || usage
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+crate="$root/crates/scene-format"
+meta="$crate/scene-format.json"
+if [ -z "$rev" ]; then
+  rev="$(sed -n 's/.*"rev": *"\([0-9a-f]*\)".*/\1/p' "$meta")"
+  [ -n "$rev" ] || { echo "sync-scene-format: no rev in $meta" >&2; exit 1; }
+fi
+full="$(git -C "$src" rev-parse --verify "$rev^{commit}")"
+
+# The crate: these folders of core/scene-format, whole.
+DIRS=(src tests schema)
+OWN=(Cargo.toml scene-format.json)
+# Read by the crate's tests outside the crate (tests/include.rs, tests/lower.rs): same path from the repository root.
+FIXTURES=(
+  "tests/base-room/configs/includes.gripforge"
+  "tests/base-room/configs/includes-defaut.gripforge"
+  "tests/base-room/configs/includes-salle.gripforge"
+  "kits/core_physics/kit.api.json"
+)
+# The parity cases (projects and the expected resolution written by the kits repository) -> tests/parity/.
+PARITY="tools/parity/cases"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/sync-scene-format.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/archive" "$tmp/out/crates/scene-format" "$tmp/out/tests/parity"
+paths=()
+for d in "${DIRS[@]}"; do paths+=("core/scene-format/$d"); done
+git -C "$src" archive "$full" -- "${paths[@]}" "${FIXTURES[@]}" "$PARITY" | tar -x -C "$tmp/archive"
+for d in "${DIRS[@]}"; do cp -R "$tmp/archive/core/scene-format/$d" "$tmp/out/crates/scene-format/$d"; done
+for f in "${FIXTURES[@]}"; do mkdir -p "$(dirname "$tmp/out/$f")"; cp "$tmp/archive/$f" "$tmp/out/$f"; done
+cp -R "$tmp/archive/$PARITY/." "$tmp/out/tests/parity/"
+
+if $check; then
+  bad=0
+  for d in "${DIRS[@]}"; do diff -r "$tmp/out/crates/scene-format/$d" "$crate/$d" >&2 || bad=1; done
+  for f in "${FIXTURES[@]}"; do diff "$tmp/out/$f" "$root/$f" >&2 || bad=1; done
+  diff -r "$tmp/out/tests/parity" "$root/tests/parity" >&2 || bad=1
+  if [ "$bad" = 1 ]; then
+    echo "sync-scene-format: crates/scene-format is NOT the copy of module-kits core/scene-format $full" >&2
+    exit 1
+  fi
+  echo "sync-scene-format: crates/scene-format is the copy of module-kits core/scene-format $full"
+  exit 0
+fi
+
+for d in "${DIRS[@]}"; do rm -rf "${crate:?}/$d"; done
+rm -rf "${root:?}/tests/parity"
+cp -R "$tmp/out/." "$root/"
+sed -i "s/\"rev\": *\"[0-9a-f]*\"/\"rev\": \"$full\"/" "$meta"
+echo "sync-scene-format: crates/scene-format copied from module-kits core/scene-format $full"

@@ -336,10 +336,10 @@ fn the_dev_module_is_the_games_code_only_with_the_digest_of_its_files() {
         assert!(module.contains(hook), "{hook}: {module}");
     }
     assert!(module.contains("GAME.scene_enter(kx, scene)"));
-    // The parity: the function the module compiles is the common core's file, byte for byte.
+    // The function the module compiles is this compiler's copy of the common core's file, byte for byte.
     let digest_rs = std::fs::read_to_string(g.join("src/sources_digest.rs")).unwrap();
     let core = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/scene-format/src/sources_digest.rs"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/sources_digest.rs"),
     )
     .unwrap();
     assert_eq!(digest_rs, core);
@@ -369,14 +369,11 @@ fn the_built_module_carries_the_digest_too() {
     );
 }
 
-/// The digest of the common core gives the shared values (crates/scene-format/tests/sources-digest.json, the same file
-/// in module-kits, checked there by the page too).
+/// The digest gives the shared values (tests/sources-digest.json, a copy of module-kits
+/// core/scene-format/tests/sources-digest.json, checked there by the Rust core and by the page too).
 #[test]
 fn the_digest_is_the_one_of_the_shared_values() {
-    let cases: Json = serde_json::from_str(include_str!(
-        "../crates/scene-format/tests/sources-digest.json"
-    ))
-    .unwrap();
+    let cases: Json = serde_json::from_str(include_str!("sources-digest.json")).unwrap();
     for c in cases["cases"].as_array().unwrap() {
         let files: Vec<(String, Vec<u8>)> = c["files"]
             .as_array()
@@ -393,7 +390,7 @@ fn the_digest_is_the_one_of_the_shared_values() {
             .iter()
             .map(|(p, b)| (p.as_str(), b.as_slice()))
             .collect();
-        let d = gripforge_scene_format::sources_digest::digest(&pairs);
+        let d = gripforge_compiler::sources_digest::digest(&pairs);
         assert_eq!(
             std::str::from_utf8(&d).unwrap(),
             c["digest"].as_str().unwrap()

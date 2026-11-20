@@ -23,7 +23,7 @@ pub struct Issue {
     pub level: Level,
     /// A stable code (`kit_required_missing`, `section_invalid`...): tools match on it, never on the message.
     pub code: &'static str,
-    /// The project path of the file (`scenes/start.gfscene`), empty for the project file itself.
+    /// The project path of the file (`scenes/start.json`), empty for the project file itself.
     pub file: String,
     /// The node's path in its scene (`Hall/Door`), empty for the file itself.
     pub node: String,
@@ -101,7 +101,7 @@ impl Issue {
         o
     }
 
-    /// One line for a terminal: `error kit_required_missing scenes/start.gfscene Hall/Door kits.x: message → fix`.
+    /// One line for a terminal: `error kit_required_missing #start Hall/Door kits.x: message → fix`.
     pub fn line(&self) -> String {
         let level = if self.is_error() { "error" } else { "warning" };
         let mut at: Vec<&str> = Vec::new();

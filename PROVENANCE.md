@@ -1,25 +1,23 @@
 # Provenance
 
-- `crates/scene-format` (the common core of the project format: reading, validator, order of posing, references,
-  lowering, packing, the generator of `init_scene.rs` and the `gfscene` tool) was moved, unchanged but for its
-  `Cargo.toml` (no workspace inheritance), from the kits SDK repository `gripforgeai/module-kits`, folder
-  `core/scene-format`, at commit `0c88723ab65b96093b0c5d0a9458855c187e6fa2`. It now lives here; the kits SDK takes it
-  from this repository.
-  Since then, `src/registry.rs`, `src/tree.rs`, `src/tree/values.rs`, `src/place.rs` and `tests/lower.rs` were taken
-  again, unchanged, from the same folder at commit `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` (node types declared by
-  the kits, `nodeType`).
-  Then `src/place.rs` again, unchanged, and the test
-  `the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder_does` of `tests/lower.rs`, at commit
-  `108031bf9f6ca9a5ea811a55058c3600b2c5227d` (`place::node_kind`, the accessors' `Spec` with the node's kind and its parent); the same
-  change made to `src/code.rs`, which differs from the source here.
-  Then the `$schema` key of `src/project.rs` (`PROJECT_KEYS`) and `src/tree.rs` (`FILE_KEYS`), unchanged, at commit
-  `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema` accepted at the head of a project and of a scene file); the
-  same key declared, by hand, in `schema/gripforge.schema.json` and `schema/gfscene.schema.json`, which differ from the
-  source here.
-  Then `src/sources.rs`, `src/sources_digest.rs`, `tests/sources.rs` and `tests/sources-digest.json`, unchanged, at
-  commit `d80821affd11ca9e4cecbe9387e227843761ba00` (branch `feat/devbuilder-game-main`: the digest of the game's code,
-  the rule of the development mode `dev_module_issue`, `with_game_module`); the line `pub mod sources_digest;` added by
-  hand to `src/lib.rs`, which differs from the source here.
+- `crates/scene-format` (the common core of the project format: reading, resolution of `includes` / node variables /
+  `$var`, validator, order of posing, references, lowering, packing, write-back, the generator of `init_scene.rs`) is a
+  copy, unchanged, of `core/scene-format` of the kits SDK repository `gripforgeai/module-kits` (`src/`, `tests/`,
+  `schema/`), made by `tools/sync-scene-format` at the revision of `crates/scene-format/scene-format.json`. Only its
+  `Cargo.toml` (no workspace inheritance) and `scene-format.json` are this repository's own. The same tool copies the
+  fixtures its tests read outside the crate, at the same paths from the root (`tests/base-room/configs/includes*.gripforge`,
+  `kits/core_physics/kit.api.json`), and the parity cases with their expected resolution (`tools/parity/cases` of the
+  kits repository → `tests/parity`). `tools/sync-scene-format <module-kits checkout> --check` says whether they are still
+  exactly that copy; the CI of the kits repository checks it against this repository's `main` (tools/parity there).
+  History: first moved from the kits repository at `0c88723ab65b96093b0c5d0a9458855c187e6fa2`, partly taken again at
+  `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` and `108031bf9f6ca9a5ea811a55058c3600b2c5227d` and `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema`) with local changes; the
+  local changes and the `gfscene` tool are gone since the copy became whole again (the kits repository retired
+  `gfscene` and `.gfscene` in `9cbb3a5d9`).
+- `src/sources_digest.rs` and `tests/sources-digest.json` are copies, unchanged, of `core/scene-format/src/sources_digest.rs`
+  and `core/scene-format/tests/sources-digest.json` of the kits repository at commit
+  `7a06355a907d3ea15018c3f3d7fdd184082e67d0` (branch `feat/devbuilder-game-main`, module-kits#1862): the digest of the
+  game's code. They leave for `crates/scene-format` at the next `tools/sync-scene-format` once that branch is merged
+  (the revision of `scene-format.json`, `6b433125a`, does not hold them yet).
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).

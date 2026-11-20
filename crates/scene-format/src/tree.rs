@@ -547,7 +547,7 @@ impl Walk<'_> {
         used: &mut Vec<String>,
     ) {
         let Some(sub) = node.get("scene").and_then(Json::as_str) else {
-            self.issue(Issue::warning("scene_invalid", "a scene node has no scene file", "write \"scene\": \"scenes/<file>.gfscene\", the path of the instanced scene in the project").at(path, "scene"), file);
+            self.issue(Issue::warning("scene_invalid", "a scene node has no scene file", "write \"scene\": \"scenes/<name>\", the path of the instanced scene in the project (data.scene_files)").at(path, "scene"), file);
             return;
         };
         if let Some(why) = project_path_error(sub) {

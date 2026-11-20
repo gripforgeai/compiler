@@ -15,7 +15,7 @@ use crate::access::resolve;
 use crate::crate_gen::{sdk_of, write_crate, GAME_MODULE};
 use crate::json::pretty;
 use crate::project::{
-    find_kits_dir, kit_folders, project_file, read_json, scene_files, BuildError,
+    find_kits_dir, kit_folders, project_file, project_files, read_json, BuildError,
 };
 use serde_json::{json, Map, Value as Json};
 use std::path::{Path, PathBuf};
@@ -86,7 +86,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let t0 = Instant::now();
     let read = (|| -> Result<_, BuildError> {
         let project = read_json(&file, "file_not_json")?;
-        let files = scene_files(&project, &dir)?;
+        let files = project_files(&project, &dir)?;
         let kits_dir = o.kits_path.clone().or_else(|| find_kits_dir(&dir));
         let folders = kit_folders(kits_dir.as_deref())?;
         let kits: Vec<Json> = folders.iter().map(|(_, k)| k.clone()).collect();
@@ -265,6 +265,30 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let report = crate::report::report(&r);
     let _ = std::fs::write(out.join("build.json"), format!("{}\n", pretty(&report)));
     r
+}
+
+/// `gripforge-build --resolve`: the project read as a build reads it (its included files, its scene files, the kits'
+/// kit.api.json), answered by the core's `resolve` (`{ ok, project, resolveIssues, issues }`, nothing promoted,
+/// nothing written), or `{ ok: false, issues }` with the problem of the reading.
+pub fn resolved(o: &BuildOptions) -> Json {
+    let read = (|| -> Result<_, BuildError> {
+        let file = project_file(o.project.as_deref())?;
+        let dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let project = read_json(&file, "file_not_json")?;
+        let files = project_files(&project, &dir)?;
+        let kits_dir = o.kits_path.clone().or_else(|| find_kits_dir(&dir));
+        let kits: Vec<Json> = kit_folders(kits_dir.as_deref())?
+            .into_iter()
+            .map(|(_, k)| k)
+            .collect();
+        Ok((project, files, kits))
+    })();
+    match read {
+        Ok((project, files, kits)) => crate::core::run(
+            &json!({ "op": "resolve", "project": project, "files": files, "kits": kits }),
+        ),
+        Err(BuildError(i)) => json!({ "ok": false, "issues": [i] }),
+    }
 }
 
 /// The accessors found, in the steps of the report (kit, version, folder).

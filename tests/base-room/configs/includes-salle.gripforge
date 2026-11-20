@@ -1,0 +1,591 @@
+{
+  "schema": "gripforge.gameproject/1",
+  "id": "includes_salle",
+  "name": "salle incluse (preuve du format)",
+  "preset": null,
+  "installed": [
+    {
+      "id": "game.engine",
+      "version": "1.23.0",
+      "enabled": true,
+      "config": {
+        "startScene": "room",
+        "placement": "baked",
+        "debug": false,
+        "flow": {
+          "title": "off"
+        },
+        "sceneFlow": {
+          "loading": "none",
+          "minLoadingMs": 0,
+          "unload": "release",
+          "transition": "replace"
+        }
+      }
+    },
+    {
+      "id": "core.physics",
+      "version": "1.6.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "core.input",
+      "version": "2.0.0",
+      "enabled": true,
+      "config": {
+        "actions": [
+          {
+            "name": "move",
+            "kind": "vector",
+            "bindings": [
+              {
+                "up": "KeyW",
+                "down": "KeyS",
+                "left": "KeyA",
+                "right": "KeyD"
+              },
+              "StickLeft"
+            ]
+          },
+          {
+            "name": "jump",
+            "bindings": [
+              "Space"
+            ]
+          },
+          {
+            "name": "run",
+            "bindings": [
+              "ShiftLeft"
+            ]
+          },
+          {
+            "name": "look",
+            "kind": "vector",
+            "bindings": [
+              "MouseMotion"
+            ]
+          },
+          {
+            "name": "interact",
+            "bindings": [
+              "KeyE"
+            ]
+          }
+        ],
+        "pointer": {
+          "lock": "click"
+        }
+      }
+    },
+    {
+      "id": "core.camera",
+      "version": "1.0.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "core.control",
+      "version": "0.2.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "core.locomotion",
+      "version": "0.2.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "core.animation",
+      "version": "0.4.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "locomotion.third_person",
+      "version": "0.2.0",
+      "enabled": true,
+      "config": {
+        "keys": {
+          "move_x": {
+            "kind": "axis",
+            "bindings": [
+              {
+                "neg": "KeyA",
+                "pos": "KeyD"
+              },
+              {
+                "neg": "ArrowLeft",
+                "pos": "ArrowRight"
+              }
+            ]
+          },
+          "move_y": {
+            "kind": "axis",
+            "bindings": [
+              {
+                "neg": "KeyS",
+                "pos": "KeyW"
+              },
+              {
+                "neg": "ArrowDown",
+                "pos": "ArrowUp"
+              }
+            ]
+          },
+          "move_pad": {
+            "kind": "vector",
+            "bindings": [
+              "StickLeft"
+            ],
+            "invertY": true
+          },
+          "sprint": {
+            "kind": "button",
+            "bindings": [
+              "ShiftLeft",
+              "ShiftRight",
+              "Pad10"
+            ]
+          },
+          "jump": {
+            "kind": "button",
+            "bindings": [
+              "Space",
+              "Pad0"
+            ]
+          },
+          "crouch": {
+            "kind": "button",
+            "bindings": [
+              "KeyC",
+              "ControlLeft",
+              "Pad1"
+            ]
+          },
+          "orbit": {
+            "kind": "button",
+            "bindings": [
+              "Mouse0"
+            ]
+          },
+          "steer": {
+            "kind": "button",
+            "bindings": [
+              "Mouse2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "debug.inspector",
+      "version": "1.8.0",
+      "enabled": true,
+      "config": {
+        "toggleKey": "F9",
+        "edit": {
+          "toggleKey": "F2",
+          "gizmo": {
+            "keys": {
+              "move": "KeyW",
+              "rotate": "KeyE",
+              "space": "KeyT",
+              "turnCw": "KeyR",
+              "turnCcw": "ShiftLeft+KeyR",
+              "undo": "ControlLeft+KeyZ",
+              "turnAxis": "Wheel"
+            }
+          }
+        },
+        "snapshotWatchTicks": 1200,
+        "replay": {
+          "ignore": [
+            "debug.",
+            "core.camera.rigs",
+            "kits.core.camera",
+            "core.camera.watched",
+            "core.light.lights"
+          ]
+        }
+      }
+    },
+    {
+      "id": "asset.preload",
+      "version": "2.1.0",
+      "enabled": true,
+      "config": {
+        "cells": {
+          "trigger": "auto",
+          "everyTicks": 5,
+          "keepS": 2,
+          "preload": 1.5,
+          "maxLoaded": 4,
+          "mode": "background"
+        }
+      }
+    },
+    {
+      "id": "core.light",
+      "version": "1.0.0",
+      "enabled": true,
+      "config": {}
+    },
+    {
+      "id": "core.webui",
+      "version": "1.10.0",
+      "enabled": true,
+      "config": {}
+    }
+  ],
+  "bindings": {},
+  "variables": {
+    "pilier": true,
+    "annexe": true
+  },
+  "data": {
+    "spawns": [],
+    "archetypes": [
+      {
+        "id": "beacon",
+        "kind": "prop",
+        "asset": {
+          "shape": "cylinder",
+          "radius": 0.35,
+          "height": 2.4,
+          "color": "#e08a2c",
+          "roughness": 0.6
+        },
+        "components": {
+          "size": [
+            0.7,
+            2.4,
+            0.7
+          ]
+        }
+      },
+      {
+        "id": "cell_post_blue",
+        "kind": "prop",
+        "asset": {
+          "shape": "cylinder",
+          "radius": 0.3,
+          "height": 2.4,
+          "color": "#3f7fd8",
+          "roughness": 0.6
+        },
+        "components": {
+          "size": [
+            0.6,
+            2.4,
+            0.6
+          ]
+        }
+      },
+      {
+        "id": "cell_post_green",
+        "kind": "prop",
+        "asset": {
+          "shape": "cylinder",
+          "radius": 0.3,
+          "height": 2.4,
+          "color": "#3fae6a",
+          "roughness": 0.6
+        },
+        "components": {
+          "size": [
+            0.6,
+            2.4,
+            0.6
+          ]
+        }
+      },
+      {
+        "id": "cell_post_violet",
+        "kind": "prop",
+        "asset": {
+          "shape": "cylinder",
+          "radius": 0.3,
+          "height": 2.4,
+          "color": "#9a5fd0",
+          "roughness": 0.6
+        },
+        "components": {
+          "size": [
+            0.6,
+            2.4,
+            0.6
+          ]
+        }
+      }
+    ],
+    "scenes": [
+      {
+        "id": "room",
+        "title": "Room",
+        "kind": "3d",
+        "role": "level",
+        "entries": [
+          {
+            "id": "spawn",
+            "at": [
+              0,
+              0,
+              0
+            ],
+            "yaw": 0
+          }
+        ],
+        "instances": []
+      },
+      {
+        "id": "north_cell",
+        "title": "north_cell",
+        "kind": "3d",
+        "role": "other",
+        "entries": [
+          {
+            "id": "door",
+            "at": [
+              0,
+              0,
+              0
+            ],
+            "yaw": 0
+          }
+        ],
+        "instances": [
+          {
+            "id": "north_cell_post_1",
+            "archetype": "cell_post_blue",
+            "at": [
+              -1.5,
+              1.2,
+              -9.5
+            ],
+            "place": "none"
+          },
+          {
+            "id": "north_cell_post_2",
+            "archetype": "cell_post_blue",
+            "at": [
+              1.5,
+              1.2,
+              -9.5
+            ],
+            "place": "none"
+          }
+        ],
+        "kits": {
+          "asset.preload": {
+            "cell": {
+              "center": [
+                0,
+                -8
+              ],
+              "radius": 3
+            }
+          }
+        }
+      },
+      {
+        "id": "east_cell",
+        "title": "east_cell",
+        "kind": "3d",
+        "role": "other",
+        "entries": [
+          {
+            "id": "door",
+            "at": [
+              0,
+              0,
+              0
+            ],
+            "yaw": 0
+          }
+        ],
+        "instances": [
+          {
+            "id": "east_cell_post_1",
+            "archetype": "cell_post_green",
+            "at": [
+              9.5,
+              1.2,
+              -1.5
+            ],
+            "place": "none"
+          },
+          {
+            "id": "east_cell_post_2",
+            "archetype": "cell_post_green",
+            "at": [
+              9.5,
+              1.2,
+              1.5
+            ],
+            "place": "none"
+          }
+        ],
+        "kits": {
+          "asset.preload": {
+            "cell": {
+              "center": [
+                8,
+                0
+              ],
+              "radius": 3,
+              "mode": "screen"
+            }
+          }
+        }
+      },
+      {
+        "id": "hall_cell",
+        "title": "hall_cell",
+        "kind": "3d",
+        "role": "other",
+        "entries": [
+          {
+            "id": "door",
+            "at": [
+              0,
+              0,
+              0
+            ],
+            "yaw": 0
+          }
+        ],
+        "instances": [
+          {
+            "id": "hall_cell_post_1",
+            "archetype": "cell_post_violet",
+            "at": [
+              -9.5,
+              1.2,
+              8
+            ],
+            "place": "none"
+          },
+          {
+            "id": "hall_cell_post_2",
+            "archetype": "cell_post_violet",
+            "at": [
+              -8,
+              1.2,
+              9.5
+            ],
+            "place": "none"
+          }
+        ],
+        "kits": {
+          "asset.preload": {
+            "cell": {
+              "neighbours": [
+                "room"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "salle_preuve",
+        "title": "salle de preuve",
+        "kind": "3d",
+        "role": "level",
+        "requires": [
+          "game.engine"
+        ],
+        "nodes": [
+          {
+            "name": "Start",
+            "type": "entry",
+            "position": [
+              0,
+              0,
+              4
+            ]
+          },
+          {
+            "name": "Pilier",
+            "id": "pilier",
+            "type": "shape",
+            "position": [
+              -1.5,
+              1.5,
+              0
+            ],
+            "variables": {
+              "shown": {
+                "$var": "pilier"
+              }
+            },
+            "visible": {
+              "$var": "pilier.shown"
+            },
+            "shape": {
+              "shape": "cylinder",
+              "radius": 0.5,
+              "height": 3,
+              "color": "#d03030"
+            }
+          },
+          {
+            "name": "Props",
+            "type": "group",
+            "children": [
+              {
+                "name": "Caisse",
+                "id": "caisse",
+                "type": "shape",
+                "position": [
+                  1.5,
+                  0.5,
+                  0
+                ],
+                "shape": {
+                  "shape": "box",
+                  "size": 1.2,
+                  "color": "#a07040"
+                }
+              },
+              {
+                "name": "Boule",
+                "id": "boule",
+                "type": "shape",
+                "position": [
+                  0,
+                  0.5,
+                  -1.5
+                ],
+                "shape": {
+                  "shape": "sphere",
+                  "radius": 0.5,
+                  "color": "#3050d0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "salle_annexe",
+        "title": "annexe",
+        "kind": "3d",
+        "role": "level",
+        "enabled": {
+          "$var": "annexe"
+        },
+        "requires": [
+          "game.engine"
+        ],
+        "nodes": []
+      }
+    ],
+    "scripts": []
+  },
+  "meta": {
+    "about": "The world loaded by cells on the room of the socle (configs/cells.json, web/cells-stations.mjs): three cells around the room (north by distance, east by distance in mode screen, hall by neighbours of the room), each a scene of game.engine put in beside the room by asset.preload 2.1. Data only."
+  }
+}

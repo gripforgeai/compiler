@@ -1,7 +1,7 @@
-//! The scene files of a project, given to game.engine as inline scenes. A scene document of `data.scenes` with a
-//! `file` gets the content lowered from that file; the files themselves come with the project, in
-//! `data.scene_files` (`{ "<project path>": <parsed scene file> }`), put there by the loader of the project (the packer,
-//! a gateway): a kit never reads the disk. A project without any `file` is returned untouched, at no cost: the games of
+//! The scenes of a project, given to game.engine as inline scenes. A scene document of `data.scenes` with a `file`
+//! gets the content lowered from that sub-scene; the sub-scenes come with the project, in `data.scene_files`
+//! (`{ "<project path>": <parsed scene> }`, until their target form), put there by the loader of the project
+//! (dev.builder's packing, a gateway): a kit never reads the disk. A project without any `file` is returned untouched, at no cost: the games of
 //! today keep working until they are migrated (by hand).
 
 use crate::issue::Issue;
@@ -18,7 +18,6 @@ pub const SCENE_FILE_ISSUES: &str = "scene_file_issues";
 pub const CONTENT_KEYS: &[&str] = &[
     "entries",
     "instances",
-    "zones",
     "world",
     "data",
     "layers",
@@ -118,7 +117,7 @@ pub fn expand_project(project: &Json, reg: &Registry) -> Option<Json> {
         let low = lower(id, &tree, reg);
         issues.extend(low.issues);
         if CONTENT_KEYS.iter().any(|k| scene.contains_key(*k)) {
-            issues.push(Issue::warning("scene_content_twice", format!("the scene {id} has content in the project and a file: the file wins"), "keep the content in the file only (instances, entries, zones... belong to the scene file <name>.gfscene)").in_file(file));
+            issues.push(Issue::warning("scene_content_twice", format!("the scene {id} has content in the project and a file: the file wins"), "keep the content in the file only (instances, entries, data... belong to the scene named by file)").in_file(file));
             for k in CONTENT_KEYS {
                 scene.remove(*k);
             }

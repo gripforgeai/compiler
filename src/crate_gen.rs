@@ -194,9 +194,10 @@ strip = true
     )
 }
 
-/// The digest function of the game's code, the common core's own file (crates/scene-format/src/sources_digest.rs),
-/// written as it is into the crate (`src/sources_digest.rs`): the module computes the digest of the bytes it compiles.
-pub const DIGEST_RS: &str = include_str!("../crates/scene-format/src/sources_digest.rs");
+/// The digest function of the game's code (crate::sources_digest, a copy of module-kits
+/// core/scene-format/src/sources_digest.rs, see PROVENANCE.md), written as it is into the crate
+/// (`src/sources_digest.rs`): the module computes the digest of the bytes it compiles.
+pub const DIGEST_RS: &str = include_str!("sources_digest.rs");
 
 /// The digest of the game's code compiled into the module (the development mode compares it with the files of
 /// `sources` now: module-kits core/gateway-web/dev-game-main.mjs, core/scene-format `sources::dev_module_issue`): the
