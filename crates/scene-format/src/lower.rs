@@ -1,5 +1,5 @@
 //! Lower a resolved scene into what game.engine already reads in an inline `data.scenes` document: its instances
-//! (model and shape nodes, with an archetype made from the node when none is named), entries, zones, its scene-level
+//! (model and shape nodes, with an archetype made from the node when none is named), entries, the zones of world.zones (`data.zones`), its scene-level
 //! keys (`world`, `data`, `layers`, `audio`, `ui`, `native`) and one script holding the scene's bindings. game.engine
 //! then compiles it exactly as an inline scene: the same rules, hooks, saves and mods (docs/dev-builder.md).
 
@@ -17,7 +17,7 @@ pub const SCENE_KEYS: &[&str] = &["world", "data", "layers", "audio", "ui", "nat
 /// What game.engine receives from one scene file.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Lowered {
-    /// The content keys of the scene document (`entries`, `instances`, `zones` and the scene-level keys).
+    /// The content keys of the scene document (`entries`, `instances`, `data` and the scene-level keys).
     pub content: Map<String, Json>,
     /// Archetypes made from model and shape nodes that name none (`gfscene_<id>`).
     pub archetypes: Vec<Json>,
@@ -69,6 +69,8 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
     let (mut instances, mut entries, mut zones, mut rules) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let mut ids: Vec<(String, String, String)> = Vec::new();
+    // The game.engine id of each node lowered as an instance or an element, by path: what a child follows.
+    let mut holders: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
     if let Some(ge) = tree.kits.get(ENGINE).and_then(Json::as_object) {
         for k in SCENE_KEYS {
             if let Some(v) = ge.get(*k) {
@@ -169,6 +171,17 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
                 if let Some(y) = yaw.filter(|y| *y != 0.0) {
                     inst.insert("yaw".into(), json!(y));
                 }
+                // The points others hang on (docs/attache-sur-un-os.md), as game.engine reads them on an instance.
+                if let Some(s) = n.raw.get("entity").and_then(|e| e.get("sockets")) {
+                    inst.insert("sockets".into(), s.clone());
+                }
+                // A child of a node that has its own entity hangs under it (docs/entites-et-rendu.md, parent /
+                // child: at the render by default): drawn where its parent's view is, so a crate pushed by its
+                // body takes its planks along. Its own entity keeps the place the file gives it.
+                if let Some(p) = holder_of(n, &holders) {
+                    inst.insert("parent".into(), json!(p));
+                }
+                holders.insert(n.path.as_str(), id.clone());
                 instances.push(Json::Object(inst));
             }
             "element" => {
@@ -180,9 +193,19 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
                 inst.insert("id".into(), json!(id));
                 inst.insert("archetype".into(), json!(arch));
                 inst.insert("at".into(), at(n));
+                // Its place on the ground, when the node says it (`kits.game.engine.place`: `none` keeps the place the file
+                // gives a raised group, a vase on its pedestal); game.engine's default otherwise.
+                if let Some(p) = ge.get("place") {
+                    inst.insert("place".into(), p.clone());
+                }
                 if let Some(y) = yaw.filter(|y| *y != 0.0) {
                     inst.insert("yaw".into(), json!(y));
                 }
+                // The points others hang on (docs/attache-sur-un-os.md), as game.engine reads them on an instance.
+                if let Some(s) = n.raw.get("entity").and_then(|e| e.get("sockets")) {
+                    inst.insert("sockets".into(), s.clone());
+                }
+                holders.insert(n.path.as_str(), id.clone());
                 instances.push(Json::Object(inst));
             }
             "entry" | "zone" if states.is_some() => {
@@ -237,19 +260,37 @@ pub fn lower(scene: &str, tree: &Tree, reg: &Registry) -> Lowered {
         };
         rules.push(rule(cond, b, None, tree));
     }
-    for (k, v) in [
-        ("entries", entries),
-        ("instances", instances),
-        ("zones", zones),
-    ] {
+    for (k, v) in [("entries", entries), ("instances", instances)] {
         if !v.is_empty() {
             out.content.insert(k.into(), Json::Array(v));
+        }
+    }
+    // The trigger zones are the collection `zones` of the kit world.zones, per scene (`data.zones`).
+    if !zones.is_empty() {
+        let data = out.content.entry("data").or_insert_with(|| json!({}));
+        if let Some(d) = data.as_object_mut() {
+            let list = d.entry("zones").or_insert_with(|| json!([]));
+            if let Some(l) = list.as_array_mut() {
+                l.extend(zones);
+            }
         }
     }
     if !rules.is_empty() {
         out.scripts.push(json!({ "id": format!("gfscene_{scene}"), "on": format!("scene:{scene}"), "rules": rules }));
     }
     out
+}
+
+/// The game.engine id of the nearest ancestor of `n` that was lowered as an instance or an element.
+fn holder_of(n: &Node, holders: &std::collections::HashMap<&str, String>) -> Option<String> {
+    let mut path = n.parent.as_str();
+    while !path.is_empty() {
+        if let Some(id) = holders.get(path) {
+            return Some(id.clone());
+        }
+        path = path.rsplit_once('/').map_or("", |(up, _)| up);
+    }
+    None
 }
 
 /// An entry of game.engine: where it is and its yaw.
@@ -343,8 +384,8 @@ fn zone_of(n: &Node, id: &str, ge: Map<String, Json>) -> Json {
 
 fn rule_of(b: &Json, n: &Node, id: &str, tree: &Tree) -> Option<Json> {
     let cond = match b.get("when").and_then(Json::as_str)? {
-        "enter" => json!({ "enter": id }),
-        "leave" => json!({ "leave": id }),
+        "enter" => json!({ "event": "world.zones.entered", "match": { "zone": id } }),
+        "leave" => json!({ "event": "world.zones.left", "match": { "zone": id } }),
         "interact" => json!({ "interact": id }),
         "event" => json!({ "event": b.get("event")?.as_str()? }),
         _ => return None,

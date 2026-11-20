@@ -1,6 +1,6 @@
 //! Change a JSON text in place, keeping everything else as written: the order of the keys, the layout, the unknown
-//! fields. Used to rewrite a scene file (`<name>.gfscene`) or a project file (`<name>.gripforge`) after an edit with the smallest diff (crate::ops): only the
-//! bytes of the changed value move. A small parser that keeps the byte span of every value; no other dependency.
+//! fields. Used to rewrite a project file (`<name>.gripforge`) or a sub-scene it names after an edit with the smallest
+//! diff (crate::ops): only the bytes of the changed value move. A small parser that keeps the byte span of every value; no other dependency.
 
 use serde_json::Value as Json;
 

@@ -1,0 +1,8 @@
+{
+  "note": "The cases whose expected resolution (project + resolveIssues, independent of the kits) is kept here and copied into the compiler (tools/sync-scene-format of gripforgeai/compiler, tests/parity). Written by node tools/parity/parity.mjs --write, checked by --check.",
+  "cases": [
+    { "name": "includes", "project": "tests/base-room/configs/includes.gripforge" },
+    { "name": "includes-defaut", "project": "tests/base-room/configs/includes-defaut.gripforge" },
+    { "name": "includes-salle", "project": "tests/base-room/configs/includes-salle.gripforge" }
+  ]
+}

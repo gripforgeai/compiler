@@ -129,7 +129,8 @@
         1.1,
         -2
        ],
-       "yaw": 3.141592653589793
+       "yaw": 3.141592653589793,
+       "parent": "hall_door"
       },
       {
        "id": "door_leaf",
@@ -139,7 +140,8 @@
         1,
         -2
        ],
-       "yaw": 3.141592653589793
+       "yaw": 3.141592653589793,
+       "parent": "hall_door"
       },
       {
        "id": "door_lock",
@@ -149,7 +151,8 @@
         1,
         -2.05
        ],
-       "yaw": 3.141592653589793
+       "yaw": 3.141592653589793,
+       "parent": "door_leaf"
       },
       {
        "id": "shelf_board",
@@ -170,25 +173,27 @@
        ]
       }
      ],
-     "zones": [
-      {
-       "id": "hall_door",
-       "shape": "box",
-       "center": [
-        0,
-        1.5,
-        -8
-       ],
-       "size": [
-        2,
-        3,
-        2
-       ],
-       "watch": [
-        "visitor"
-       ]
-      }
-     ]
+     "data": {
+      "zones": [
+       {
+        "id": "hall_door",
+        "shape": "box",
+        "center": [
+         0,
+         1.5,
+         -8
+        ],
+        "size": [
+         2,
+         3,
+         2
+        ],
+        "watch": [
+         "visitor"
+        ]
+       }
+      ]
+     }
     }
    ],
    "archetypes": [
@@ -343,7 +348,10 @@
      "rules": [
       {
        "when": {
-        "enter": "hall_door"
+        "event": "world.zones.entered",
+        "match": {
+         "zone": "hall_door"
+        }
        },
        "then": [
         {

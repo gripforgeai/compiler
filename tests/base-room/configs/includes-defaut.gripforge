@@ -1,0 +1,18 @@
+{
+  "id": "base_room_includes_defaut",
+  "name": "preuve des inclusions",
+  "includes": [
+    {
+      "file": "includes-salle.gripforge",
+      "as": "salle"
+    }
+  ],
+  "installed": [
+    {
+      "id": "game.engine",
+      "config": {
+        "startScene": "salle_preuve"
+      }
+    }
+  ]
+}

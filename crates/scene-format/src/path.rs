@@ -104,7 +104,7 @@ pub fn resolve(from: &str, target: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// The directory part of a project path (`scenes/start.gfscene` → `scenes`).
+/// The directory part of a project path (`scenes/start.json` → `scenes`).
 pub fn dir_of(p: &str) -> &str {
     p.rfind('/').map_or("", |i| &p[..i])
 }

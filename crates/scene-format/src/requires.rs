@@ -34,7 +34,7 @@ pub fn read(raw: Option<&Json>, issues: &mut Vec<Issue>) -> Vec<Require> {
     let mut out: Vec<Require> = Vec::new();
     let Some(raw) = raw else { return out };
     let Some(list) = raw.as_array() else {
-        issues.push(Issue::warning("requires_invalid", "requires is not a list", "write requires as a list: [\"game.engine\", { \"id\": \"core.physics\", \"version\": \"^1\" }]").at("", "requires"));
+        issues.push(Issue::warning("requires_invalid", "requires is not a list", "write requires as a list: [\"game.engine\", { \"id\": \"<family>.<name>\", \"version\": \"^1\" }]").at("", "requires"));
         return out;
     };
     for (i, r) in list.iter().enumerate() {
@@ -50,7 +50,7 @@ pub fn read(raw: Option<&Json>, issues: &mut Vec<Issue>) -> Vec<Require> {
             _ => (String::new(), String::new()),
         };
         if !is_kit_id(&id) {
-            issues.push(Issue::warning("requires_invalid", format!("requires[{i}] is not a kit id"), "write a kit id like \"core.physics\", or { \"id\": \"core.physics\", \"version\": \"^1\" }").at("", &format!("requires[{i}]")));
+            issues.push(Issue::warning("requires_invalid", format!("requires[{i}] is not a kit id"), "write a kit id, <family>.<name>, or { \"id\": \"<family>.<name>\", \"version\": \"^1\" }").at("", &format!("requires[{i}]")));
             continue;
         }
         if !version.is_empty() && parse_range(&version).is_none() {

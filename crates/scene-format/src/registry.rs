@@ -5,7 +5,7 @@
 use serde_json::{Map, Value as Json};
 use std::collections::BTreeMap;
 
-/// The base node types, as data (the same file the dev.builder kit serves as its `nodeTypes` registry).
+/// The base node types, as data (the same file game.engine includes in its `nodeTypes` registry).
 pub const BASE_NODE_TYPES: &str = include_str!("node_types.json");
 
 /// One property of a node type, or one field of a kit's section: its type, default and description.
@@ -84,6 +84,9 @@ pub struct Element {
 pub struct Section {
     /// Its elements, in the order of its `kit.api.json`.
     pub elements: Vec<Element>,
+    /// The runs its sections need (`needsRun` of an entry: `physics`): a node that carries the section in a project
+    /// where that run is off is said (`physics_not_run`).
+    pub needs_run: Vec<String>,
 }
 
 impl Section {
@@ -224,11 +227,13 @@ impl Registry {
                 );
             }
             if let Some(el) = element_of(kit, e) {
-                self.sections
-                    .entry(kit.to_string())
-                    .or_default()
-                    .elements
-                    .push(el);
+                let section = self.sections.entry(kit.to_string()).or_default();
+                section.elements.push(el);
+                if let Some(run) = e.get("needsRun").and_then(Json::as_str) {
+                    if !section.needs_run.iter().any(|r| r == run) {
+                        section.needs_run.push(run.to_string());
+                    }
+                }
             }
         }
     }
@@ -329,6 +334,12 @@ pub fn obj<'a>(v: Option<&'a Json>, empty: &'a Map<String, Json>) -> &'a Map<Str
     v.and_then(Json::as_object).unwrap_or(empty)
 }
 
+/// The keys every kit's config accepts, whatever its `configSchema` says (Damien, 20/11): the debugger reads them from
+/// the project, the kit never does, so no schema repeats them. `debugger`: the look of the kit's tab in the F9 debugger
+/// (docs/f9-onglets.md « Option debugger »). One list for every reader: game.engine (model/unknown.rs), this
+/// validator, and so gripforge-build; tools/project-schema/fragment.mjs adds the same key to every kit's fragment.
+pub const COMMON_CONFIG_KEYS: &[&str] = &["debugger"];
+
 /// The project level of a kit checked against its `configSchema` (the `config` of its `installed` entry in the
 /// project file): a key the schema closes out (`additionalProperties: false`) or a value of another JSON type is a
 /// warning; the kit keeps its default for it. Only the top-level keys: the rest is the kit's own reading.
@@ -341,7 +352,10 @@ pub fn check_config(reg: &Registry, kit: &str, config: &Json) -> Vec<crate::Issu
     let closed = schema.get("additionalProperties") == Some(&Json::Bool(false));
     let at = |k: &str| format!("installed.{kit}.config.{k}");
     let mut out = Vec::new();
-    for (k, v) in given {
+    for (k, v) in given
+        .iter()
+        .filter(|(k, _)| !COMMON_CONFIG_KEYS.contains(&k.as_str()))
+    {
         match props.and_then(|p| p.get(k)) {
             None if closed => out.push(
                 Issue::warning(

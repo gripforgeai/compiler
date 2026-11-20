@@ -1,9 +1,9 @@
 //! The edit commands of a scene, in **the format of the site's scene patch** (`gripforge_scene_patch`, the
 //! `commands` of `/api/v1/scenes/schema`): `insert`, `remove`, `transform`, `replace`, `update`. The debugging editor
-//! (`editor.scene`) already emits them and keeps them in its file of patches (`gripforge.editor-patches/1`: `room`,
-//! `baseRevision`, `commands`); the CLI, the MCP, an AI and the editor app use the same. Here they are applied to the
-//! project's scene files (`<name>.gfscene`) with the smallest diff (crate::jsontext): only the changed values move, the order, the
-//! layout and the unknown fields stay (docs/dev-builder.md « L'édition »).
+//! (`debug.inspector.edit`) emits them with their `baseRevision` (`changes()`) and keeps no file; the CLI, the MCP, an
+//! AI and the editor app use the same. Here they are applied to the
+//! project's file and the sub-scenes it names with the smallest diff (crate::jsontext): only the changed values move,
+//! the order, the layout and the unknown fields stay (docs/dev-builder.md « L'édition »).
 //!
 //! Two readings of `id`, so a command of the debugging editor lands in the file: a **node path** (`Hall/Crate`), its
 //! transform local to the parent, as the site's nodes; or **the game.engine id of an instance** (`hall_crate`, what the
@@ -26,7 +26,8 @@ use crate::tree::resolve_doc;
 use serde_json::{json, Value as Json};
 use std::collections::BTreeMap;
 
-/// The schema of the file of patches of the debugging editor (`editor.scene`), read as the file of edits.
+/// The schema of a file of patches (`room`, `baseRevision`, `commands`), read as the file of edits. The debugging
+/// editor wrote one until 17/11; `debug.inspector.edit` writes none.
 pub const PATCHES_SCHEMA: &str = "gripforge.editor-patches/1";
 
 /// Where a node path lands in a scene file.
@@ -155,7 +156,7 @@ fn edit(text: &str, op: &Json) -> Result<String, Issue> {
                 return Err(bad("op_invalid", "set has no value", "write \"value\": the new value (null removes nothing: it writes null)"));
             };
             if keys.is_empty() || (!node.is_empty() && matches!(keys[0].as_str(), "name" | "children")) {
-                return Err(bad("op_invalid", "set needs a path inside the node, other than name and children", "write \"path\": \"light/intensity\", \"kits/core.physics/body\" or \"visible\"; add and remove change the children"));
+                return Err(bad("op_invalid", "set needs a path inside the node, other than name and children", "write \"path\": \"light/intensity\", \"kits/<kit id>/<property>\" or \"visible\"; add and remove change the children"));
             }
             match locate(&doc, node)? {
                 Located::Direct(segs) => set_path(text, &root, &segs, &keys, value),
@@ -486,7 +487,7 @@ pub fn apply_patches(
             .map(str::to_string)
             .or_else(|| room_file.clone())
         else {
-            issues.push(bad("op_invalid", "the command names no file and the room is not a scene of the project with a file", "add \"file\": the scene file (<name>.gfscene), or set \"room\" to a scene id of data.scenes").at("", &field));
+            issues.push(bad("op_invalid", "the command names no file and the room is not a scene of the project with a file", "add \"file\": the path of the sub-scene, or set \"room\" to a scene id of data.scenes").at("", &field));
             continue;
         };
         let Some(current) = texts.get(&file).cloned().or_else(|| read(&file)) else {

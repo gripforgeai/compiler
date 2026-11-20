@@ -1,0 +1,618 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "core.physics",
+  "version": "1.13.0",
+  "requires": [],
+  "dependencies": [],
+  "provides": [
+    {
+      "id": "core.physics",
+      "role": "role.physics",
+      "version": "1.13.0",
+      "description": "One physics API on every engine: Rapier in the kit's own library on Bevy (native and web), the engine's own physics on Godot, Unity and Unreal. Bodies, shapes, forces, a character controller, contact events; every question asked by ticket, never waited for."
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "outOfContext": {"type": ["string","object"], "description": "What the physics world does while the context on top of game.engine's stack is not one of its contexts (docs/hors-contexte.md): a behaviour (freeze: the host stops stepping it, every body keeps its place and its speed, the default; stop: frozen, and every body at rest when it comes back; continue; end: read as stop), or { behavior, contexts } (absent: default). The world is the default of its bodies; `bodies` { entity: behaviour | { contexts, outOfContext } } gives a body its own rule (each body decides alone, held by the physics one by one). Nothing without game.engine."},
+      "character": {
+        "type": "object",
+        "description": "Defaults of the character controller (a character created with explicit options keeps them).",
+        "properties": {
+          "maxSlopeDeg": {"type":"number","default":45,"minimum":0,"maximum":89,"description":"Steepest walkable slope (degrees)."},
+          "stepHeight": {"type":"number","default":0.4,"minimum":0,"maximum":10,"description":"Highest step climbed (m)."},
+          "snapDistance": {
+            "type": "number",
+            "default": 0.3,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Ground snapping distance (m) when walking down slopes and steps."
+          },
+          "skinRatio": {
+            "type": "number",
+            "default": 0.05,
+            "minimum": 0.001,
+            "maximum": 0.5,
+            "description": "Gap the controller keeps from what it touches, as a fraction of the capsule radius (at least 1 cm); 0.05 keeps the fixed 5 cm gap of the Rapier controller."
+          },
+          "originOffset": {"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3,"description":"The first offset of every character (m), from the origin of the followed object to the point the service takes and gives: absent, 0 (the origin as it is, on every engine). A game changes one live with setCharacterOffset; a value it computed is one it writes."}
+        },
+        "additionalProperties": false
+      },
+      "maxContactsPerBody": {
+        "type": "integer",
+        "default": 16,
+        "minimum": 1,
+        "maximum": 1024,
+        "description": "Contact events reported per body per step (contactEvents); the first ones are kept."
+      },
+      "maxOverlapResults": {
+        "type": "integer",
+        "default": 256,
+        "minimum": 1,
+        "maximum": 65536,
+        "description": "Results of one overlap query (pollFound); the first ones are kept."
+      },
+      "gravity": {"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3,"default":[0,-9.81,0],"description":"The gravity of the world [x, y, z] (m/s²), declared: set at the start of the game, changed by the game's config or a mod (the hook core.physics.step asked at each tick is gone, #655); setGravity changes it while the game runs."},
+      "defaultMass": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0.001,
+        "maximum": 1000000,
+        "description": "Mass (kg) of a dynamic body created without one."
+      },
+      "fluidLevel": {"type":"number","minimum":-100000,"maximum":100000,"description":"PROVISIONAL name: a flat fluid of water everywhere at this height (m), the fallback the floating bodies (buoyancy) float on when no fluid source is given. Absent: no fluid, nothing floats, nothing costs."},
+      "materials": {
+        "type": "object",
+        "description": "The registry of named physical materials (one for the whole game: world.ground and footstep sounds read it): { <name>: { friction, restitution, footstep } }. A body described with material: <name> takes its friction and restitution. A game or a mod adds or changes one (moddable).",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "friction": {"type":"number","minimum":0},
+            "restitution": {"type":"number","minimum":0,"maximum":1},
+            "footstep": {"type":"string"}
+          }
+        }
+      },
+      "layers": {
+        "type": "array",
+        "maxItems": 32,
+        "items": {"type":"string"},
+        "description": "The registry of named collision layers, in bit order (at most 32); layerMask(names) gives the mask the query filters take."
+      },
+      "archetypes": {
+        "type": "object",
+        "default": {},
+        "description": "The collision of the archetypes, for the collision nodes (scene element core.physics.collision): { <archetype>: { shape, type, size, radius, height, mass, material, layers, collidesWith, asset, heights, joint } }, the same fields as a collision node. A collision node's field left neutral (empty, 0, [0,0,0], null) takes its archetype's (its parent's game.engine archetype). An entity of game.engine whose archetype is here gets its body when it spawns (heard only when this registry is not empty). A game or a mod adds or changes one (moddable).",
+        "additionalProperties": {"type": "object"}
+      },
+      "watches": {
+        "type": "array",
+        "default": [],
+        "items": {"type": "object"},
+        "description": "The watches the game declares (docs/design/core-physics-surveillances.md): [{ id, kind, element, at, yaw, radius, height, range, angle, lineOfSight, eye, size, direction, seconds, mode, minForce, once, cooldown, topic, tags, notTags, kinds, layers, group }], the same spec as addWatch(spec). Nothing runs for a watch until one of its signals has an audience. A game or a mod adds or changes one (moddable)."
+      },
+      "watchKinds": {
+        "type": "object",
+        "default": {},
+        "description": "The registry of watch kinds beyond the five bases (around, contact, traverse, stay, sight): { <kind>: { base, ...defaults of any field of a watch } }; a watch of that kind takes these defaults, its own fields win. A game or a mod adds or changes one (moddable).",
+        "additionalProperties": {"type": "object"}
+      },
+      "fields": {"type":"array","default":[],"items":{"type":"object"},"description":"The fields of gravity and force the game declares (docs/design/core-physics-champs.md): [{ id, kind, base, volume, at, on, priority, blend, enabled, lifetime, topic, tags, notTags, kinds, layers, group, ...the fields of its base }], the same spec as addField(spec). Moddable."},
+      "fieldKinds": {"type":"object","default":{},"description":"The registry of field kinds beyond the six bases (uniform, point, magnet, wind, vortex, custom): { <kind>: { base, ...defaults of any field of a field } }; a field of that kind takes these defaults, its own fields win. A game or a mod adds or changes one (moddable): a law of its own is a kind of base custom whose value the hook core.physics.field.apply gives.","additionalProperties":{"type":"object"}},
+      "interactions": {
+        "type": "object",
+        "default": {},
+        "description": "Who interacts with whom, by a tag (or the group of a watch) of the element: { <tag>: { only: [tags], ignore: [tags] } }. Read by every watch, search, focus and use whose element bears the tag: only lets through only the others with one of its tags, ignore stops the others with one of its tags; noPush: the others with one of its tags cannot push the element (pickUp, canPush). Which pairs push each other stays the layers of the bodies (layers, collidesWith). A game or a mod adds or changes one (moddable).",
+        "additionalProperties": {"type": "object", "properties": {"only": {"type": "array", "items": {"type": "string"}}, "ignore": {"type": "array", "items": {"type": "string"}}, "noPush": {"type": "array", "items": {"type": "string"}}}}
+      },
+      "bodyStates": {
+        "type": "array",
+        "default": [],
+        "items": {"type": "object"},
+        "description": "Physical properties bound to a state of game.engine, as the rendering is (docs/design/rendu-par-etat.md): [{ tags?, entity?, when: { <state>: value }, set: { mass, friction, restitution, linearDamping, angularDamping, gravityScale, kind } }]; while the state of the entity matches when, its body takes set (the rules that hold, in order); out of it, the body gets its own back. game.engine.state.changed is heard only when the list is not empty. A game or a mod adds or changes one (moddable)."
+      },
+      "detachStates": {
+        "type": "array",
+        "default": [],
+        "items": {"type": "object"},
+        "description": "Parts detached by a state of game.engine: [{ tags?, entity?, when: { <state>: value }, part: { ...spec of detachPart } }]; when the state of the entity comes to match when, the part is detached, once per entity and part. A game or a mod adds or changes one (moddable)."
+      },
+      "pieceLife": {"type": "number", "default": 30, "description": "Seconds a detached piece lives before it fades, when its emitter says nothing (setPieceLife, pieceLives); below 0: pieces stay."},
+      "pieceFade": {"type": "number", "default": 3, "description": "Seconds a detached piece takes to fade out (opacity down to 0, continuously) before it goes, when its emitter says nothing."},
+      "piecesMax": {"type": "integer", "default": 32, "description": "Detached pieces kept at most: over it, the oldest starts its fade first (never removed at once)."},
+      "pieceLives": {"type": "array", "default": [], "items": {"type": "object"}, "description": "The life of the pieces per emitter, in data: [{ tags?, entity?, life?, fade? }]; the first rule that names the entity a piece comes from wins (setPieceLife in code wins over it). A game or a mod adds or changes one (moddable)."},
+      "supports": {
+        "type": "array",
+        "default": [],
+        "items": {"type": "object"},
+        "description": "Support graphs (docs/design/core-physics-surveillances.md, « Le graphe de soutien »): [{ id, strength? (N·s, the default of its links), nodes: { <name>: { kind? (a preset of supportKinds), entity? (an entity or a game.engine instance), body? (a body id, else the entity's), part? (a spec of detachPart: the node is that part of the entity), anchor? (held by the ground), strength? (N·s: a hit that hard breaks the node), breakWhen? ({ <state>: value } of game.engine), fall? (dynamic | detach | remove | none; detach for a part, dynamic otherwise), impulse? ([x, y, z] N·s when it falls as a body) } }, links: [{ id?, a, b (a rests on b; b may be ground, which always stands), strength? (N·s), joint? ({ kind: fixed, … } as addJoint, between two bodies; anchors not given keep them where they are) }] }]. When a node or a link breaks, what no longer rests on an anchor falls, once. Nothing runs while nothing breaks. A game or a mod adds or changes one (moddable)."
+      },
+      "supportKinds": {
+        "type": "object",
+        "default": {},
+        "additionalProperties": {"type": "object"},
+        "description": "Presets of support nodes (a registry): { <kind>: { strength, fall, impulse, breakWhen, anchor } }; a node kind: <kind> takes them, its own fields win (a brick, a glass pane)."
+      },
+      "carry": {
+        "type": "object",
+        "description": "Carrying a body (pickUp, putDown, launch): offset [x, y, z] where it is held in the holder's frame (+Z forward), throwSpeed (m/s along the heading), lift (m/s upward when launched), maxMass (kg, heavier bodies are not picked up).",
+        "properties": {
+          "offset": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "default": [0, 1, 1.2]},
+          "throwSpeed": {"type": "number", "default": 8, "minimum": 0, "maximum": 1000},
+          "lift": {"type": "number", "default": 2, "minimum": 0, "maximum": 1000},
+          "maxMass": {"type": "number", "default": 50, "minimum": 0, "maximum": 1000000}
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "defaults": {
+    "character": {"maxSlopeDeg":45,"stepHeight":0.4,"snapDistance":0.3,"skinRatio":0.05},
+    "maxContactsPerBody": 16,
+    "maxOverlapResults": 256,
+    "gravity": [0, -9.81, 0],
+    "defaultMass": 1,
+    "materials": {"default":{"friction":0.5,"restitution":0,"footstep":""}},
+    "layers": ["default"],
+    "archetypes": {},
+    "watches": [],
+    "watchKinds": {},
+    "fields": [],
+    "fieldKinds": {},
+    "interactions": {},
+    "bodyStates": [],
+    "detachStates": [],
+    "pieceLife": 30,
+    "pieceFade": 3,
+    "piecesMax": 32,
+    "pieceLives": [],
+    "supports": [],
+    "supportKinds": {},
+    "carry": {"offset": [0, 1, 1.2], "throwSpeed": 8, "lift": 2, "maxMass": 50}
+  },
+  "events": {
+    "emits": [
+      {"topic":"core.physics.stepped","payload":{"type":"object","properties":{"steps":{"type":"integer"},"ticks":{"type":"integer"}},"additionalProperties":false},"description":"The physics advanced since the last tick: steps made, ticks since the last ones. Told only when someone listens."},
+      {"topic":"core.physics.contact.begin","payload":{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"},"impulse":{"type":"number"}},"additionalProperties":false},"description":"Two colliders began to touch since the last tick (after the hook core.physics.contact). Told only when someone listens."},
+      {"topic":"core.physics.contact.end","payload":{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"},"impulse":{"type":"number"}},"additionalProperties":false},"description":"Two colliders stopped touching since the last tick (after the hook core.physics.contact). Told only when someone listens."},
+      {"topic":"core.physics.sensor.enter","payload":{"type":"object","properties":{"sensor":{"type":"string"},"other":{"type":"string"}},"additionalProperties":false},"description":"A body entered a sensor (a body made with sensor: true) since the last tick; its contacts are never told as contacts. Told only when someone listens."},
+      {"topic":"core.physics.sensor.exit","payload":{"type":"object","properties":{"sensor":{"type":"string"},"other":{"type":"string"}},"additionalProperties":false},"description":"A body left a sensor since the last tick. Told only when someone listens."},
+      {"topic":"core.physics.watch.entered","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"},"distance":{"type":"number"},"angle":{"type":"number"}}},"description":"Another came within the radius (around) or into the sight (sight: distance, angle in degrees) of a watched element. Told only when someone listens; also on <topic>.entered when the watch names a topic."},
+      {"topic":"core.physics.watch.left","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"}}},"description":"Another whose entering was told left the radius or the sight of a watched element, or the zone of a stay watch whose stayed was told."},
+      {"topic":"core.physics.watch.touched","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"},"impulse":{"type":"number"},"speed":{"type":"number"},"material":{"type":"string"}}},"description":"Another body began to touch the watched body (contact): impulse of the hit, speed (impulse / mass of the other), material of the other (registry name, default)."},
+      {"topic":"core.physics.watch.released","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"}}},"description":"A body whose touch was told stopped touching the watched body."},
+      {"topic":"core.physics.watch.crossed","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"},"direction":{"type":"string","enum":["forward","backward"]}}},"description":"Another went through the passage of a traverse watch (a door, a finish line): from one side of the element's heading to the other, within size [width, height]."},
+      {"topic":"core.physics.watch.stayed","payload":{"type":"object","properties":{"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"},"seconds":{"type":"number"}}},"description":"Another has been inside (or in contact with) a stay watch for its seconds (a pressure plate); once per stay."},
+      {"topic":"core.physics.field.entered","payload":{"type":"object","properties":{"field":{"type":"string"},"kind":{"type":"string"},"other":{"type":"string"}}},"description":"Another came into the volume of a field of gravity or force (its internal watch saw it). Told only when someone listens; also on <topic>.entered when the field names a topic."},
+      {"topic":"core.physics.field.left","payload":{"type":"object","properties":{"field":{"type":"string"},"kind":{"type":"string"},"other":{"type":"string"}}},"description":"Another left the volume of a field (or the field went). Told only when someone listens; also on <topic>.left when the field names a topic."},
+      {"topic":"core.physics.focus.changed","payload":{"type":"object","properties":{"entity":{"type":"string"},"target":{"type":["string","null"]},"previous":{"type":["string","null"]}},"additionalProperties":false},"description":"The focus of an entity (focus) changed: its best candidate, or null. Told only when it changes and someone listens."},
+      {"topic":"core.physics.carry.picked","payload":{"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},"description":"An entity picked up a body (pickUp)."},
+      {"topic":"core.physics.carry.put_down","payload":{"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},"description":"An entity let go of the body it held (putDown, or the body or the holder is gone)."},
+      {"topic":"core.physics.carry.launched","payload":{"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},"description":"An entity threw the body it held (launch)."},
+      {"topic":"core.physics.part.detached","payload":{"type":"object","properties":{"entity":{"type":"string"},"part":{"type":"string"},"piece":{"type":"string"},"hidden":{"type":"boolean"}},"additionalProperties":false},"description":"A part of an entity was detached as a dynamic body (detachPart, detachStates): piece is its new entity, hidden whether the part's engine node was hidden."},
+      {"topic":"core.physics.part.fading","payload":{"type":"object","properties":{"piece":{"type":"string"},"seconds":{"type":"number"}},"additionalProperties":false},"description":"A detached piece starts disappearing (its life is over, or it is the oldest over piecesMax): its opacity goes down to 0 over seconds, computed by the presentation from this start."},
+      {"topic":"core.physics.part.expired","payload":{"type":"object","properties":{"piece":{"type":"string"}},"additionalProperties":false},"description":"A detached piece reached the end of its life and its fade: its body and its entity are removed."},
+      {"topic":"core.physics.support.broken","payload":{"type":"object","properties":{"graph":{"type":"string"},"link":{"type":"string"},"a":{"type":"string"},"b":{"type":"string"},"cause":{"type":"string","enum":["impulse","call","node","fall"]},"impulse":{"type":["number","null"]}},"additionalProperties":false},"description":"A link of a support graph broke: a hit at least its strength (impulse), breakLink (call), one of its nodes broke (node) or fell (fall); its joint let go. Told only when someone listens."},
+      {"topic":"core.physics.support.fell","payload":{"type":"object","properties":{"graph":{"type":"string"},"node":{"type":"string"},"entity":{"type":["string","null"]},"body":{"type":["string","null"]},"part":{"type":["string","null"]},"piece":{"type":["string","null"]},"fall":{"type":"string","enum":["dynamic","detach","remove","none"]},"cause":{"type":"string","enum":["broken","unsupported"]}},"additionalProperties":false},"description":"A node of a support graph fell, once: it broke itself (broken) or no longer rests on an anchor (unsupported); fall says what it did (its body became dynamic, its part was detached as piece, its body was removed, nothing). Told at the tick after the break, only when someone listens."},
+      {"topic":"core.physics.support.collapsed","payload":{"type":"object","properties":{"graph":{"type":"string"},"nodes":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"description":"Nodes of a support graph fell at this tick (their names, in order): once per graph and tick, after their core.physics.support.fell."},
+      {"topic":"interaction.requested","payload":{"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},"description":"use(entity, target?): an entity uses its target (given, else its focus). The topic game.engine hears (game.engine.interact, binding interact)."}
+    ],
+    "listens": [{"topic":"game.engine.state.changed","description":"Only when bodyStates or detachStates declares some, or a support node has breakWhen: the body of the entity takes the props of the rules that hold, the parts of the rules that come to hold are detached, the support nodes whose breakWhen holds break."},{"topic":"game.engine.context.changed"}]
+  },
+  "engine": {
+    "kindProps": {
+      "held": {"schema":{"type":"boolean"},"combine":{"mode":"or"},"description":"The body is held: fixed and solid for the others, its speeds kept aside (out of context). Written in play by contributions (core.physics.hold), applied by core.physics only; carried wins."},
+      "carried": {"schema":{"type":"boolean"},"combine":{"mode":"or"},"description":"The body is carried: out of the world, no contact, no query (a vehicle's seat). Written in play by contributions (core.physics.hold), applied by core.physics only; wins over held."},
+      "restOnRelease": {"schema":{"type":"boolean"},"combine":{"mode":"or"},"description":"Let go, the body starts from rest (a stop out of context). Laid for one tick by the kit that lets go."}
+    },
+    "role": "service",
+    "hooks": {
+      "core.physics.context.leave": {
+        "payload": {"type":"object","properties":{"element":{"type":"string"},"kind":{"type":"string"},"behavior":{"type":"string"},"top":{"type":"string"},"contexts":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},
+        "mutable": ["behavior"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "The physics world leaves its contexts of game.engine's stack (docs/hors-contexte.md): element world, kind empty, behavior what it is about to do (freeze, stop, continue, end). A game or a mod changes the behaviour, or cancels (the world keeps stepping). Asked only when a tap listens."
+      },
+      "core.physics.contact": {
+        "payload": {"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"},"begin":{"type":"boolean"},"impulse":{"type":"number"}},"additionalProperties":false},
+        "mutable": ["impulse"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "A contact that began or ended since the last tick, before its event is told: cancel keeps it untold. Which pairs collide at all is the layers (layers, collidesWith): a filter asked at each pair would make the physics wait for the tick. Asked at the tick only when someone listens: a tap of this hook or the contact events (nothing is read otherwise).",
+        "example": {"id":"quiet_ground","hook":"core.physics.contact","match":{"b":"ground"},"cancel":true}
+      },
+      "core.physics.make_body": {
+        "payload": {"type":"object","properties":{"entity":{"type":"string"},"archetype":{"type":"string"},"body":{"type":"object"},"joint":{"type":["object","null"]}},"additionalProperties":false},
+        "mutable": ["body","joint"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "The body of collision nodes is about to be made, or made again when one of them changes (from a scene file, from code, or for an entity of a declared archetype at its spawn): entity is its id, archetype its first node's (empty: none), body its description { kind, sensor, position, rotation, mass, material, layers, collidesWith, shapes: [{ shape, size, radius, height, asset, parts, position, rotation, scale }] } (a mesh: parts null when no passport gives them), joint the first node's joint or null. A tap changes body or joint, or cancels the body (create then fails with its reason).",
+        "example": {"id":"no_crates","hook":"core.physics.make_body","match":{"archetype":"crate"},"cancel":true}
+      },
+      "core.physics.watch.signal": {
+        "payload": {"type":"object","properties":{"signal":{"type":"string"},"watch":{"type":"string"},"kind":{"type":"string"},"element":{"type":"string"},"other":{"type":"string"}}},
+        "mutable": ["other","impulse","speed","material","distance","angle","direction","seconds"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "A watch is about to tell a signal (entered, left, touched, released, crossed, stayed) with its values: a tap changes them or cancels it (the signal is not told, and an entering one does not count for once or cooldown). Asked only when tapped.",
+        "example": {"id":"no_npc_plates","hook":"core.physics.watch.signal","match":{"kind":"pressure_plate"},"cancel":true}
+      },
+      "core.physics.field.apply": {"payload":{"type":"object","properties":{"field":{"type":"string"},"kind":{"type":"string"},"base":{"type":"string"},"role":{"type":"string"},"other":{"type":"string"},"position":{"type":"array"},"velocity":{"type":"array"},"value":{"type":"array"}}},"mutable":["value"],"cancellable":true,"targets":["web","rust"],"description":"What a field gives a member at the tick, before it is applied: value is a gravity (m/s², role gravity) or a force (N, role force), after the body's fieldResponse. A tap changes it or cancels it (the member feels nothing from that field this tick); a kind of base custom has its value only from here (magnetic poles, a law of the game). Asked only when tapped, for each member of each field.","example":{"id":"poles","hook":"core.physics.field.apply","match":{"kind":"poles"}}},
+      "core.physics.focus.choose": {
+        "payload": {"type":"object","properties":{"entity":{"type":"string"},"candidates":{"type":"array"},"target":{"type":["string","null"]}},"additionalProperties":false},
+        "mutable": ["target"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "The focus of an entity is about to be chosen among its candidates (the best first): a tap names another target (null: none) or cancels (the focus stays). Asked at each round only when tapped."
+      },
+      "core.physics.use_target": {
+        "payload": {"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},
+        "mutable": ["target"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "use(entity) is about to request the interaction with target (given, else the focus): a tap names another target or cancels."
+      },
+      "core.physics.part.detach": {
+        "payload": {"type":"object","properties":{"entity":{"type":"string"},"part":{"type":"string"},"spec":{"type":"object"}},"additionalProperties":false},
+        "mutable": ["spec"],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "A part of entity is about to be detached (detachPart, detachStates): a tap changes its spec (shape, velocity…) or cancels it."
+      },
+      "core.physics.support.break": {
+        "payload": {"type":"object","properties":{"graph":{"type":"string"},"link":{"type":"string"},"node":{"type":"string"},"cause":{"type":"string"},"impulse":{"type":["number","null"]}},"additionalProperties":false},
+        "mutable": [],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "A link (link, node empty) or a node (node, link empty) of a support graph is about to break (cause impulse, state or call): a tap cancels it (it stands). Asked only when tapped.",
+        "example": {"id":"sturdy_pillar","hook":"core.physics.support.break","match":{"node":"pillar"},"cancel":true}
+      },
+      "core.physics.carry.pick": {
+        "payload": {"type":"object","properties":{"entity":{"type":"string"},"target":{"type":"string"}},"additionalProperties":false},
+        "mutable": [],
+        "cancellable": true,
+        "targets": ["web","rust"],
+        "description": "pickUp(entity) is about to hold target: a tap cancels it."
+      }
+    },
+    "moddable": {"config":["gravity","character","maxContactsPerBody","maxOverlapResults","defaultMass","materials","layers","archetypes","watches","watchKinds","interactions","bodyStates","detachStates","supports","supportKinds","carry","fields","fieldKinds"]},
+    "registries": {
+      "materials": {
+        "of": "physical material",
+        "inherit": false,
+        "description": "Named physical materials { friction, restitution, footstep } (config materials.<name>); a body takes one by name."
+      },
+      "layers": {
+        "of": "collision layer",
+        "inherit": false,
+        "description": "Named collision layers in bit order (config layers); layerMask gives their mask."
+      },
+      "archetypes": {
+        "of": "collision of an archetype",
+        "inherit": false,
+        "description": "The collision of each archetype for the collision nodes (config archetypes.<archetype>): what every node or entity of that archetype gets unless it says otherwise."
+      },
+      "watchKinds": {
+        "of": "watch kind",
+        "inherit": false,
+        "description": "The watch kinds of the game or of a mod (config watchKinds.<kind>): a base (around, contact, traverse, stay, sight) and its defaults."
+      },
+      "supportKinds": {
+        "of": "support node preset",
+        "inherit": false,
+        "description": "Presets of support nodes (config supportKinds.<kind>): strength, fall, impulse, breakWhen, anchor; a node of that kind takes them."
+      },
+      "fieldKinds": {"of":"field kind","inherit":false,"description":"The field kinds of the game or of a mod (config fieldKinds.<kind>): a base (uniform, point, magnet, wind, vortex, custom) and its defaults."},
+      "interactions": {
+        "of": "interaction rule",
+        "inherit": false,
+        "description": "Who interacts with whom, by a tag of the element (config interactions.<tag>): only, ignore."
+      }
+    }
+  },
+  "gameSchema": {"columns":[{"name":"physics.ground_gap@1","type":"f64","default":0,"read":["*"],"write":["core.physics"],"of":{"component":"physics.ground_gap"},"description":"PROVISIONAL name. The real bottom of a character's body, gap included: the distance (m) between the bottom of its capsule and the ground it rests on (the controller's gap, 5 cm by default, or the ratio of `character.skinRatio` of the radius, at least 1 cm). Written in place by core.physics when the character is made (0 again when it is removed; 0 for an entity that is no character); read by the rendering to put the model's feet where the body really rests, nothing is computed at the physics tick."},{"name":"physics.character_offset@1","type":"f64x3","default":[0,0,0],"read":["*"],"write":["*"],"description":"The offset of a character's frame (from the origin of the followed object to the point the kits give and read), written in place by the game at any time without a call; the latest write wins, by this column or by setCharacterOffset."},{"name":"physics.gravity@1","type":"f64x3","default":[0,-1,0],"read":["*"],"write":["core.physics"],"description":"The gravity a character feels, in g (9.81 m/s²): written in place by core.physics only when a field of gravity changes it, the world's given back when it leaves the last one; [0, -1, 0] by default. core.locomotion reads it at the tick."}]},
+  "services": {
+    "core.physics": {
+      "description": "The physics of the game. Each method can be served by the game in its language (provide_<method>). Questions are tickets (ask*, poll*): nothing waits for the physics, which runs on its own loop.",
+      "methods": [
+        {"name": "hold", "args": ["entity","prop","on","options"], "description": "A kit holds, carries or lets go of a body (docs/decisions/contributions.md, case 2): prop held, carried or restOnRelease; options { by (the calling kit), reason, ticks }. Its contribution goes to game.engine.contributions, and core.physics applies the final hold (carried wins over held; let go from rest when restOnRelease): two kits never overwrite each other's hold. Without game.engine, the port's order of before. Returns whether the port took it."},
+        {"name": "setOutOfContext", "args": ["element","options"], "description": "The rule out of context (docs/hors-contexte.md): element null (or world) and options { behavior, contexts }, as the config's outOfContext (the default of the bodies); or a body (its entity) and options { contexts, outOfContext } (outOfContext null: the world's again). Applied at once. Returns the rule, or true | false (no such body)."},
+        {"name": "outOfContext", "args": ["element"], "description": "The rule out of context: of the world ({ behavior, contexts, kinds, top, applied }: applied is what is applied to the world now, null while it steps), or of a body ({ contexts, outOfContext, applied })."},
+        {
+          "name": "step",
+          "args": ["dt"],
+          "description": "Steps the physics by dt seconds, only while manual stepping is on (a replay, a test); otherwise the physics runs on its own loop and this does nothing."
+        },
+        {
+          "name": "addStaticBox",
+          "args": ["center","size","entity"],
+          "description": "Adds a fixed box (full size), owned by entity when given."
+        },
+        {
+          "name": "addStaticMesh",
+          "args": ["vertices","indices","entity"],
+          "description": "Adds a fixed triangle mesh (32-bit floats, 32-bit indices), owned by entity when given."
+        },
+        {
+          "name": "addDynamicBox",
+          "args": ["entity","position","size","mass","options"],
+          "description": "Adds a dynamic box for entity (mass: defaultMass when absent; options: friction, restitution, linearDamping, angularDamping, lockTilt, buoyancy as for addBody). Returns its handle { id }."
+        },
+        {
+          "name": "addCharacter",
+          "args": ["entity","position","radius","height","options"],
+          "description": "Adds a character capsule (total height) for entity at position, the origin of the followed object by default (option originOffset); options default to the config `character` (maxSlopeDeg, stepHeight, snapDistance, skinRatio, origin, originOffset). Returns its handle { id }."
+        },
+        {
+          "name": "addBody",
+          "args": ["entity","desc"],
+          "description": "Adds a body from a descriptor { kind: dynamic|kinematic|static, shape: { type: box|sphere|capsule|mesh, … }, position, rotation, mass, friction, restitution, linearDamping, angularDamping, gravityScale, ccd, canSleep, lockRotation, sensor }. Returns its handle { id }. sensor: true makes a trigger volume: it pushes nothing, rays and casts go through it, and who enters or leaves it is told by core.physics.sensor.enter / .exit. material: <name> takes the friction and restitution of a registered material (an explicit friction or restitution wins). PROVISIONAL: buoyancy { density (kg/m³, 500 by default: half under in water) | volume (m³), drag (the up and down damped, per kg), flowDrag (pulled along the flow, per kg), sideDrag (a hull's slide damped, per kg), points: [{ at, half | radius }] (8 at most, in the body's frame; else the octants of its shape — their place only, the volume is the mass over the density) } makes a dynamic body float in the fluids, pushed cell by cell by the physics at each of its substeps (no copy per tick); a body too light and thin to float steadily at 60 Hz is refused by name; a physics that does not float bodies says so once in the log."
+        },
+        {"name":"remove","args":["entity"],"description":"Removes the body or the character of entity."},
+        {"name":"addJoint","args":["id","a","b","joint"],"description":"Holds the bodies of entities a and b together under id (a joint of that id is replaced): joint { kind: fixed|ball|hinge|slider|spring|cone, anchorA, anchorB (each in its body's frame, the origin by default), axis (hinge, slider, cone: +Y by default), limits [low, high] (hinge: radians, slider: metres), restLength, stiffness, damping (spring), swing (cone, required: the largest angle in radians between the axis seen by each body, a true cone; the pose when made is its centre), twistMin, twistMax (cone: the twist of b about the axis in radians, both or none; free by default), collide (the two bodies still collide, false by default) }. True when ordered; false when a body is unknown or the physics has no joints; an error for a cone without swing. A removed body takes its joints along."},
+        {"name":"removeJoint","args":["id"],"description":"Lets go of the joint id (nothing when there is none)."},
+        {"name":"addVehicle","args":["entity","vehicle"],"description":"1.11: the body of entity (a dynamic body) becomes the engine's own vehicle (Rapier's ray-cast vehicle, Godot's VehicleBody3D, Unity's WheelCollider, Unreal's Chaos Vehicle): vehicle { support: wheels|float|hover|none, restLength, travel, stiffness, compression, relaxation, frictionSlip, sideGrip, maxSuspensionForce (wheels), hoverHeight, hoverStiffness, hoverDamping (hover), buoyancy (how many times its weight the floats carry fully under), waterLevel, waterDrag (float), sideDrag (float, hover), centerOfMass, wheels: [{ at (in the body's frame, +Z forward), radius, steer, drive, brake, handbrake }] (8 at most) }. Its commands (engine, brake, handbrake, steer, thrust, torque: forces, never a velocity) are sent by the kit as `drive` orders (one per tick) into the physics' box `physics/orders` (docs/boites-aux-lettres.md). True when ordered; false when the body is unknown or the physics has no vehicles."},
+        {"name":"removeVehicle","args":["entity"],"description":"1.11: the vehicle of entity becomes a plain body again."},
+        {"name":"vehicleState","args":["entity"],"description":"1.11: what the engine reported of the vehicle of entity after its last step: { forwardSpeed, speed, contacts, wheels: [{ contact, length, steer, rotation }] }, or null (not a vehicle, or a physics that runs its own loop: read the body's velocity then; rare; JSON)."},
+        {"name":"setBodyKind","args":["entity","kind","options"],"description":"Changes the kind of the body of entity while the game runs (dynamic, kinematic or static): 1.10: made again with the description in force (as this kit made it, with what setBody and bodyStates put over it), at its place unless options.position (and options.rotation, a quaternion) is given; options.collide false puts it on no layer (it touches nothing, no query sees it: an object held in a hand). True when done; false when the body was not made by this kit (docs/attache-sur-un-os.md)."},
+        {"name":"body","args":["entity"],"description":"The handle { id } of the body of entity, or null."},
+        {"name":"character","args":["entity"],"description":"The handle { id } of the character of entity, or null."},
+        {
+          "name": "kind",
+          "args": [],
+          "description": "The physics behind the port: rapier, engine (the engine's own), or none."
+        },
+        {
+          "name": "setCharacterOffset",
+          "args": ["entity","offset"],
+          "description": "Sets the live offset [x, y, z] of a character's frame (from the origin of the followed object to the point the service takes and gives), as often as every frame: only the link between the object and the capsule moves, the capsule does not jump."
+        },
+        {
+          "name": "characterState",
+          "args": ["entity"],
+          "description": "The character of entity as last published: { position (in the frame of character.originOffset), grounded }, or null (rare; JSON)."
+        },
+        {
+          "name": "setCharacterPosition",
+          "args": ["entity","position"],
+          "description": "Teleports a character to position (in the frame of character.originOffset): an order, applied at the next step."
+        },
+        {
+          "name": "bodyState",
+          "args": ["entity"],
+          "description": "The body of entity as last published: { position, velocity, grounded }, or null (rare; JSON)."
+        },
+        {
+          "name": "askRaycast",
+          "args": ["origin","dir","maxToi","exclude"],
+          "description": "Asks a ray (first hit); answers a ticket at once, never waits. Read it with pollHit."
+        },
+        {
+          "name": "askOverlapSphere",
+          "args": ["center","radius","exclude"],
+          "description": "Asks the entities touching a sphere; answers a ticket. Read it with pollFound."
+        },
+        {
+          "name": "askOverlapBox",
+          "args": ["center","size","rotation","exclude"],
+          "description": "Asks the entities touching a box; answers a ticket. Read it with pollFound."
+        },
+        {
+          "name": "askRaycastAll",
+          "args": ["origin","dir","maxToi","filter","maxHits"],
+          "description": "Asks every hit of a ray, nearest first (at most maxHits, 16 by default), through the layers of filter { layers?, mask?, exclude? }; answers a ticket. Read it with pollHits."
+        },
+        {
+          "name": "askShapeCast",
+          "args": ["shape","position","rotation","dir","maxToi","filter"],
+          "description": "Asks the first hit of a box, sphere or capsule moved from position along dir up to maxToi, through the layers of filter; answers a ticket. Read it with pollHit."
+        },
+        {
+          "name": "askOverlapShape",
+          "args": ["shape","position","rotation","filter"],
+          "description": "Asks the entities touching a box, sphere or capsule (heightfields included), through the layers of filter; answers a ticket. Read it with pollFound."
+        },
+        {
+          "name": "pollHits",
+          "args": ["ticket"],
+          "description": "{ ready: false } while the physics has not answered, then { ready: true, value: [{ entity?, toi, point, normal }…] } once, nearest first (never waits)."
+        },
+        {
+          "name": "askRays",
+          "args": ["rays","filter"],
+          "description": "Asks the first hit of a few rays in one ticket (at most 64), each [ox, oy, oz, dx, dy, dz, max], through the layers of filter { layers?, mask?, exclude? }: what a camera keeping out of walls asks each frame. Read it with pollRays."
+        },
+        {
+          "name": "pollRays",
+          "args": ["ticket"],
+          "description": "{ ready: false } until every ray of an askRays ticket is answered, then { ready: true, value: [distance | null…] } once, one entry per ray (null: nothing within max). Never waits."
+        },
+        {
+          "name": "askMoveCharacter",
+          "args": ["entity","delta"],
+          "description": "Asks a character move (slopes, steps, snapping); answers a ticket. Read it with pollMoved."
+        },
+        {
+          "name": "askCastCharacter",
+          "args": ["entity","from","delta"],
+          "description": "Asks where the capsule of a character would stop from `from` (in the character's frame, its feet by default) along delta, without moving it; answers a ticket. Read it with pollMoved."
+        },
+        {
+          "name": "pollHit",
+          "args": ["ticket"],
+          "description": "{ ready: false } while the physics has not answered, then { ready: true, value: { entity?, toi, point, normal } | null } once (never waits)."
+        },
+        {
+          "name": "pollFound",
+          "args": ["ticket"],
+          "description": "{ ready: false } while the physics has not answered, then { ready: true, value: [entity…] } once, at most maxOverlapResults."
+        },
+        {
+          "name": "pollMoved",
+          "args": ["ticket"],
+          "description": "{ ready: false } while the physics has not answered, then { ready: true, value: { moved, grounded } | null } once."
+        },
+        {"name":"forget","args":["ticket"],"description":"Gives a ticket back: its answer is dropped."},
+        {
+          "name": "counters",
+          "args": [],
+          "description": "The counters of the physics (thread, steps, stepsPerS: steps a second really played, skippedSteps: steps never played under saturation, droppedMs: physics time thrown away, bodies: active and sleeping moving bodies, loopMs, loops, eventsDropped, asked, answered, inFlight, backlog, and intents: launched, sets, removed, refused, faults, calls, stillSteps, registered, and active: the intentions running now, body, handle, name, state, phase, progress) (rare; JSON)."
+        },
+        {
+          "name": "shapesView",
+          "args": [],
+          "description": "The shape table of the physics (ABI 2.6): { address, revision, count } — the address a kit of the common memory reads in place (gripforge-abi shape_table::read_shapes), the revision of the fixed colliders, the records that pass the guard; on Godot, Unity and Unreal the table of what the engine's bridge registered; null when the physics publishes none (rare; JSON)."
+        },
+        {
+          "name": "contactEvents",
+          "args": [],
+          "description": "The contacts that began or ended at the last step: [{ type: begin|end, a, b, impulse }], at most maxContactsPerBody per body."
+        },
+        {
+          "name": "setManualStepping",
+          "args": ["on"],
+          "description": "Turns manual stepping on or off (a replay, a test): the physics then steps only on step(dt)."
+        },
+        {"name":"manualStepping","args":[],"description":"Whether manual stepping is on."},
+        {
+          "name": "saveState",
+          "args": ["entities"],
+          "description": "The state of the bodies (all, or the entities given): { bodies: [{ entity, p, q, v, w, sleeping }] } (rare; JSON)."
+        },
+        {"name":"restoreState","args":["snapshot"],"description":"Puts back the bodies of a saveState."},
+        {"name":"setGravity","args":["g"],"description":"Sets the gravity (m/s², +Y up)."},
+        {
+          "name": "characterDefaults",
+          "args": [],
+          "description": "The defaults a character made without options gets: { maxSlopeDeg, stepHeight, snapDistance, skinRatio }."
+        },
+        {
+          "name": "nativeHandler",
+          "args": [],
+          "description": "The route of the physics on the engine that runs the game: { kit, target, native, handler, fallbackReason? } (Rapier module of the kit on Bevy, PhysicsServer3D on Godot, Rigidbody / CharacterController on Unity, Chaos on Unreal); shown by the debug inspector (native.handlers)."
+        },
+        {
+          "name": "materials",
+          "args": [],
+          "description": "The registry of physical materials in force: { <name>: { friction, restitution, footstep } } (rare; JSON)."
+        },
+        {"name":"material","args":["name"],"description":"One material { friction, restitution, footstep }, or null."},
+        {"name":"layers","args":[],"description":"The collision layers in bit order."},
+        {
+          "name": "layerMask",
+          "args": ["names"],
+          "description": "The bit mask of one layer name or a list of names; an unknown name is an error."
+        },
+        {
+          "name": "addHeightField",
+          "args": ["entity","cols","rows","cell","origin","heights","material"],
+          "description": "Adds a fixed heightfield (a terrain from a heightmap generator): cols × rows heights row by row along +X then +Z, cells of cell [x, z] metres from origin; Rapier builds a real heightfield, an engine whose physics only takes meshes gets the same triangles. material: a name of the registry. Returns its handle { id }."
+        },
+        {
+          "name": "addPlane",
+          "args": ["entity","y","material"],
+          "description": "Adds a fixed ground plane at height y (normal +Y): a slab 10 km wide whose top is the plane. material: a name of the registry. Returns its handle { id }."
+        },
+        {
+          "name": "askGround",
+          "args": ["point","lift","depth","exclude"],
+          "description": "Asks the ground under a point: a ray straight down from lift (1 m by default) above it, depth (100 m by default) under it; answers a ticket at once. Read it with pollGround."
+        },
+        {
+          "name": "pollGround",
+          "args": ["ticket"],
+          "description": "{ ready: false } until the physics answered, then { ready: true, value: { height, normal, entity, material } | null } once (material: the registry name the body was made with, else default)."
+        },
+        {
+          "name": "askReady",
+          "args": ["center","size"],
+          "description": "Asks whether the collision of a zone (a box) is in; answers a ticket once the physics took the question, so every collider posed before is in the world. Read it with pollReady: placing objects waits for it."
+        },
+        {
+          "name": "pollReady",
+          "args": ["ticket"],
+          "description": "{ ready: false } until the physics took the question, then { ready: true, value: { solids } } once (solids: how many bodies touch the zone)."
+        },
+        {
+          "name": "elementCreate",
+          "args": ["spec"],
+          "description": "Makes an element of a scene (docs/design/dev-builder-sections.md): spec { element, scene, node, props, transform: { position, rotation [x, y, z, w], scale } }. world: sets the gravity (props { gravity }), answers world:<scene>; collider: a fixed body of addBody at the node's resolved place, its size times the node's scale (props { shape, size, radius, height, material }), answers its entity scene:<scene>/<node>; collision: a collision node, child of the node it makes collide; the collision children of a node make one compound body, the parent's entity when it has one, else scene:<scene>/<parent> (props { shape, type, size, radius, height, mass, material, layers, collidesWith, asset, joint }; spec also { parentNode, parentEntity, parentArchetype?, parentAsset? }), after the hook core.physics.make_body, answers the node's handle scene:<scene>/<node>. The same call from code, from dev.builder (kits.core.physics of a scene file) and from the editor."
+        },
+        {
+          "name": "elementSet",
+          "args": ["handle", "props"],
+          "description": "Changes the properties given of an element (the others stay): a collider is made again with the same entity."
+        },
+        {
+          "name": "elementRemove",
+          "args": ["handle"],
+          "description": "Lets an element go: a collider's body is removed; a world gives the declared gravity back (config gravity)."
+        },
+        {"name":"addWatch","args":["spec"],"description":"Declares (or replaces, same id) a watch on an element: spec { id?, kind (around | contact | traverse | stay | sight | a kind of watchKinds), element (an entity, a game.engine instance, a body; empty: the fixed place at, yaw), radius, height, range, angle, lineOfSight, eye, size [width, height], direction (both | forward | backward), seconds, mode (radius | contact), minForce, once, cooldown (s), topic (a prefix of the game: the signals are also told on <topic>.<signal>, room.door.entered), tags, notTags, kinds, layers, group }. Answers its id. Its signals are core.physics.watch.*; nothing runs until one has an audience."},
+        {"name":"removeWatch","args":["id"],"description":"Lets a watch go; false when there was none."},
+        {"name":"watches","args":[],"description":"The watches in force, each with its fields resolved (kit default < watchKinds < spec), its base and done (rare; JSON)."},
+        {"name":"watchKinds","args":[],"description":"The watch kinds: the five bases and those of the config watchKinds (rare; JSON)."},
+        {"name":"addField","args":["spec"],"description":"Declares (or replaces, same id) a field of gravity or force (docs/design/core-physics-champs.md): spec { id?, kind (uniform | point | magnet | wind | vortex | custom | a kind of fieldKinds), volume ({ shape: sphere, radius } | { shape: cylinder, radius, height } | { shape: box, size, rotation? } | { sensor: <id> }; absent: a sphere of range), at (its fixed place), on (an element that carries it: entity, game.engine instance, body), priority, blend (m), enabled, lifetime (s), topic, tags, notTags, kinds, layers, group, and the fields of its base: uniform { direction, strength }, point { strength, falloff (none | inverse_square), unitDistance }, magnet { strength, range, softening, maxForce }, wind { direction, speed, drag }, vortex { axis, swirl, pull, lift, drag }, custom { role (gravity | force) } }. Its volume is detected by an internal watch. Answers its id; refused with its reason, nothing changed."},
+        {"name":"removeField","args":["id"],"description":"Lets a field go (its sensor too; its members told left); false when there was none."},
+        {"name":"setField","args":["id","props"],"description":"Changes fields of a field (merged over the ones in force, then declared again); false without such a field."},
+        {"name":"fields","args":[],"description":"The fields in force, each with its fields resolved (kit default < fieldKinds < spec), its base, role and members count (rare; JSON)."},
+        {"name":"fieldKinds","args":[],"description":"The field kinds: the six bases and those of the config fieldKinds (rare; JSON)."},
+        {"name":"fieldsAt","args":["entity"],"description":"What an entity feels from the fields now: { gravity (m/s², the world's outside any field of gravity), up (null without gravity), force (N), fields: [ids] } (rare; JSON)."},
+        {"name":"gravityAt","args":["point"],"description":"The gravity at a place [x, y, z] from the fields of gravity whose volume holds it (a sensor of the game is not counted): { gravity, up } (rare; JSON)."},
+        {"name":"debugFields","args":[],"description":"The fields for the debugger: { world, fields: [{ id, kind, base, role, enabled, priority, members: [{ id, gravity, force }] }] } (rare; JSON)."},
+        {"name":"debugFieldsOverlay","args":[],"description":"The fields in the scene for the debugger: { color, lines, boxes } (the volumes and an arrow per member, a metre per 10 units)."},
+        {"name":"debugFieldsEpoch","args":[],"description":"A number that changes when a field, a member or a value changes."},
+        {"name":"search","args":["query"],"description":"Asks the candidates around: query { from (an entity, its heading for the cone, or [x, y, z]), radius (3 m), cone (full angle in degrees; 360: all around), tags, notTags, kinds, layers, sight (a line of sight per candidate, by ray), sort (distance | angle | score), limit (8), exclude, eye (1.6 m) }; answers a ticket at once, never waits. Read it with pollSearch."},
+        {"name":"pollSearch","args":["ticket"],"description":"{ ready: false } until the lines of sight of a search are in, then { ready: true, value: [{ entity, distance, angle }] } once, sorted and cut to the limit (without sight: ready at the first poll)."},
+        {"name":"focus","args":["entity","query"],"description":"Follows for entity the best candidate of a search (query as search, from the entity), at each tick; core.physics.focus.changed is told when it changes. query null stops it. True when done."},
+        {"name":"focusOf","args":["entity"],"description":"The focus of entity now (an entity), or null."},
+        {"name":"use","args":["entity","target"],"description":"Uses target (else the focus of entity): after the hook core.physics.use_target, emits interaction.requested { entity, target }, which game.engine hears. Answers the target, or null."},
+        {"name":"pickUp","args":["entity","target"],"description":"Holds the dynamic body of target (else the focus) in front of entity (config carry.offset) until putDown or launch; refused (false) for a static body, one heavier than carry.maxMass, one already held, or by the hook core.physics.carry.pick."},
+        {"name":"putDown","args":["entity"],"description":"Lets go of the body entity holds, where it is; false when it holds none."},
+        {"name":"launch","args":["entity","speed"],"description":"Throws the body entity holds along its heading (speed m/s, else carry.throwSpeed, plus carry.lift upward); false when it holds none."},
+        {"name":"carried","args":["entity"],"description":"The body entity holds, or null."},
+        {"name":"canPush","args":["pusher","pushed"],"description":"Whether pusher may push pushed (carry it; the character's push when it reads this): false when a tag of pushed has interactions.<tag>.noPush naming a tag of pusher."},
+        {"name":"bodyInfo","args":["entity"],"description":"The physical properties of the body of entity (data of the physics, never state of the entity): { entity, kind, mass, friction, restitution, linearDamping, angularDamping, gravityScale, sensor, material, position, velocity, angularVelocity, sleeping, grounded, buoyancy (null when it does not float) }, or null (rare; JSON). entity may be player or a tag, as game.engine's verbs take them."},
+        {"name":"setBody","args":["entity","props"],"description":"Sets mass, friction, restitution, linearDamping, angularDamping, gravityScale or kind (static | kinematic | dynamic) of a body the service made (a null value gives the made one back); the body is made again with its pose and velocity, its joints are not kept (it keeps floating). PROVISIONAL: buoyancy (as for addBody; null: it floats no more) is handed to the physics without making the body again; a bad one is an error by name. False when the service did not make it."},
+        {"name":"askSurface","args":["entity","depth"],"description":"Asks the surface under entity (a ray down from 0.5 m above it, depth 2 m by default, the entity itself left out); answers a ticket at once. Read it with pollSurface."},
+        {"name":"pollSurface","args":["ticket"],"description":"{ ready: false } until the physics answered, then { ready: true, value: { entity, height, normal, slope (degrees), material, friction, restitution, grounded } | { grounded: false } } once."},
+        {"name":"detachPart","args":["entity","spec"],"description":"Detaches a part of entity as a dynamic body that falls with its collision (a plank of a crate): spec { part, node? (the engine node of the part, hidden when found), shape? ({ type: box | sphere | capsule, size, radius, height }), offset? (entity frame), mass?, velocity?, impulse?, color? }. The piece is a new entity (kind piece, tag core.physics.piece) drawn from its shape, its body named by it; after the hook core.physics.part.detach, core.physics.part.detached is told. It lives the life of its emitter (setPieceLife, else pieceLives, else pieceLife / pieceFade, else 30 s), then fades (core.physics.part.fading) and goes (core.physics.part.expired). Answers the piece, or null when a tap cancelled."},
+        {"name":"setPieceLife","args":["entity","life"],"description":"The life of the pieces detached from entity from now on (per emitter, over the config): life { life? (s; below 0: they stay), fade? (s) }; {} gives it back to pieceLives and pieceLife / pieceFade (30 s and 3 s by default)."},
+        {"name":"addSupport","args":["spec"],"description":"Declares (or replaces, same id) a support graph, as an entry of the config supports: { id, strength?, nodes, links }. Answers its id; a link that names an unknown node, an unknown kind or fall is an error by name."},
+        {"name":"removeSupport","args":["id"],"description":"Lets a support graph go, its joints with it; false when there was none."},
+        {"name":"supports","args":[],"description":"The support graphs: [{ id, nodes: { <name>: { standing, broken, fallen, fall, anchor, strength? } }, links: [{ id, a, b, broken, joint, strength? }] }] (rare; JSON)."},
+        {"name":"breakLink","args":["graph","link"],"description":"Breaks a link of a support graph (after the hook core.physics.support.break): its joint lets go; what no longer rests on an anchor falls at the next tick. False when unknown, already broken or cancelled."},
+        {"name":"breakNode","args":["graph","node"],"description":"Breaks a node of a support graph (after the hook): it is no longer an anchor, all its links go, it falls at the next tick with what no longer stands. False when unknown, already broken or cancelled."},
+        {"name":"applyImpulse","args":["entity","impulse"],"description":"Applies an impulse [x, y, z] (N·s) to the body of entity; false when it has none."},
+        {
+          "name": "elementGet",
+          "args": ["handle"],
+          "description": "The properties in force of an element, null for an unknown handle (rare; JSON)."
+        }
+      ]
+    }
+  },
+  "expose": [
+    {"id": "core.physics.collision.shape", "for": ["passport"], "category": "collision", "key": "shape", "scope": "asset", "type": "enum", "default": "auto", "choices": ["auto", "none", "box", "compound", "convex", "convex_decomposition", "trimesh"], "description": "How the placed model collides: auto (the collision tool chooses), none (traversable), or a forced method."},
+    {"id": "core.physics.collision.usage", "for": ["passport"], "category": "collision", "key": "usage", "scope": "asset", "type": "string", "default": "", "description": "What the object is for the collision tool (ground, wall, structure, rock, prop, character, vehicle, vegetation, effect, decal); empty: from the asset's kind and category."},
+    {"id": "core.physics.collision.mobile", "for": ["passport"], "category": "collision", "key": "mobile", "scope": "asset", "type": "bool", "default": false, "description": "A moving object: never a mesh collision."},
+    {"id": "core.physics.collision.small", "for": ["passport"], "category": "collision", "key": "small", "scope": "asset", "type": "f64", "default": 0.25, "min": 0, "description": "Metres under which an object stays traversable when nothing is imposed."},
+    {"id": "core.physics.collision.parts", "for": ["passport"], "category": "collision", "key": "parts", "scope": "asset", "type": "json", "default": null, "description": "A collision written by hand or by a studio: the parts of a description, in the model's own space, used as they are."},
+    {"id": "core.physics.collision.bounds", "for": ["passport"], "category": "collision", "key": "bounds", "scope": "asset", "type": "json", "default": null, "description": "{ min, max } of the model the hand-written parts were made against: the parts are fitted to the placed size with it."},
+    {"id": "core.physics.collision.generated", "for": ["passport"], "category": "collision", "key": "generated", "scope": "asset", "type": "json", "default": null, "description": "The description the collision tool made ({ schema, method, choice, bounds, parts }), placed by the delivery, never written by hand."},
+    {"id": "core.physics.world", "for": ["scene"], "label": "Physics of the scene", "at": "scene", "description": "The physics of a scene: its gravity, given back to the declared one (config gravity) when the scene is left.", "props": {"gravity": {"type": "f64x3", "default": [0, -9.81, 0], "description": "The gravity, m/s², +Y up."}}, "create": "core.physics.elementCreate", "set": "core.physics.elementSet", "remove": "core.physics.elementRemove", "get": "core.physics.elementGet"},
+    {"id": "core.physics.collider", "for": ["scene"], "label": "Fixed collider", "at": "node", "needsRun": "physics", "nodeTypes": ["group", "shape", "model"], "description": "A fixed collider at the node's resolved place (a wall, a floor, a crate that never moves), its size times the node's scale.", "props": {"shape": {"type": "enum", "choices": ["box", "sphere", "capsule"], "default": "box", "description": "The shape of the collider."}, "size": {"type": "f64x3", "default": [1, 1, 1], "description": "The full size of a box, metres."}, "radius": {"type": "f64", "default": 0.5, "min": 0, "description": "The radius of a sphere or a capsule, metres."}, "height": {"type": "f64", "default": 1, "min": 0, "description": "The total height of a capsule, metres."}, "material": {"type": "string", "default": "", "description": "A physical material of the registry (friction, restitution, footstep); empty: default."}}, "create": "core.physics.elementCreate", "set": "core.physics.elementSet", "remove": "core.physics.elementRemove", "get": "core.physics.elementGet"},
+    {"id": "core.physics.collision", "for": ["scene"], "label": "Collision", "at": "node", "nodeType": "collision", "nodeTypes": ["collision"], "description": "A collision node, child of the node it makes collide (as a collision shape in an engine): every collision child of a node makes one body, a compound of their shapes at their places; the body is the parent's game.engine entity when it has one (a kinematic one follows its pose), else a body of its own (a group without model nor entity: an invisible wall). A field left neutral (empty, 0, [0,0,0], null) takes the one of the archetype (config archetypes.<archetype>), else the kit's default.", "props": {"shape": {"type": "string", "default": "", "description": "box, sphere, capsule, mesh (the collision parts of the asset's passport, through asset.meta) or heightmap (a fixed ground of the grid heights, type static only, the one collision node of its parent); empty: the archetype's, else box (any other value is refused)."}, "type": {"type": "string", "default": "", "description": "static, kinematic (follows its parent entity), dynamic or sensor (a trigger volume that tells who enters and leaves, a body of its own); empty: the archetype's, else static (any other value is refused). The body takes the type of its first collision node."}, "size": {"type": "f64x3", "default": [0, 0, 0], "description": "The full size of a box, metres, times the node's scale (a heightmap: its scale [x, y, z], 1 = as given); [0,0,0]: the archetype's, else 1 m."}, "radius": {"type": "f64", "default": 0, "min": 0, "description": "The radius of a sphere or a capsule, metres; 0: the archetype's, else 0.5."}, "height": {"type": "f64", "default": 0, "min": 0, "description": "The total height of a capsule, metres; 0: the archetype's, else 1."}, "mass": {"type": "f64", "default": 0, "min": 0, "description": "Its share of the mass of a dynamic body, kg (the body's is the sum); 0: the archetype's, else config defaultMass for the body."}, "material": {"type": "string", "default": "", "description": "A physical material of the registry; empty: the archetype's, else default."}, "layers": {"type": "json", "default": null, "description": "The collision layers the body is on (names of config layers); null: the archetype's, else the first."}, "collidesWith": {"type": "json", "default": null, "description": "The layers the body collides with (names); null: the archetype's, else all."}, "asset": {"type": "string", "default": "", "description": "The asset whose passport gives a mesh; empty: the parent's model, else its archetype's."}, "heights": {"type": "json", "default": null, "description": "The grid of a heightmap, the form of world.terrain's relief.grid: { n (cells a side), size (metres), centre [x, z] (optional, in the node's frame), heights ((n + 1)² metres, row by row along +X then +Z) }, centred on the node; null: the archetype's."}, "joint": {"type": "json", "default": null, "description": "Optional joint of the body { kind: hinge|ball|fixed|slider|spring|cone, anchor [x,y,z] and axis [x,y,z] in this node's frame, limits [low, high] (hinge: degrees, slider: metres), swing, twistMin, twistMax (cone: degrees; the twist of this node's body about +axis), to (another body's entity; empty: the world, a fixed anchor made and removed with the body), stiffness, damping, restLength, collide }; null: the archetype's, else none."}}, "create": "core.physics.elementCreate", "set": "core.physics.elementSet", "remove": "core.physics.elementRemove", "get": "core.physics.elementGet"},
+    {"id": "core.physics.watch", "for": ["scene"], "label": "Watch", "at": "node", "nodeType": "watch", "nodeTypes": ["watch"], "description": "A watch node, child of the node it watches (docs/design/core-physics-surveillances.md), several per node: the parent's game.engine entity when it has one, else the watch node's place and heading; its signals core.physics.watch.* (entered, left, touched, released, crossed, stayed) are ready for the bindings of the scene. Nothing runs until one of them has an audience.", "props": {"kind": {"type": "string", "default": "around", "description": "around, contact, traverse, stay, sight, or a kind of the registry watchKinds."}, "radius": {"type": "f64", "default": 2, "min": 0, "description": "around, stay: the radius, metres."}, "range": {"type": "f64", "default": 10, "min": 0, "description": "sight: how far, metres."}, "angle": {"type": "f64", "default": 90, "min": 0, "max": 360, "description": "sight: the full cone, degrees."}, "lineOfSight": {"type": "bool", "default": false, "description": "sight: something in the way hides."}, "seconds": {"type": "f64", "default": 1, "min": 0, "description": "stay: how long inside before stayed."}, "minForce": {"type": "f64", "default": 0, "min": 0, "description": "contact: the least impulse told."}, "once": {"type": "bool", "default": false, "description": "Told once, then quiet."}, "cooldown": {"type": "f64", "default": 0, "min": 0, "description": "Seconds between two signals for a same other."}, "topic": {"type": "string", "default": "", "description": "A prefix of the game: the signals are also told on <topic>.<signal> (room.door.entered), a binding plugs into it as is."}, "tags": {"type": "json", "default": [], "description": "The other bears one of these tags."}, "notTags": {"type": "json", "default": [], "description": "The other bears none of these tags."}}, "create": "core.physics.elementCreate", "set": "core.physics.elementSet", "remove": "core.physics.elementRemove", "get": "core.physics.elementGet"},
+    {"id": "core.physics.field", "for": ["scene"], "label": "Field", "at": "node", "nodeType": "field", "nodeTypes": ["field"], "description": "A field of gravity or force (docs/design/core-physics-champs.md), child of the node that carries it: the parent's game.engine entity carries it (on), else it stands at the node's place. Its volume is detected by an internal watch.", "props": {"kind": {"type": "string", "default": "uniform", "description": "uniform, point, magnet, wind, vortex, custom, or a kind of the registry fieldKinds."}, "strength": {"type": "f64", "default": 9.81, "description": "uniform, point: m/s² (0: weightlessness); magnet: N at 1 m (negative pushes)."}, "priority": {"type": "f64", "default": 0, "description": "The higher gravity wins where several hold."}, "enabled": {"type": "bool", "default": true, "description": "Off: followed, nothing applied."}}, "create": "core.physics.elementCreate", "set": "core.physics.elementSet", "remove": "core.physics.elementRemove", "get": "core.physics.elementGet"},
+    {"id": "core.physics.fields", "tab": {"id":"physics","icon":"atom","label":"Physics","labels":{"fr":"Physique"}}, "for": ["debug"], "label": "Fields of gravity and force", "category": "info", "kind": "info", "call": "core.physics.debugFields", "epoch": "core.physics.debugFieldsEpoch"},
+    {"id": "core.physics.fields.overlay", "tab": {"id":"physics","icon":"atom"}, "for": ["debug"], "label": "Fields of gravity and force", "category": "overlay", "kind": "overlay", "call": "core.physics.debugFieldsOverlay", "epoch": "core.physics.debugFieldsEpoch"},
+    {"id": "core.physics.counters", "tab": {"id":"physics","icon":"atom"}, "for": ["debug"], "label": "Steps and bodies", "labels": {"fr": "Pas et corps"}, "category": "info", "kind": "info", "call": "core.physics.counters", "description": "Where the physics runs (thread), the steps a second really played (stepsPerS), the steps skipped (skippedSteps) and the physics time thrown away (droppedMs) under saturation, the moving bodies active and sleeping (bodies), the ms its loop worked (loopMs)."},
+    {"id": "core.physics.intents", "tab": {"id":"physics","icon":"atom"}, "for": ["debug"], "label": "Intentions", "labels": {"fr": "Intentions"}, "category": "info", "kind": "info", "call": "core.physics.counters", "description": "The counters of the intentions (intents: launched, refused, faults, calls, registered) and the intentions running now (intents.active: body, handle, name, state, phase, progress), read in place in physics/state when F9 shows it."}
+  ],
+  "site": "site"
+}

@@ -2,6 +2,16 @@
 
 ## [Unreleased] (0.1.2)
 
+- `crates/scene-format` is now an unchanged copy of `core/scene-format` of the kits repository (`tools/sync-scene-format`,
+  revision in `crates/scene-format/scene-format.json`, see `PROVENANCE.md`): dev.builder, devGame, the validator of
+  the kits and gripforge-build read a `project.gripforge` with the same code. It brings `includes`, the variables of
+  nodes, `$var`, `data.scenes[].enabled`, `$schema`, the scenes' write-back, and drops what the kits repository
+  retired: the `gfscene` tool and its `.gfscene` schema (a game is one `project.gripforge`).
+- A project's included `.gripforge` files are read beside it, as the development mode reads them (the resolution called
+  again with the files it asks for); the strict rules, the pack and the generated code read the project resolved.
+- `--resolve`: the project resolved and the tolerant validator's issues as JSON (`ok`, `project`, `resolveIssues`,
+  `issues`), nothing written, nothing promoted. The parity test (`tests/parity.rs`, cases copied from the kits
+  repository) compares it with the kits repository's reference reader.
 - `$schema` (the path of the published schema, for the editors) is accepted at the head of a project and of a scene
   file: `check` and the build pass, the key is kept as written and never read (decision D03 of
   gripforgeai/gripforge#420). Taken from module-kits (`core/scene-format`, see `PROVENANCE.md`).

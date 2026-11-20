@@ -1,0 +1,35 @@
+{
+  "id": "base_room_includes",
+  "name": "preuve des inclusions",
+  "includes": [
+    {
+      "file": "includes-salle.gripforge",
+      "as": "salle",
+      "variables": {
+        "pilier": false,
+        "annexe": false
+      },
+      "hide": {
+        "scenes": [
+          "east_cell"
+        ],
+        "nodes": [
+          "salle_preuve:Props/Boule"
+        ]
+      },
+      "overrides": {
+        "salle_preuve:#caisse": {
+          "color": "#30c040"
+        }
+      }
+    }
+  ],
+  "installed": [
+    {
+      "id": "game.engine",
+      "config": {
+        "startScene": "salle_preuve"
+      }
+    }
+  ]
+}
