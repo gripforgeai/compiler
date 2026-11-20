@@ -16,6 +16,10 @@
   `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema` accepted at the head of a project and of a scene file); the
   same key declared, by hand, in `schema/gripforge.schema.json` and `schema/gfscene.schema.json`, which differ from the
   source here.
+  Then `src/sources.rs`, `src/sources_digest.rs`, `tests/sources.rs` and `tests/sources-digest.json`, unchanged, at
+  commit `d80821affd11ca9e4cecbe9387e227843761ba00` (branch `feat/devbuilder-game-main`: the digest of the game's code,
+  the rule of the development mode `dev_module_issue`, `with_game_module`); the line `pub mod sources_digest;` added by
+  hand to `src/lib.rs`, which differs from the source here.
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).
