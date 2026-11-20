@@ -1,6 +1,6 @@
 //! What the compiler reads from the disk: the project file (`project.gripforge`, or the only `*.gripforge` of a
-//! folder), the scene files it still names (an old project not yet in one file; sub-scenes carried in
-//! `data.scene_files` need none), and the catalog of the kits (every `kits/<kit>/kit.api.json`). The core
+//! folder), the `.gripforge` files it includes (`includes`, read as the development mode reads them), the scene files
+//! it still names (sub-scenes carried in `data.scene_files` need none), and the catalog of the kits (every `kits/<kit>/kit.api.json`). The core
 //! ([`crate::core`]) never touches the disk: it gets all of it in one request.
 
 use serde_json::{json, Map, Value as Json};
@@ -109,6 +109,48 @@ pub fn read_json(file: &Path, code: &str) -> Result<Json, BuildError> {
             "fix the JSON syntax (commas, quotes, brackets) at that place",
         )
     })
+}
+
+/// The files the resolution of the project asks for (its `includes`, at any depth), read beside it: the resolution of
+/// core/scene-format (`include::resolve_with_files`) called again with the files it says `missing`, until it asks for
+/// nothing new, as the development mode calls it (devGame, core/gateway-web/dev-project.mjs `resolveProject` of the
+/// kits repository). A file that is not there is left out: the resolution says `include_missing` with the entry.
+pub fn included_files(project: &Json, dir: &Path) -> Result<Map<String, Json>, BuildError> {
+    let mut files = Map::new();
+    let mut tried = std::collections::BTreeSet::new();
+    loop {
+        let out = gripforge_scene_format::include::resolve_with_files(project, &files);
+        let ask: Vec<String> = out["missing"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Json::as_str)
+            .filter(|m| !tried.contains(*m))
+            .map(str::to_string)
+            .collect();
+        if ask.is_empty() {
+            return Ok(files);
+        }
+        for m in ask {
+            let file = dir.join(&m);
+            if file.exists() {
+                files.insert(m.clone(), read_json(&file, "file_not_json")?);
+            }
+            tried.insert(m);
+        }
+    }
+}
+
+/// Every file a build reads beside the project: its included files ([`included_files`]), then the scene files the
+/// project resolved names ([`scene_files`]).
+pub fn project_files(project: &Json, dir: &Path) -> Result<Map<String, Json>, BuildError> {
+    let mut files = included_files(project, dir)?;
+    let read = |p: &str| files.get(p).cloned();
+    let (resolved, _) = gripforge_scene_format::include::resolve_project(project, &read);
+    for (k, v) in scene_files(&resolved, dir)? {
+        files.entry(k).or_insert(v);
+    }
+    Ok(files)
 }
 
 /// The scene files a project still names (`data.scenes[].file`, scene nodes' `scene`), read from beside it.

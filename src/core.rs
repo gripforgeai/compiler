@@ -9,6 +9,8 @@
 //!   say a node is read and not played ([`LENIENT`]); every installed or required kit must have its kit.api.json in
 //!   the catalog (`kit_unknown`: no accessor can be generated without it). Each issue says the file, the scene, the
 //!   element (node path), the property (field), what is wrong and what is expected.
+//! - `{ "op": "resolve", project, files, kits }`: the project resolved and the tolerant validator's issues, nothing
+//!   promoted ([`resolve`]): what the development mode of the kits repository makes of the same project.
 //! - `{ "op": "pack", ... }`: the check, then the game.json of the built game: the project packed (core/scene-format
 //!   `pack_with`) and its scenes lowered for game.engine at build time (`expand_project`: no scene JSON resolved at
 //!   run time), the development kits ([`DEV_KITS`]) left out, the game's own module ([`GAME_MODULE`], the compiled
@@ -46,10 +48,11 @@ pub fn run(req: &Json) -> Json {
             report(issues, json!({ "scenes": scenes }))
         }
         "pack" => pack(req),
+        "resolve" => resolve(req),
         "code" => code(req),
         "version" => json!({ "ok": true, "version": VERSION, "gameModule": GAME_MODULE }),
         other => json!({ "ok": false, "issues": [{ "level": "error", "code": "op_unknown",
-            "message": format!("unknown op {other:?}"), "fix": "op is check, pack or version" }] }),
+            "message": format!("unknown op {other:?}"), "fix": "op is check, pack, code, resolve or version" }] }),
     }
 }
 
@@ -133,6 +136,10 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
     let kits = kits_of(req);
     let reg = registry(&kits);
     let read = |p: &str| files.get(p).cloned();
+    // The validator resolves the project itself (its issues come with its own); the build's own rules read the
+    // project resolved, as the pack and the generator do (core/scene-format crate::include).
+    let written = project;
+    let project = gripforge_scene_format::include::resolve_project(&written, &read).0;
     let scenes = scene_list(&project);
     let by_file: Map<String, Json> = scenes
         .iter()
@@ -145,7 +152,7 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
         .collect();
     let mut out: Vec<Json> = Vec::new();
     // The versions the lock will hold, so that a `requires` range is checked against them.
-    let versioned = strict::with_versions(&project, &kits);
+    let versioned = strict::with_versions(&written, &kits);
     for i in project::validate_project(&versioned, &read, &reg) {
         let promoted = !lenient && i.level == Level::Warning && !LENIENT.contains(&i.code);
         out.push(located(&i, &by_file, promoted));
@@ -196,6 +203,34 @@ fn report(issues: Vec<Json>, mut extra: Json) -> Json {
     extra["warnings"] = json!(issues.len() - errors);
     extra["issues"] = Json::Array(issues);
     extra
+}
+
+/// The project as every reader of the kits repository resolves it, without the build's rules: `project` (resolved by
+/// core/scene-format `include::resolve_project`: its included files, its nodes' variables, its `$var`),
+/// `resolveIssues` (that resolution's) and `issues` (the tolerant validator, `project::validate_project`, as
+/// dev.builder and the MCP see them, never promoted). What the parity test of the kits repository compares with its
+/// reference reader (tools/parity there, docs/design/parite-compilateur-dev-builder.md).
+pub fn resolve(req: &Json) -> Json {
+    let project = req.get("project").cloned().unwrap_or(Json::Null);
+    let files = req
+        .get("files")
+        .and_then(Json::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let reg = registry(&kits_of(req));
+    let read = |p: &str| files.get(p).cloned();
+    let (resolved, resolve_issues) = gripforge_scene_format::include::resolve_project(&project, &read);
+    let issues: Vec<Json> = project::validate_project(&project, &read, &reg)
+        .iter()
+        .map(Issue::to_json)
+        .collect();
+    let errors = issues.iter().filter(|i| i["level"] == "error").count();
+    json!({
+        "ok": errors == 0,
+        "project": resolved,
+        "resolveIssues": resolve_issues.iter().map(Issue::to_json).collect::<Vec<_>>(),
+        "issues": issues,
+    })
 }
 
 /// The check, then the game.json of the built game.
@@ -294,7 +329,7 @@ pub fn code(req: &Json) -> Json {
     r
 }
 
-/// The generator's files for the project: core/scene-format `code::code` (`gfscene code`, the same writer as the
+/// The generator's files for the project: core/scene-format `code::code` (the same writer as the
 /// templates'), `init_scene.rs` and `init_scene/<scene>.rs`, whose `init_scene::enter(h, id)` the crate's
 /// `index.rs` calls. Its warnings join the report; an error of it refuses the build.
 fn generate(req: &Json, _packed: &Json) -> Result<(Json, &'static str, Vec<Json>), Json> {
