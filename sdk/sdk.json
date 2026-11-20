@@ -2,6 +2,6 @@
   "schema": "gripforge.compiler-sdk/1",
   "doc": "The public part of the kits SDK the games built by gripforge-build compile against: copied unchanged (but for the patches of tools/sync-sdk) from the kits repository at this revision. Check: tools/sync-sdk <module-kits checkout> --check.",
   "source": "gripforgeai/module-kits",
-  "rev": "e6d744cb9160f723f0936f0e4880a3b55265ac86",
-  "crates": ["gripforge-abi", "gripforge-kit-guest", "gripforge-kit-access"]
+  "rev": "67a42985d32fc477b34069a9842a7a987eee4a72",
+  "crates": ["gripforge-abi", "gripforge-kit-guest", "gripforge-kit-access", "gripforge-contracts"]
 }

@@ -4,9 +4,11 @@
 //! - **Orders** ([`order`]): every change (a body added or removed, a force, an impulse, a teleport, a kinematic
 //!   target, the gravity…) is a record of the ring, fire and forget; every question (a character's move, a cast, a
 //!   raycast, an overlap) is a record with a ticket, answered in the slab of answers.
-//! - **The published state** ([`PubSet`]): for every moving body and character, its pose, velocities and flags,
-//!   written by the physics after each step and after the orders it took, in a triple buffer the user reads in place
-//!   at any time; once per body ([`SlotInfo`]), what it is (kind, mass, first pose).
+//! - **The published state** ([`PubSet`]): for every moving body and character (and every static body an order
+//!   moved), its pose, velocities, flags and revision (`rev` of `abi.physics.bodies`, raised when it moved; the head's
+//!   `moves` counts the moves), written by the physics after each step and the orders it took, in four buffers
+//!   (`link::Quad`) the user reads in place at any time; once per body (`abi.physics.slots`), what it is (kind, mass,
+//!   first pose). The blocks follow the shared contracts (core/abi/contracts/abi.physics.*.json, [`PubSet`]).
 //! - **Contact events**: a second ring, from the physics to the user.
 //!
 //! Bodies are named by **slot** (a number the user gives when it adds the body); the names stay with the user,
@@ -16,238 +18,72 @@
 //! taken as they come, the state written in place — [`LIVE`]), the physics module runs it on its Worker in a loop
 //! (`gfp_serve`), natively a thread can run it too. One code, the same records.
 
-use crate::ports::link::{AnswerRec, Answers, Head, Ring, Triple, PAUSE, QUIT, RUN};
+use crate::ports::link::{Answers, Head, Ring, PAUSE, QUIT, RUN};
 
+/// The body description an order carries, read back.
+mod desc;
+mod pair_events;
 /// The questions (a ticket each): what the physics answers, and how the user reads the hits.
 mod questions;
+mod settings;
+mod thrown;
+mod unknown;
+mod unlisted;
 use crate::ports::{PhysicsPort, V3};
+use desc::desc_of;
+pub use desc::desc_words;
 pub use questions::{hits_of, pack_hits, HIT_WORDS};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering::*};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::*};
+pub use unknown::unknown_orders;
+use unlisted::{listed_pose, pose_of};
 
 pub const MAGIC: u32 = 0x4846_5047; // "GPFH"
-
 /// No slot (a ray that hit no body of a name, no exclusion).
 pub const NO_SLOT: u32 = u32::MAX;
 
-/// The kinds of the orders (the ring's record kind).
-pub mod order {
-    pub const ADD_BODY: u32 = 1;
-    pub const ADD_CHARACTER: u32 = 2;
-    pub const ADD_STATIC_BOX: u32 = 3;
-    pub const ADD_DYNAMIC_BOX: u32 = 4;
-    pub const REMOVE: u32 = 5;
-    pub const SET_BODY: u32 = 6;
-    pub const SET_POSITION: u32 = 7;
-    pub const IMPULSE: u32 = 8;
-    pub const FORCE: u32 = 9;
-    pub const TORQUE_IMPULSE: u32 = 10;
-    pub const MOVE_KINEMATIC: u32 = 11;
-    pub const SET_CHARACTER_POSITION: u32 = 12;
-    pub const SET_GRAVITY: u32 = 13;
-    pub const SET_MANUAL: u32 = 14;
-    /// A step asked by the user (manual stepping).
-    pub const STEP: u32 = 15;
-    /// Publish whether this body is grounded (a probe the user reads).
-    pub const WATCH_GROUNDED: u32 = 16;
-    /// The published state moves to a bigger set (its address).
-    pub const GROW: u32 = 17;
-    pub const SET_COLLISION_SPACE: u32 = 18;
-    /// Field-level writes: one field of a body, applied in order on the physics' freshest state.
-    pub const SET_LINVEL: u32 = 19;
-    pub const SET_ANGVEL: u32 = 20;
-    pub const SET_ROTATION: u32 = 21;
-    /// Set the simulation-owned fixed step, seconds (no cross-thread field mutation).
-    pub const SET_FIXED_DT: u32 = 22;
-    /// A joint (1.9): the first body's slot, the joint's name, then the second body's slot and the joint's words.
-    pub const ADD_JOINT: u32 = 23;
-    /// Let go of a joint: its name.
-    pub const REMOVE_JOINT: u32 = 24;
-    /// Hold or release one body (1.11): the mode in the first number of the payload.
-    pub const HOLD_BODY: u32 = 25;
-    // Questions: a ticket.
-    pub const MOVE_CHARACTER: u32 = 32;
-    pub const CAST_CHARACTER: u32 = 33;
-    pub const RAYCAST: u32 = 34;
-    pub const OVERLAP_SPHERE: u32 = 35;
-    pub const OVERLAP_BOX: u32 = 36;
-    /// 2.4: every hit of a ray through layers (`physics_link/questions.rs`).
-    pub const RAYCAST_ALL: u32 = 37;
-    pub const SHAPE_CAST: u32 = 38;
-    pub const OVERLAP_SHAPE: u32 = 39;
-    /// The last question.
-    pub const QUESTION_LAST: u32 = 39;
-}
+/// The link's block of the contract `abi.physics.link`: its layout checked field by field, and its check.
+mod block;
+/// The codes of the link (orders, flags, slot info and kind).
+mod codes;
+pub use block::drop_sim;
+use block::sim_of;
+pub use codes::{flag, info, kind, order};
 
-/// What the published record of a body says (`BodyRec::flags`).
-pub mod flag {
-    /// The record holds the body's state.
-    pub const BODY: u32 = 1;
-    pub const CHARACTER: u32 = 2;
-    pub const SLEEPING: u32 = 4;
-    /// `GROUNDED` is known (the body is watched).
-    pub const GROUND_KNOWN: u32 = 8;
-    pub const GROUNDED: u32 = 16;
-    pub const CHARACTER_GROUNDED: u32 = 32;
-    /// `cp` holds the character's position.
-    pub const CHARACTER_AT: u32 = 64;
-    /// `pose` holds the pose of the transforms (the body is listed).
-    pub const POSE: u32 = 128;
-    /// The pose is a character's (its yaw is not the body's to give).
-    pub const POSE_CHARACTER: u32 = 256;
-}
-
-/// What the port has under a slot's name (`SlotInfo::flags`).
-pub mod info {
-    pub const HAS_BODY: u32 = 1;
-    pub const HAS_CHARACTER: u32 = 2;
-}
-
-/// The kind of a slot (`SlotInfo::kind`).
-pub mod kind {
-    pub const NONE: u32 = 0;
-    pub const DYNAMIC: u32 = 1;
-    pub const KINEMATIC: u32 = 2;
-    pub const STATIC: u32 = 3;
-    pub const CHARACTER: u32 = 4;
-}
-
-/// A moving body's published state.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct BodyRec {
-    pub flags: u32,
-    /// The publication that wrote it (the record is the body's only when it equals the buffer's).
-    pub stamp: u32,
-    pub p: V3,
-    pub q: [f64; 4],
-    pub v: V3,
-    pub w: V3,
-    /// A character's position (its controller's).
-    pub cp: V3,
-    /// The pose the port gives for the transforms (`for_each_pose`): x, y, z, yaw — when [`flag::POSE`].
-    pub pose: [f64; 4],
-}
-
-/// What a slot is, written once when the physics took its body (`added` is then the order's number).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SlotInfo {
-    pub kind: u32,
-    /// The number of the order that added it (0: not yet).
-    pub added: u32,
-    /// [`info::HAS_BODY`], [`info::HAS_CHARACTER`]: what the port says it has under that name.
-    pub flags: u32,
-    pub _pad: u32,
-    pub mass: f64,
-    pub p: V3,
-    pub q: [f64; 4],
-}
-
-/// The head of a published buffer, then `cap` slot numbers (the moving bodies listed: `count`), then `cap`
-/// [`BodyRec`] by slot.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct PubHead {
-    pub stamp: u32,
-    pub count: u32,
-    /// The number of the last order the physics took before writing it.
-    pub applied: u32,
-    pub _pad: u32,
-    /// The physics' own time (its steps × the fixed step), and the clock of the user's thread when it was written
-    /// (ms; `now_ms` of the loop): for an interpolation by time.
-    pub time: f64,
-    pub wall_ms: f64,
-    pub steps: f64,
-}
-
-/// A set of published buffers for `cap` slots, and the table of what each slot is.
-#[repr(C)]
-pub struct PubSet {
-    pub cap: u32,
-    pub _pad: u32,
-    pub tri: Triple,
-    /// `cap` [`SlotInfo`].
-    pub info: usize,
-    /// The three buffers' bytes, and the info's (one block each, the user's to free).
-    pub bytes: usize,
-}
-
-impl PubSet {
-    /// Bytes of one buffer for `cap` slots.
-    pub fn buffer_bytes(cap: u32) -> usize {
-        let list = (cap as usize * 4).next_multiple_of(8);
-        std::mem::size_of::<PubHead>() + list + cap as usize * std::mem::size_of::<BodyRec>()
-    }
-    /// Makes a set (three buffers and the info, zeroed) — the user's thread allocates it, and frees it with
-    /// [`PubSet::free`].
-    pub fn make(cap: u32) -> *mut PubSet {
-        let one = PubSet::buffer_bytes(cap);
-        let info = cap as usize * std::mem::size_of::<SlotInfo>();
-        let total = 3 * one + info;
-        let block: Box<[u64]> = vec![0u64; total.div_ceil(8)].into_boxed_slice();
-        let base = Box::into_raw(block) as *mut u64 as usize;
-        let bufs = [base, base + one, base + 2 * one];
-        Box::into_raw(Box::new(PubSet {
-            cap,
-            _pad: 0,
-            tri: Triple::new(bufs),
-            info: base + 3 * one,
-            bytes: total.div_ceil(8),
-        }))
-    }
-    /// # Safety
-    /// A set made by [`PubSet::make`], used by nobody now.
-    pub unsafe fn free(set: *mut PubSet) {
-        let s = Box::from_raw(set);
-        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-            s.tri.bufs[0] as *mut u64,
-            s.bytes,
-        )));
-    }
-    /// The head of a buffer.
-    ///
-    /// # Safety
-    /// `buf` one of the set's.
-    pub unsafe fn head(buf: usize) -> &'static mut PubHead {
-        &mut *(buf as *mut PubHead)
-    }
-    /// # Safety
-    /// As [`PubSet::head`].
-    pub unsafe fn list(&self, buf: usize) -> &'static mut [u32] {
-        std::slice::from_raw_parts_mut(
-            (buf + std::mem::size_of::<PubHead>()) as *mut u32,
-            self.cap as usize,
-        )
-    }
-    /// # Safety
-    /// As [`PubSet::head`]; `slot` < `cap`.
-    pub unsafe fn rec(&self, buf: usize, slot: u32) -> &'static mut BodyRec {
-        let at = buf + std::mem::size_of::<PubHead>() + (self.cap as usize * 4).next_multiple_of(8);
-        &mut *(at as *mut BodyRec).add(slot as usize)
-    }
-    /// # Safety
-    /// `slot` < `cap`.
-    pub unsafe fn info(&self, slot: u32) -> &'static mut SlotInfo {
-        &mut *(self.info as *mut SlotInfo).add(slot as usize)
-    }
-}
+/// The published set (blocks of the contracts `abi.physics.bodies`, `moving`, `slots`) and the contracts a side that
+/// serves declares.
+mod published;
+pub use published::*;
 
 /// The physics written in place on the user's thread (no copy of a buffer: the user's buffer IS the one written).
 pub const LIVE: u32 = 0;
 /// The physics on a loop of its own (the triple buffer).
 pub const LOOP: u32 = 1;
 
-/// The link of a physics: in the memory both share, made by the user ([`PhysicsLink::make`]).
+/// The link itself (contract `abi.physics.link`, core/abi/contracts/abi.physics.link.json): after the loop's head, a
+/// `TableHead` and one row — [`PhysicsLink`] from `table` on, checked field by field below.
+pub use gripforge_contracts::abi_physics_link as link_block;
+use gripforge_contracts::table_head::{Refused, TableHead};
+
+/// The link of a physics: in the memory both share, made by the user ([`PhysicsLink::make`]). The generic head of a
+/// loop first ([`Head`]: the word `wake` the loops sleep on, at the same place in every loop's link), then a block of
+/// the contract `abi.physics.link` (its `TableHead`, one row): the side that serves checks it once
+/// ([`PhysicsLink::check`]) before it reads the link in place. The addresses are u64 in wasm32 as natively.
+///
+/// History: until feat/abi-contrat-lot2c (20/11) no `TableHead`, `set`, `sim`, `shapes` and the addresses of the rings
+/// and the answers in `usize` (4 bytes in wasm32), `skipped` and `dropped_ms` two former padding words; rebuild
+/// kithost.core, the native player and the physics modules (rapier, null).
 #[repr(C)]
 pub struct PhysicsLink {
     pub head: Head,
+    /// The `TableHead` of the `abi.physics.link` block (one row), written by [`PhysicsLink::make`].
+    pub table: TableHead,
     pub orders: Ring,
     /// Contact events, from the physics to the user: `[a slot u32 | b slot u32][begin u32 | 0][impulse f64]`.
     pub events: Ring,
     pub answers: Answers,
-    /// The set the physics writes (it changes it on [`order::GROW`]).
-    pub set: AtomicUsize,
+    /// The address of the set the physics writes (it changes it on [`order::GROW`]).
+    pub set: AtomicU64,
     /// The number of the last order the physics took.
     pub applied: AtomicU32,
     /// [`LIVE`] or [`LOOP`].
@@ -256,19 +92,21 @@ pub struct PhysicsLink {
     pub max_steps: u32,
     /// Events dropped because the user did not take them in time.
     pub events_dropped: AtomicU32,
-    /// The physics' own state ([`Sim`]), made by the side that serves (0: not yet).
-    pub sim: AtomicUsize,
+    /// The address of the physics' own state ([`Sim`]), made by the side that serves (0: not yet).
+    pub sim: AtomicU64,
     /// Counters of the loop: steps, and the ms it spent stepping and serving (f64 bits).
     pub steps: AtomicU32,
-    pub _pad2: u32,
+    /// Fixed steps due and never played under saturation (a turn already played `max_steps`), counted; and below, the
+    /// physics time thrown away, ms (those steps, a gap over 0.25 s beyond it). Two former padding words.
+    pub skipped: AtomicU32,
     pub busy_ms: std::sync::atomic::AtomicU64,
     /// What the port says of itself once: `ground_clearance` (f64 bits) and whether it steps by hand.
     pub clearance_bits: std::sync::atomic::AtomicU64,
     pub manual: AtomicU32,
-    pub _pad: u32,
+    pub dropped_ms: AtomicU32,
     /// The address of the served port's shape table (ABI physique 2.6), told once by the side that serves (0: none
     /// yet, or a port that publishes none): what a user on another thread reads in place.
-    pub shapes: AtomicUsize,
+    pub shapes: AtomicU64,
 }
 
 /// What a link owns besides itself (freed with it).
@@ -276,7 +114,7 @@ pub struct PhysicsLink {
 struct Blocks {
     orders: Box<[u64]>,
     events: Box<[u64]>,
-    answers: Box<[AnswerRec]>,
+    answers: Box<[u64]>,
 }
 
 impl PhysicsLink {
@@ -292,10 +130,9 @@ impl PhysicsLink {
     ) -> *mut PhysicsLink {
         let mut orders = vec![0u64; order_words as usize].into_boxed_slice();
         let mut events = vec![0u64; event_words as usize].into_boxed_slice();
-        // SAFETY: an answer record is plain numbers and atomics: zero is FREE.
-        let mut recs: Box<[AnswerRec]> = (0..answers.min(crate::ports::link::ANSWERS_MAX))
-            .map(|_| unsafe { std::mem::zeroed() })
-            .collect();
+        // An answer row is plain numbers and atomics: zero is FREE (the block's TableHead written).
+        let records = answers.min(crate::ports::link::ANSWERS_MAX);
+        let mut recs = Answers::block(records);
         let link = PhysicsLink {
             head: Head {
                 magic: MAGIC,
@@ -303,27 +140,28 @@ impl PhysicsLink {
                 wake: AtomicU32::new(0),
                 served: AtomicU32::new(0),
             },
+            table: TableHead::default(),
             orders: Ring::new(orders.as_mut_ptr(), order_words),
             events: Ring::new(events.as_mut_ptr(), event_words),
             answers: Answers {
-                recs: recs.as_mut_ptr() as usize,
-                cap: recs.len() as u32,
+                recs: recs.as_mut_ptr() as usize as u64,
+                cap: records,
                 cursor: AtomicU32::new(0),
             },
-            set: AtomicUsize::new(PubSet::make(cap) as usize),
+            set: AtomicU64::new(PubSet::make(cap) as usize as u64),
             applied: AtomicU32::new(0),
             mode,
             fixed_dt,
             max_steps: 4,
             events_dropped: AtomicU32::new(0),
-            sim: AtomicUsize::new(0),
+            sim: AtomicU64::new(0),
             steps: AtomicU32::new(0),
-            _pad2: 0,
+            skipped: AtomicU32::new(0),
             busy_ms: Default::default(),
             clearance_bits: Default::default(),
             manual: AtomicU32::new(0),
-            _pad: 0,
-            shapes: AtomicUsize::new(0),
+            dropped_ms: AtomicU32::new(0),
+            shapes: AtomicU64::new(0),
         };
         // The blocks live as long as the link (kept beside it, freed by `free`).
         let blocks = Box::new(Blocks {
@@ -331,8 +169,14 @@ impl PhysicsLink {
             events,
             answers: recs,
         });
-        let both = Box::new((link, blocks));
-        Box::into_raw(both) as *mut PhysicsLink
+        let both = Box::into_raw(Box::new((link, blocks))) as *mut PhysicsLink;
+        // SAFETY: the link just made, read by nobody yet; its block (TableHead, one row) begins at `table`.
+        unsafe {
+            let block = std::ptr::addr_of_mut!((*both).table).cast::<u8>();
+            link_block::init(block, 1);
+            link_block::publish(block, 1);
+        }
+        both
     }
 
     /// Frees a link and its current set (the physics no longer serves it: quit, or this thread's).
@@ -341,15 +185,17 @@ impl PhysicsLink {
     /// A link of [`PhysicsLink::make`], used by nobody now.
     pub unsafe fn free(link: *mut PhysicsLink) {
         let both = Box::from_raw(link as *mut (PhysicsLink, Box<Blocks>));
-        let set = both.0.set.load(Acquire);
+        let set = both.0.set.load(Acquire) as usize;
         if set != 0 {
             PubSet::free(set as *mut PubSet);
         }
         // Answers still holding names past their record.
-        for r in both.1.answers.iter() {
+        let a = &both.0.answers;
+        for i in 0..a.cap {
+            let r = a.rec(i);
             if r.more != 0 {
                 drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                    r.more as *mut u32,
+                    r.more as usize as *mut u32,
                     r.more_len as usize,
                 )));
             }
@@ -437,6 +283,11 @@ impl<'a> Read<'a> {
     pub fn v3(&self, i: usize) -> V3 {
         [self.num(i), self.num(i + 1), self.num(i + 2)]
     }
+    /// The numbers as `f64`, in place (the words of a contract of words, read by its generated accessors).
+    pub fn f64s(&self) -> &'a [f64] {
+        // SAFETY: a u64 and an f64 have the same size and alignment; the numbers were written as `f64::to_bits`.
+        unsafe { std::slice::from_raw_parts(self.nums.as_ptr() as *const f64, self.nums.len()) }
+    }
     pub fn name(&self) -> &'a str {
         std::str::from_utf8(self.name).unwrap_or("")
     }
@@ -458,38 +309,66 @@ pub struct Sim {
     watched: Vec<bool>,
     by_name: HashMap<String, u32>,
     moving: BTreeSet<u32>,
-    posed: Vec<(u32, [f64; 4], bool)>,
+    /// The static bodies an order moved (`SET_POSITION`, `SET_ROTATION`, `SET_BODY`): the writer publishes every body it
+    /// changed, whatever its kind, so their pose is in each publication from then on (its revision raised once).
+    placed: BTreeSet<u32>,
+    posed: Vec<(u32, [f64; 7], bool)>,
+    /// Per slot, the last pose published and its revision (`bodies::Row::rev`); the moves counted (`bodies::Head::moves`).
+    last_pose: Vec<([f64; 7], u32)>,
+    /// Per slot, the turn of [`Sim::list_poses`] that listed it (the moving bodies the port left out are published too).
+    listed: Vec<u32>,
+    turn: u32,
+    moves: u32,
     set: usize,
+    /// The set taken does not hold this build's rows ([`PubSet::check`]): nothing is written into it (the user reads
+    /// no publication: rebuild the side that serves, or the user, as the refusal says).
+    refused: Option<gripforge_contracts::table_head::Refused>,
     stamp: u32,
     accumulator: f64,
     fixed_dt: Option<f64>,
+    /// The speed of the time played on a loop ([`order::SET_SPEED`]; 1: real time).
+    speed: f64,
+    /// Held while the page is hidden ([`order::SET_HELD`]).
+    held: bool,
     live_forces: Vec<LiveForce>,
     force_slots: Vec<u32>,
     last_ms: f64,
     time: f64,
     steps: f64,
     manual: bool,
+    unknown: u32,
 }
 
 impl Sim {
-    fn new(set: usize) -> Sim {
+    /// The state of a side that serves a link whose block was checked (`refused`: why it may not be served).
+    fn new(set: usize, refused: Option<Refused>) -> Sim {
         Sim {
             names: Vec::new(),
             kinds: Vec::new(),
             watched: Vec::new(),
             by_name: HashMap::new(),
             moving: BTreeSet::new(),
+            placed: BTreeSet::new(),
             posed: Vec::new(),
+            last_pose: Vec::new(),
+            listed: Vec::new(),
+            turn: 0,
+            moves: 0,
+            // SAFETY: the set of the link, made by its user (read once the link's block was checked).
+            refused: refused.or_else(|| unsafe { (*(set as *const PubSet)).check() }.err()),
             set,
             stamp: 1,
             accumulator: 0.0,
             fixed_dt: None,
+            speed: 1.0,
+            held: false,
             live_forces: Vec::new(),
             force_slots: Vec::new(),
             last_ms: f64::NAN,
             time: 0.0,
             steps: 0.0,
             manual: false,
+            unknown: 0,
         }
     }
 
@@ -508,6 +387,8 @@ impl Sim {
             self.kinds.resize(n, kind::NONE);
             self.watched.resize(n, false);
             self.live_forces.resize(n, LiveForce::default());
+            self.last_pose.resize(n, ([f64::NAN; 7], 0));
+            self.listed.resize(n, 0);
         }
     }
 
@@ -530,7 +411,7 @@ impl Sim {
     fn write_rec(&self, p: &dyn PhysicsPort, buf: usize, slot: u32) {
         let Some(name) = self.name(slot) else { return };
         let set = self.set();
-        if slot >= set.cap {
+        if slot >= set.cap || self.refused.is_some() {
             return;
         }
         // SAFETY: `slot` < cap, `buf` a buffer of the set.
@@ -563,18 +444,15 @@ impl Sim {
             }
         }
         // SAFETY: as above.
-        let stamp = unsafe { PubSet::head(buf) }.stamp;
+        let stamp = unsafe { PubSet::head(buf) }.seq;
         // A record of this publication keeps its place in the list; its pose follows the body.
         if r.stamp == stamp && r.flags & flag::POSE != 0 {
             let character = r.flags & flag::POSE_CHARACTER;
             flags |= flag::POSE | character;
             if character != 0 && flags & flag::CHARACTER_AT != 0 {
-                r.pose = [r.cp[0], r.cp[1], r.cp[2], r.pose[3]];
+                r.pose[..3].copy_from_slice(&r.cp);
             } else if flags & flag::BODY != 0 {
-                let q = r.q;
-                let yaw = (2.0 * (q[3] * q[1] + q[0] * q[2]))
-                    .atan2(1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]));
-                r.pose = [r.p[0], r.p[1], r.p[2], yaw];
+                r.pose = pose_of(r.p, r.q);
             }
         }
         r.flags = flags;
@@ -584,9 +462,12 @@ impl Sim {
     /// Writes the whole buffer: every moving body, the list, the head.
     fn write_all(&mut self, p: &dyn PhysicsPort, buf: usize, applied: u32, wall_ms: f64) {
         // SAFETY: a buffer of the set.
+        if self.refused.is_some() {
+            return;
+        }
         let head = unsafe { PubSet::head(buf) };
         self.stamp = self.stamp.wrapping_add(1).max(1);
-        head.stamp = self.stamp;
+        head.seq = self.stamp;
         for &slot in &self.moving {
             self.write_rec(p, buf, slot);
         }
@@ -602,16 +483,21 @@ impl Sim {
         let set = self.set();
         // SAFETY: a buffer of the set.
         let head = unsafe { PubSet::head(buf) };
-        let list = unsafe { set.list(buf) };
-        let mut n = 0;
+        let mut n = 0u32;
         let mut posed = std::mem::take(&mut self.posed);
         posed.clear();
+        self.turn = self.turn.wrapping_add(1).max(1);
+        let (turn, listed) = (self.turn, &mut self.listed);
         p.for_each_pose(&mut |name, at, yaw, character| {
             let slot = self.by_name.get(name).copied().unwrap_or(NO_SLOT);
             if slot < set.cap {
-                posed.push((slot, [at[0], at[1], at[2], yaw], character));
+                posed.push((slot, listed_pose(p, name, at, yaw, character), character));
+                if let Some(l) = listed.get_mut(slot as usize) {
+                    *l = turn;
+                }
             }
         });
+        self.post_unlisted(p, set.cap, turn, &mut posed);
         for &(slot, pose, character) in &posed {
             if !self.moving.contains(&slot) {
                 self.write_rec(p, buf, slot);
@@ -619,18 +505,30 @@ impl Sim {
             // SAFETY: `slot` < cap.
             let r = unsafe { set.rec(buf, slot) };
             r.pose = pose;
+            // The body's revision: raised when its pose changed since the last publication.
+            if let Some(last) = self.last_pose.get_mut(slot as usize) {
+                if last.0 != pose {
+                    last.0 = pose;
+                    last.1 = last.1.wrapping_add(1);
+                    self.moves = self.moves.wrapping_add(1);
+                }
+                r.rev = last.1;
+            }
             r.flags |= flag::POSE | if character { flag::POSE_CHARACTER } else { 0 };
-            list[n] = slot;
+            // SAFETY: `n` < cap (one row per slot listed, each below the cap); this side writes `buf`.
+            unsafe { PubSet::list_put(buf, n, slot) };
             n += 1;
         }
         self.posed = posed;
-        head.count = n as u32;
+        // SAFETY: as above; the count published after the rows.
+        unsafe { PubSet::list_publish(buf, n) };
+        head.moves = self.moves;
     }
 
     /// The info of a slot, after its body was added.
     fn write_info(&self, p: &dyn PhysicsPort, slot: u32, seq: u32) {
         let set = self.set();
-        if slot >= set.cap {
+        if slot >= set.cap || self.refused.is_some() {
             return;
         }
         let Some(name) = self.name(slot) else { return };
@@ -665,8 +563,10 @@ impl Sim {
                 self.names[other as usize] = None;
                 self.kinds[other as usize] = kind::NONE;
                 self.moving.remove(&other);
+                self.placed.remove(&other);
             }
         }
+        self.placed.remove(&slot);
         self.names[slot as usize] = Some(name.to_string());
         self.kinds[slot as usize] = k;
         if matches!(k, kind::DYNAMIC | kind::KINEMATIC | kind::CHARACTER) {
@@ -700,22 +600,41 @@ impl Sim {
                 Some(o.slot)
             }
             ADD_CHARACTER => {
+                use crate::ports::abi::character_desc as cd;
+                let w = o.f64s();
+                cd::check(w).ok()?;
                 self.named(o.slot, o.name(), kind::CHARACTER);
-                let opts =
-                    crate::ports::CharacterOptions::of(o.num(5), o.num(6), o.num(7), o.num(8));
-                p.add_character(o.name(), o.v3(0), o.num(3), o.num(4), opts);
+                let opts = crate::ports::CharacterOptions::of(
+                    cd::max_slope_deg(w),
+                    cd::step_height(w),
+                    cd::snap_distance(w),
+                    cd::skin_ratio(w),
+                );
+                p.add_character(
+                    o.name(),
+                    cd::position(w),
+                    cd::radius(w),
+                    cd::height(w),
+                    opts,
+                );
                 self.write_info(p, o.slot, o.seq);
                 Some(o.slot)
             }
             ADD_STATIC_BOX => {
+                use crate::ports::abi::box_desc as bx;
+                let w = o.f64s();
+                bx::check(w).ok()?;
                 self.named(o.slot, o.name(), kind::STATIC);
-                p.add_static_box(o.v3(0), o.v3(3), o.name());
+                p.add_static_box(bx::center(w), bx::size(w), o.name());
                 self.write_info(p, o.slot, o.seq);
                 Some(o.slot)
             }
             ADD_DYNAMIC_BOX => {
+                use crate::ports::abi::box_desc as bx;
+                let w = o.f64s();
+                bx::check(w).ok()?;
                 self.named(o.slot, o.name(), kind::DYNAMIC);
-                p.add_dynamic_box(o.name(), o.v3(0), o.v3(3), o.num(6));
+                p.add_dynamic_box(o.name(), bx::center(w), bx::size(w), bx::mass(w));
                 self.write_info(p, o.slot, o.seq);
                 Some(o.slot)
             }
@@ -739,22 +658,26 @@ impl Sim {
                 self.live_forces[o.slot as usize] = LiveForce::default();
                 self.force_slots.retain(|slot| *slot != o.slot);
                 self.moving.remove(&o.slot);
+                self.placed.remove(&o.slot);
                 let set = self.set();
                 if o.slot < set.cap {
                     // SAFETY: `slot` < cap.
-                    unsafe { *set.info(o.slot) = SlotInfo::default() };
+                    unsafe { *set.info(o.slot) = slots::Row::default() };
                 }
                 Some(o.slot)
             }
             SET_BODY => {
                 let n = name(self)?;
+                use crate::ports::abi::body_state as bs;
+                let w = o.f64s();
+                bs::check(w).ok()?;
                 let s = crate::ports::BodyState {
                     entity: n,
-                    p: o.v3(0),
-                    q: [o.num(3), o.num(4), o.num(5), o.num(6)],
-                    v: o.v3(7),
-                    w: o.v3(10),
-                    sleeping: o.num(13) != 0.0,
+                    p: bs::position(w),
+                    q: bs::rotation(w),
+                    v: bs::linvel(w),
+                    w: bs::angvel(w),
+                    sleeping: bs::sleeping(w) != 0.0,
                 };
                 p.set_body(&s);
                 self.refresh_static(p, o.slot);
@@ -847,6 +770,8 @@ impl Sim {
                 }
                 None
             }
+            SET_HELD => self.set_held(o.num(0) != 0.0),
+            SET_SPEED => self.set_speed(o.num(0)),
             STEP => {
                 self.flush_live_forces(p);
                 self.step(p, link, o.num(0));
@@ -862,7 +787,7 @@ impl Sim {
                 Some(NO_SLOT)
             }
             MOVE_CHARACTER..=QUESTION_LAST => self.question(p, link, k, o),
-            _ => None,
+            _ => unknown::unknown(&mut self.unknown, k),
         }
     }
 
@@ -893,36 +818,11 @@ impl Sim {
         unsafe { link.events.push(3, 1, |_| {}) };
     }
 
-    /// A record of the events ring: `[a slot | b slot][flag][value][a name bytes | b name bytes]` then the names of
-    /// the slots this link does not know (a collider under a name nobody added through it).
-    fn push_pair(&self, link: &PhysicsLink, k: u32, a: &str, b: &str, flag: u64, value: f64) {
-        let (sa, sb) = (self.slot_of(a), self.slot_of(b));
-        let na = if sa == NO_SLOT { a.as_bytes() } else { &[] };
-        let nb = if sb == NO_SLOT { b.as_bytes() } else { &[] };
-        let words = 5 + (na.len() + nb.len()).div_ceil(8) as u32;
-        // SAFETY: the physics is the one producer of the events ring.
-        let pushed = unsafe {
-            link.events.push(k, words, |w| {
-                w[0] = sa as u64 | (sb as u64) << 32;
-                w[1] = flag;
-                w[2] = value.to_bits();
-                w[3] = na.len() as u64 | (nb.len() as u64) << 32;
-                let bytes = std::slice::from_raw_parts_mut(
-                    w[4..].as_mut_ptr() as *mut u8,
-                    (w.len() - 4) * 8,
-                );
-                bytes[..na.len()].copy_from_slice(na);
-                bytes[na.len()..na.len() + nb.len()].copy_from_slice(nb);
-            })
-        };
-        if !pushed {
-            link.events_dropped.fetch_add(1, Relaxed);
-        }
-    }
-
     /// A static body moved by an order: its info follows (a static body is not published every step).
-    fn refresh_static(&self, p: &dyn PhysicsPort, slot: u32) {
+    fn refresh_static(&mut self, p: &dyn PhysicsPort, slot: u32) {
         if self.kinds.get(slot as usize) == Some(&kind::STATIC) && slot < self.set().cap {
+            // Published from now on: the writer publishes every body an order changed.
+            self.placed.insert(slot);
             // SAFETY: `slot` < cap.
             let seq = unsafe { self.set().info(slot) }.added;
             self.write_info(p, slot, seq);
@@ -934,6 +834,12 @@ impl Sim {
             return;
         }
         let (old, new) = (self.set(), unsafe { &*(to as *const PubSet) });
+        // SAFETY: a set made by the user; checked once, before anything is written into it.
+        let was = std::mem::replace(&mut self.refused, unsafe { new.check() }.err());
+        if was.is_some() || self.refused.is_some() {
+            self.set = to;
+            return;
+        }
         for slot in 0..old.cap.min(new.cap) {
             // SAFETY: both below their cap.
             unsafe { *new.info(slot) = *old.info(slot) };
@@ -949,135 +855,7 @@ impl Sim {
             self.write_all(p, buf, applied, f64::NAN);
             new.tri.publish();
         }
-        link.set.store(to, Release);
-    }
-}
-
-fn answer(link: &PhysicsLink, ticket: u32, fill: impl FnOnce(&mut AnswerRec)) {
-    // SAFETY: the record of a ticket the user handed out with the order.
-    if let Some(r) = unsafe { link.answers.to_fill(ticket) } {
-        r.count = 0;
-        fill(r);
-        Answers::ready(r);
-    }
-}
-
-/// A body description as the order carries it (`DESC_WORDS` numbers; a mesh's addresses in `extra`).
-fn desc_of(o: &Read) -> crate::ports::BodyDesc {
-    use crate::ports::{BodyDesc, BodyKind, Shape};
-    let kind = match o.num(0) as u32 {
-        1 => BodyKind::Kinematic,
-        2 => BodyKind::Static,
-        _ => BodyKind::Dynamic,
-    };
-    let s = o.v3(2);
-    let code = o.num(1) as u32;
-    let shape = if (3..=6).contains(&code) && o.extra.len() >= 4 {
-        let (vp, nv, ip, ni) = (
-            o.extra[0] as usize,
-            o.extra[1] as usize,
-            o.extra[2] as usize,
-            o.extra[3] as usize,
-        );
-        // SAFETY: the user keeps the streams where these say until the physics took the order.
-        unsafe {
-            let f: &[f32] = if nv == 0 {
-                &[]
-            } else {
-                std::slice::from_raw_parts(vp as *const f32, nv)
-            };
-            let i: &[u32] = if ni == 0 {
-                &[]
-            } else {
-                std::slice::from_raw_parts(ip as *const u32, ni)
-            };
-            Shape::from_wire(code, s, f, i)
-        }
-    } else {
-        Shape::from_wire(if code <= 2 || code == 7 { code } else { 0 }, s, &[], &[])
-    };
-    let mut d = BodyDesc::new(kind, shape, o.v3(5));
-    d.rotation = [o.num(8), o.num(9), o.num(10), o.num(11)];
-    d.mass = o.num(12);
-    d.friction = o.num(13);
-    d.restitution = o.num(14);
-    d.linear_damping = o.num(15);
-    d.angular_damping = o.num(16);
-    d.ccd = o.num(17) != 0.0;
-    d.can_sleep = o.num(18) != 0.0;
-    d.lock_rotation = o.num(19) != 0.0;
-    d.lock_tilt = o.num(20) != 0.0;
-    d.gravity_scale = o.num(21);
-    d.ground_probe = o.num(22);
-    // The layers came with 2.4: an order of fewer words keeps the defaults (the first layer, colliding with all).
-    if o.nums.len() >= crate::ports::abi::DESC_WORDS_4 {
-        d.layers = o.num(23) as u32;
-        d.collides_with = o.num(24) as u32;
-    }
-    if o.nums.len() >= crate::ports::abi::DESC_WORDS_5 {
-        d.sensor = o.num(25) != 0.0;
-    }
-    d
-}
-
-/// The words of a body description for [`order::ADD_BODY`] (the inverse of what the physics reads).
-pub fn desc_words(d: &crate::ports::BodyDesc) -> [f64; crate::ports::abi::DESC_WORDS_5] {
-    use crate::ports::BodyKind;
-    let (shape, s) = (d.shape.code() as f64, d.shape.numbers());
-    let kind = match d.kind {
-        BodyKind::Dynamic => 0.0,
-        BodyKind::Kinematic => 1.0,
-        BodyKind::Static => 2.0,
-    };
-    let b = |x: bool| x as u8 as f64;
-    [
-        kind,
-        shape,
-        s[0],
-        s[1],
-        s[2],
-        d.position[0],
-        d.position[1],
-        d.position[2],
-        d.rotation[0],
-        d.rotation[1],
-        d.rotation[2],
-        d.rotation[3],
-        d.mass,
-        d.friction,
-        d.restitution,
-        d.linear_damping,
-        d.angular_damping,
-        b(d.ccd),
-        b(d.can_sleep),
-        b(d.lock_rotation),
-        b(d.lock_tilt),
-        d.gravity_scale,
-        d.ground_probe,
-        d.layers as f64,
-        d.collides_with as f64,
-        b(d.sensor),
-    ]
-}
-
-fn sim_of(link: &PhysicsLink) -> &'static mut Sim {
-    let mut at = link.sim.load(Acquire);
-    if at == 0 {
-        at = Box::into_raw(Box::new(Sim::new(link.set.load(Acquire)))) as usize;
-        link.sim.store(at, Release);
-    }
-    // SAFETY: made above by this side, the only one that serves the link.
-    unsafe { &mut *(at as *mut Sim) }
-}
-
-/// Drops the physics' own state (the side that served the link, when it stops).
-///
-/// # Safety
-/// The side that served `link`, which serves it no more.
-pub unsafe fn drop_sim(link: &PhysicsLink) {
-    let at = link.sim.swap(0, AcqRel);
-    if at != 0 {
-        drop(Box::from_raw(at as *mut Sim));
+        link.set.store(to as u64, Release);
     }
 }
 
@@ -1088,6 +866,10 @@ pub unsafe fn drop_sim(link: &PhysicsLink) {
 /// `link` a live link of [`PhysicsLink::make`]; this thread serves it alone.
 pub unsafe fn serve_live(link: &PhysicsLink, p: &mut dyn PhysicsPort) -> u32 {
     let sim = sim_of(link);
+    if sim.set == 0 {
+        // The link's own block was refused: nothing of it is read (its fields are not where this build reads them).
+        return 0;
+    }
     let mut relist = false;
     let n = link.orders.drain(|k, body| {
         let o = Read::of(body);
@@ -1116,6 +898,9 @@ pub unsafe fn serve_live(link: &PhysicsLink, p: &mut dyn PhysicsPort) -> u32 {
                     || sim.watched.get(slot as usize).copied().unwrap_or(false)
                 {
                     sim.write_rec(p, buf, slot);
+                } else if sim.placed.contains(&slot) {
+                    // A static body an order moved: listed with its pose from now on.
+                    relist = true;
                 }
             }
             None => {}
@@ -1144,7 +929,8 @@ pub unsafe fn step_live(link: &PhysicsLink, p: &mut dyn PhysicsPort, dt: f64) ->
             // A force belongs to the elapsed action tick, not to the next entire physics step.
             // Integrate its impulse over each overlap; keep the remainder for a slower clock and
             // reuse the force across all substeps of a faster clock. Storage is retained by slot.
-            let mut remaining = dt.clamp(0.0, 0.25);
+            link.throw(dt - 0.25, 0);
+            let mut remaining = dt.clamp(0.0, 0.25); // never × sim.speed: dt is game time, already slowed
             while remaining > 1e-12 || sim.accumulator >= fixed_dt - 1e-9 {
                 let portion = remaining.min((fixed_dt - sim.accumulator).max(0.0));
                 for &slot in &sim.force_slots {
@@ -1205,6 +991,10 @@ pub unsafe fn serve_loop(link: &PhysicsLink, p: &mut dyn PhysicsPort, now_ms: f6
         return -1.0;
     }
     let sim = sim_of(link);
+    if sim.set == 0 {
+        // The link's own block was refused (`PhysicsLink::check`): nothing of it is read; the loop waits for its quit.
+        return 250.0;
+    }
     link.head.served.fetch_add(1, Relaxed);
     if link.clearance_bits.load(Relaxed) == 0 {
         link.clearance_bits
@@ -1212,7 +1002,7 @@ pub unsafe fn serve_loop(link: &PhysicsLink, p: &mut dyn PhysicsPort, now_ms: f6
     }
     if link.shapes.load(Relaxed) == 0 {
         if let Some(at) = p.shapes_view() {
-            link.shapes.store(at, Release);
+            link.shapes.store(at as u64, Release);
         }
     }
     let mut changed = link.orders.drain(|k, body| {
@@ -1221,16 +1011,22 @@ pub unsafe fn serve_loop(link: &PhysicsLink, p: &mut dyn PhysicsPort, now_ms: f6
         link.applied.store(o.seq, Release);
     }) > 0;
     let dt = sim.fixed_dt.unwrap_or(link.fixed_dt);
-    if sim.last_ms.is_nan() || control != RUN {
+    let run = control == RUN && !sim.held;
+    if sim.last_ms.is_nan() || !run {
         sim.last_ms = now_ms;
     }
-    if control == RUN && !sim.manual {
-        sim.accumulator += ((now_ms - sim.last_ms) / 1000.0).clamp(0.0, 0.25);
+    if run && !sim.manual {
+        let gap = ((now_ms - sim.last_ms) / 1000.0).max(0.0);
+        link.throw(gap - 0.25, 0);
+        sim.accumulator += gap.min(0.25) * sim.speed;
         sim.last_ms = now_ms;
         let mut n = 0;
         while sim.accumulator >= dt - 1e-9 {
             if n >= link.max_steps {
-                sim.accumulator %= dt;
+                // Saturated: the steps still due are thrown away (the physics' budget), and counted.
+                let skipped = ((sim.accumulator + 1e-9) / dt).floor();
+                link.throw(skipped * dt, skipped as u32);
+                sim.accumulator = (sim.accumulator - skipped * dt).max(0.0);
                 break;
             }
             sim.step(p, link, dt);

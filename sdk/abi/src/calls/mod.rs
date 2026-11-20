@@ -44,7 +44,18 @@ pub const CONTRACT: &str = "gripforge:calls@1";
 /// The version of the base host ABI a module is built for: `major << 16 | minor` (export `gf_calls_abi`). It only
 /// grows by additions at the end (new imports, new statuses, new register words past `regs::LEN` in a next minor);
 /// a host refuses a module of another major, and tells what it offers with `gf_host_caps` ([`caps`]).
-pub const ABI: u32 = 1 << 16;
+///
+/// History since 1.0, the value unchanged:
+/// - 20/11 (feat/abi-dev, docs/decisions/2026-11-20-abi-dev.md): the value is `ABI_DEV` in the repository, the
+///   number of core/abi/abi-versions.json is written at the tag only. Rebuild every binary once (player, modules,
+///   gateways): a binary of before answers its old number and is refused.
+/// - 20/11 (feat/abi-dev, #1798): the web host (core/gateway-web/calls.mjs `ABI`) is ABI_DEV too (table line
+///   `calls_web`); in development it compares the build print of the ABI sources (`gripforge.abi_print`) and warns.
+/// - 20/11 (feat/abi-contrat-chargement): the build print `gripforge.abi_print` is gone; each module declares the
+///   contracts it reads or writes (`gripforge.contracts`, [`crate::contract`]) and the host checks only those, by
+///   their fields (works with ABI_DEV). Nothing to rebuild: a module of before carries no declaration and keeps the
+///   older checks.
+pub const ABI: u32 = crate::ABI_DEV;
 /// What a host offers beyond the base (bits of `gf_host_caps()`); a module asks before using one.
 pub mod caps {
     /// `gf_calls.zone` can be imported as a second memory (multi-memory): the zone read and written in place.
@@ -167,6 +178,34 @@ pub fn unpack_call_result(v: u64) -> (Status, u32) {
     )
 }
 
+// The positions of the call header and of the reply header: their record contracts (core/abi/contracts/
+// abi.calls.header.json, abi.calls.reply.json), never numbers written here.
+use gripforge_contracts::abi_calls_header::at as H;
+use gripforge_contracts::abi_calls_reply::at as R;
+const _: () = {
+    assert!(HEADER_LEN == gripforge_contracts::abi_calls_header::SIZE);
+    assert!(HEADER_LEN == gripforge_contracts::abi_calls_reply::SIZE);
+};
+
+/// The contracts a module of `gripforge:calls@1` reads or writes by itself, with their role: the headers of its calls
+/// and replies, and natively the table of the host functions (declared on every target: one section). A module that
+/// speaks only this contract declares them once (`contracts_section!(gripforge_abi::calls::CONTRACTS)`, the test
+/// modules of core/abi/test-modules); a kit module declares them in the façade's list (`gripforge_kit_guest::contracts`).
+pub const CONTRACTS: &[(&[u8], u8)] = &[
+    (
+        gripforge_contracts::abi_calls_header::DECL,
+        crate::contract::BOTH,
+    ),
+    (
+        gripforge_contracts::abi_calls_reply::DECL,
+        crate::contract::BOTH,
+    ),
+    (
+        gripforge_contracts::abi_host_api::DECL,
+        crate::contract::READ,
+    ),
+];
+
 fn put16(b: &mut [u8], at: usize, v: u16) {
     b[at..at + 2].copy_from_slice(&v.to_le_bytes());
 }
@@ -210,32 +249,33 @@ pub struct CallHeader {
 
 impl CallHeader {
     pub fn write(&self, b: &mut [u8]) {
-        b[0] = KIND_CALL;
-        b[1] = VERSION;
-        put16(b, 2, self.flags);
-        put32(b, 4, self.from);
-        put32(b, 8, self.call_id);
-        put16(b, 12, self.target_len);
-        put16(b, 14, self.func_len);
-        put32(b, 16, self.func_id);
-        put32(b, 20, self.args_ptr);
-        put32(b, 24, self.args_len);
-        put32(b, 28, self.target_handle);
+        b[H::KIND] = KIND_CALL;
+        b[H::VERSION] = VERSION;
+        put16(b, H::FLAGS, self.flags);
+        put32(b, H::FROM, self.from);
+        put32(b, H::CALL_ID, self.call_id);
+        put16(b, H::TARGET_LEN, self.target_len);
+        put16(b, H::FUNC_LEN, self.func_len);
+        put32(b, H::FUNC_ID, self.func_id);
+        put32(b, H::ARGS_PTR, self.args_ptr);
+        put32(b, H::ARGS_LEN, self.args_len);
+        put32(b, H::TARGET_HANDLE, self.target_handle);
     }
     pub fn read(b: &[u8]) -> Option<CallHeader> {
-        if b.len() < HEADER_LEN || b[0] != KIND_CALL || b[1] != VERSION {
+        // The version byte is no longer compared: the fields of the header are, at load (contract abi.calls.header).
+        if b.len() < HEADER_LEN || b[H::KIND] != KIND_CALL {
             return None;
         }
         Some(CallHeader {
-            flags: get16(b, 2),
-            from: get32(b, 4),
-            call_id: get32(b, 8),
-            target_len: get16(b, 12),
-            func_len: get16(b, 14),
-            func_id: get32(b, 16),
-            args_ptr: get32(b, 20),
-            args_len: get32(b, 24),
-            target_handle: get32(b, 28),
+            flags: get16(b, H::FLAGS),
+            from: get32(b, H::FROM),
+            call_id: get32(b, H::CALL_ID),
+            target_len: get16(b, H::TARGET_LEN),
+            func_len: get16(b, H::FUNC_LEN),
+            func_id: get32(b, H::FUNC_ID),
+            args_ptr: get32(b, H::ARGS_PTR),
+            args_len: get32(b, H::ARGS_LEN),
+            target_handle: get32(b, H::TARGET_HANDLE),
         })
     }
     /// Bytes of the header and the names.
@@ -270,38 +310,40 @@ pub struct ReplyHeader {
 
 impl ReplyHeader {
     pub fn write(&self, b: &mut [u8]) {
-        b[0] = KIND_REPLY;
-        b[1] = VERSION;
-        put16(b, 2, self.status);
-        put32(b, 4, self.from);
-        put32(b, 8, self.call_id);
-        put32(b, 12, self.to);
-        put32(b, 16, self.result_ptr);
-        put32(b, 20, self.result_len);
-        put32(b, 24, 0);
-        put32(b, 28, 0);
+        b[R::KIND] = KIND_REPLY;
+        b[R::VERSION] = VERSION;
+        put16(b, R::STATUS, self.status);
+        put32(b, R::FROM, self.from);
+        put32(b, R::CALL_ID, self.call_id);
+        put32(b, R::TO, self.to);
+        put32(b, R::RESULT_PTR, self.result_ptr);
+        put32(b, R::RESULT_LEN, self.result_len);
+        put32(b, R::RESERVED, 0);
+        put32(b, R::RESERVED + 4, 0);
     }
     pub fn read(b: &[u8]) -> Option<ReplyHeader> {
-        if b.len() < HEADER_LEN || b[0] != KIND_REPLY || b[1] != VERSION {
+        // The version byte is no longer compared: the fields are, at load (contract abi.calls.reply).
+        if b.len() < HEADER_LEN || b[R::KIND] != KIND_REPLY {
             return None;
         }
         Some(ReplyHeader {
-            status: get16(b, 2),
-            from: get32(b, 4),
-            call_id: get32(b, 8),
-            to: get32(b, 12),
-            result_ptr: get32(b, 16),
-            result_len: get32(b, 20),
+            status: get16(b, R::STATUS),
+            from: get32(b, R::FROM),
+            call_id: get32(b, R::CALL_ID),
+            to: get32(b, R::TO),
+            result_ptr: get32(b, R::RESULT_PTR),
+            result_len: get32(b, R::RESULT_LEN),
         })
     }
 }
 
 /// Byte offsets of the fields a host stamps in place.
 pub mod field {
-    /// `from` of a call or a reply.
-    pub const FROM: usize = 4;
+    /// `from` of a call or a reply (the same place in both contracts, checked below).
+    pub const FROM: usize = super::H::FROM;
     /// `to` of a reply.
-    pub const REPLY_TO: usize = 12;
+    pub const REPLY_TO: usize = super::R::TO;
+    const _: () = assert!(super::H::FROM == super::R::FROM);
 }
 
 /// A whole call block: header, names, then the arguments inline (`args_ptr` = `block + names_end`).

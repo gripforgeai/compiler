@@ -1,14 +1,14 @@
 # The public part of the kits SDK: what the crate of a game built by gripforge-build compiles against (the kit side of
 # the host, gripforge-kit-guest; the common part of the kits' accessors, gripforge-kit-access; their contract,
-# gripforge-abi). Copied from gripforgeai/module-kits at the revision of sdk.json by tools/sync-sdk (see README.md);
-# this file is this repository's own: the workspace the three copied crates inherit from (the same values as the kits
+# gripforge-abi; the accessors of the shared contracts, gripforge-contracts). Copied from gripforgeai/module-kits at the revision of sdk.json by tools/sync-sdk (see README.md);
+# this file is this repository's own: the workspace the copied crates inherit from (the same values as the kits
 # repository's root Cargo.toml for these crates).
 #
 # A game's crate takes them by git from this repository at the compiler's tag (gripforge-build's default), or by path
 # (`gripforge-build --sdk <this folder>`). Its own workspace: never a member of the compiler's.
 [workspace]
 resolver = "2"
-members = ["abi", "kit-guest", "kit-access"]
+members = ["abi", "kit-guest", "kit-access", "contracts"]
 
 [workspace.package]
 version = "0.1.0"
@@ -19,4 +19,5 @@ license = "MIT"
 [workspace.dependencies]
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
 gripforge-abi = { path = "abi" }
+gripforge-contracts = { path = "contracts" }
 gripforge-kit-guest = { path = "kit-guest" }

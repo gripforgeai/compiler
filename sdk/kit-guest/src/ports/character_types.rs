@@ -9,16 +9,37 @@ pub struct CharacterOptions {
     pub max_slope_deg: f64,
     pub step_height: f64,
     pub snap_distance: f64,
-    /// Gap kept from what the controller touches, as a fraction of the capsule radius (at least 1 cm). 0 = the
-    /// physics' own fixed gap (5 cm): what a character gets unless `core.physics` config `character.skinRatio` is
-    /// set away from its default.
+    /// Gap kept from what the controller touches (`core.physics` config `character.skinRatio`), read by ONE rule,
+    /// [`CharacterOptions::ground_gap`]: the default [`DEFAULT_SKIN_RATIO`] keeps the physics' own fixed gap (5 cm),
+    /// another value of 0.001..0.5 is a fraction of the capsule radius (at least 1 cm).
     pub skin_ratio: f64,
     /// The offset from the origin of the followed object to the point the kits give and read (m); `None`: the
     /// config's `character.originOffset`, else 0.
     pub origin_offset: Option<V3>,
 }
 
+/// The gap a character controller keeps from what it touches when no ratio is asked (m): the physics' own fixed one.
+pub const DEFAULT_GROUND_GAP: f64 = 0.05;
+
+/// The default of `character.skinRatio` (the manifest's): the physics' own fixed gap, [`DEFAULT_GROUND_GAP`].
+pub const DEFAULT_SKIN_RATIO: f64 = 0.05;
+
 impl CharacterOptions {
+    /// The gap (m) the controller of a capsule of `radius` really keeps from the ground, the one rule of `skinRatio`:
+    /// the default ([`DEFAULT_SKIN_RATIO`]) or no ratio (0, NaN, out of 0.001..0.5) keeps [`DEFAULT_GROUND_GAP`];
+    /// another ratio is that fraction of the radius, at least 1 cm. The physics keeps it and core.physics publishes
+    /// it (`physics.ground_gap`) from this same function, for a game to put the body's feet where they really rest.
+    pub fn ground_gap(&self, radius: f64) -> f64 {
+        let r = self.skin_ratio;
+        let ratio =
+            r.is_finite() && (0.001..=0.5).contains(&r) && (r - DEFAULT_SKIN_RATIO).abs() > 1e-9;
+        if ratio && radius > 0.0 {
+            (r * radius).max(0.01)
+        } else {
+            DEFAULT_GROUND_GAP
+        }
+    }
+
     /// The controller's numbers, the frame of the config.
     pub fn of(max_slope_deg: f64, step_height: f64, snap_distance: f64, skin_ratio: f64) -> Self {
         CharacterOptions {
@@ -37,7 +58,7 @@ impl Default for CharacterOptions {
             max_slope_deg: 45.0,
             step_height: 0.4,
             snap_distance: 0.3,
-            skin_ratio: 0.0,
+            skin_ratio: DEFAULT_SKIN_RATIO,
             origin_offset: None,
         }
     }

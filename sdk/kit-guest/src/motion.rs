@@ -8,6 +8,11 @@
 use crate::js::{js_hypot, js_max, js_min};
 use serde_json::Value as Json;
 
+/// The orientation helpers of a pose (a quaternion, the cap computed from it), one definition for the core and the kits.
+pub use gripforge_abi::turn::{
+    quat_of_yaw, tilt_of, turn_about_up, with_yaw, yaw_of_quat, Quat, IDENTITY,
+};
+
 /// A position or a direction in the world frame: `[x, y, z]`, metres (y up).
 pub type Vec3 = [f64; 3];
 

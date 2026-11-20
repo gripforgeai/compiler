@@ -314,7 +314,8 @@ impl Physics for PhysicsProxy {
     fn set_character_offset(&mut self, entity: &str, offset: V3) {
         // In place, in the game's column when it has one (the front follows it): no call.
         let column = "physics.character_offset@1";
-        if crate::columns::write("core.physics", entity, column, offset, false) == Ok(true) {
+        // The first argument only names the writer in an error: the right to write is the module's view of the schema.
+        if crate::columns::write("the physics port", entity, column, offset, false) == Ok(true) {
             return;
         }
         tell_v3(crate::func!(f::SET_CHARACTER_OFFSET), entity, offset);
@@ -333,6 +334,11 @@ impl Physics for PhysicsProxy {
                 w.str(id);
             }),
         );
+    }
+    fn bus_capabilities(&self) -> String {
+        ask(crate::func!(f::BUS_CAPABILITIES), &args(|_| {}), |r| {
+            r.string()
+        })
     }
     fn character_grounded(&self, entity: &str) -> bool {
         if let Some(v) = direct::scalar(entity, 3) {

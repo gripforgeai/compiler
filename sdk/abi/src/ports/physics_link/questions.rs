@@ -3,33 +3,51 @@
 //! by a mask of named layers. The physics answers in the slab of answers, never waited for.
 
 use super::order::*;
-use super::{answer, PhysicsLink, Read, Sim, NO_SLOT};
+use super::unknown::answer;
+use super::{PhysicsLink, Read, Sim, NO_SLOT};
 use crate::ports::abi::query;
 use crate::ports::link::AnswerRec;
 use crate::ports::{PhysicsPort, QueryFilter, RayHit};
 
-/// The `u32` words of one hit in the answer of [`RAYCAST_ALL`]: its slot, then toi, point and normal (7 `f64`, two
-/// words each).
-pub const HIT_WORDS: usize = 15;
+/// One hit in the answer of [`RAYCAST_ALL`] (contract `abi.physics.hit_words`): its slot, then toi, point and normal
+/// (each `f64` as two `u32` words, low first); every index generated.
+pub use gripforge_contracts::abi_physics_hit_words as hit_words;
+/// The `u32` words of one hit.
+pub const HIT_WORDS: usize = hit_words::WORDS;
+
+/// The two words of an `f64`, low first.
+fn split(x: f64) -> [u32; 2] {
+    let b = x.to_bits();
+    [b as u32, (b >> 32) as u32]
+}
+
+/// An `f64` of its two words.
+fn join(w: [u32; 2]) -> f64 {
+    f64::from_bits(w[0] as u64 | (w[1] as u64) << 32)
+}
 
 /// The physics' side: the hits of [`RAYCAST_ALL`] in a record — their count, every hit past the record (`more`, the
 /// allocator every module of the memory shares; the user frees it with the record).
 pub fn pack_hits(r: &mut AnswerRec, hits: &[(u32, &RayHit)]) {
-    r.count = hits.len() as u32;
+    use hit_words::at;
+    r.found = hits.len() as u32;
     if hits.is_empty() {
         return;
     }
-    let mut words: Vec<u32> = Vec::with_capacity(hits.len() * HIT_WORDS);
-    for (slot, h) in hits {
-        words.push(*slot);
-        for x in [h.toi].iter().chain(h.point.iter()).chain(h.normal.iter()) {
-            let b = x.to_bits();
-            words.extend_from_slice(&[b as u32, (b >> 32) as u32]);
+    let mut words: Box<[u32]> = vec![0u32; hits.len() * HIT_WORDS].into();
+    for ((slot, h), w) in hits
+        .iter()
+        .zip(words.as_chunks_mut::<{ HIT_WORDS }>().0.iter_mut())
+    {
+        w[at::SLOT] = *slot;
+        w[at::TOI..at::TOI + 2].copy_from_slice(&split(h.toi));
+        for k in 0..3 {
+            w[at::POINT + 2 * k..at::POINT + 2 * k + 2].copy_from_slice(&split(h.point[k]));
+            w[at::NORMAL + 2 * k..at::NORMAL + 2 * k + 2].copy_from_slice(&split(h.normal[k]));
         }
     }
-    let words: Box<[u32]> = words.into();
     r.more_len = words.len() as u32;
-    r.more = Box::into_raw(words) as *mut u32 as usize;
+    r.more = Box::into_raw(words) as *mut u32 as usize as u64;
 }
 
 /// The user's side: the hits of [`pack_hits`], each its slot ([`NO_SLOT`]: an entity the link does not name) and
@@ -37,24 +55,26 @@ pub fn pack_hits(r: &mut AnswerRec, hits: &[(u32, &RayHit)]) {
 pub fn hits_of(r: &AnswerRec) -> impl Iterator<Item = (u32, [f64; 7])> + '_ {
     let words: &[u32] = if r.more != 0 {
         // SAFETY: `more_len` words at `more` when it is set (`pack_hits`).
-        unsafe { std::slice::from_raw_parts(r.more as *const u32, r.more_len as usize) }
+        unsafe { std::slice::from_raw_parts(r.more as usize as *const u32, r.more_len as usize) }
     } else {
         &[]
     };
-    words.as_chunks::<HIT_WORDS>().0.iter().map(|c| {
-        let mut n = [0f64; 7];
-        for (i, x) in n.iter_mut().enumerate() {
-            *x = f64::from_bits(c[1 + 2 * i] as u64 | (c[2 + 2 * i] as u64) << 32);
+    words.as_chunks::<{ HIT_WORDS }>().0.iter().map(|c| {
+        let (t, p, n) = (hit_words::toi(c), hit_words::point(c), hit_words::normal(c));
+        let mut out = [join(t), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        for k in 0..3 {
+            out[1 + k] = join([p[2 * k], p[2 * k + 1]]);
+            out[4 + k] = join([n[2 * k], n[2 * k + 1]]);
         }
-        (c[0], n)
+        (hit_words::slot(c), out)
     })
 }
 
 /// One hit in a record (a raycast, a shape cast): its numbers, its slot, and the name when the link does not know
 /// it and it fits in the slots.
 fn write_hit(r: &mut AnswerRec, h: &RayHit, slot: u32) {
-    r.count = 1;
-    r.slots[0] = slot;
+    r.found = 1;
+    r.first_slots[0] = slot;
     r.nums[0] = h.toi;
     r.nums[1..4].copy_from_slice(&h.point);
     r.nums[4..7].copy_from_slice(&h.normal);
@@ -67,7 +87,11 @@ fn write_hit(r: &mut AnswerRec, h: &RayHit, slot: u32) {
         r.nums[7] = e.len() as f64;
         // SAFETY: the slots of the record are `SLOTS` × 4 bytes, the name fits.
         unsafe {
-            std::ptr::copy_nonoverlapping(e.as_ptr(), r.slots.as_mut_ptr() as *mut u8, e.len())
+            std::ptr::copy_nonoverlapping(
+                e.as_ptr(),
+                r.first_slots.as_mut_ptr() as *mut u8,
+                e.len(),
+            )
         };
     } else {
         r.nums[7] = 0.0;
@@ -84,10 +108,6 @@ impl Sim {
             mask: o.num(mask_at) as u32,
             exclude: self.name(o.slot).map(str::to_string),
         }
-    }
-
-    fn shape_args(o: &Read) -> Vec<f64> {
-        (0..query::SHAPE_WORDS).map(|i| o.num(i)).collect()
     }
 
     /// Answers a question. Whether it changed what is published (a character's move).
@@ -110,7 +130,7 @@ impl Sim {
                 });
                 answer(link, o.ticket, |r| {
                     if let Some((d, g)) = got {
-                        r.count = 1;
+                        r.found = 1;
                         r.nums[..3].copy_from_slice(&d);
                         r.nums[3] = g as u8 as f64;
                     }
@@ -118,8 +138,14 @@ impl Sim {
                 (k == MOVE_CHARACTER).then_some(o.slot)
             }
             RAYCAST => {
+                use crate::ports::abi::ray;
                 let ex = self.name(o.slot).map(str::to_string);
-                let hit = p.raycast(o.v3(0), o.v3(3), o.num(6), ex.as_deref());
+                let w = o.f64s();
+                let hit = if ray::check(w).is_ok() {
+                    p.raycast(ray::origin(w), ray::dir(w), ray::max_toi(w), ex.as_deref())
+                } else {
+                    None
+                };
                 let slot = hit.as_ref().map_or(NO_SLOT, |h| self.hit_slot(h));
                 answer(link, o.ticket, |r| {
                     if let Some(h) = &hit {
@@ -130,11 +156,18 @@ impl Sim {
             }
             OVERLAP_SPHERE | OVERLAP_BOX => {
                 let ex = self.name(o.slot).map(str::to_string);
+                use crate::ports::abi::{overlap_box as ob, overlap_sphere as os};
+                let w = o.f64s();
                 let found = if k == OVERLAP_SPHERE {
-                    p.overlap_sphere(o.v3(0), o.num(3), ex.as_deref())
+                    match os::check(w) {
+                        Ok(()) => p.overlap_sphere(os::center(w), os::radius(w), ex.as_deref()),
+                        Err(_) => Vec::new(),
+                    }
+                } else if ob::check(w).is_ok() {
+                    let q = (ob::rotated(w) != 0.0).then(|| ob::rotation(w));
+                    p.overlap_box(ob::center(w), ob::size(w), q, ex.as_deref())
                 } else {
-                    let q = (o.num(10) != 0.0).then(|| [o.num(6), o.num(7), o.num(8), o.num(9)]);
-                    p.overlap_box(o.v3(0), o.v3(3), q, ex.as_deref())
+                    Vec::new()
                 };
                 self.answer_found(link, o.ticket, &found);
                 None
@@ -152,7 +185,7 @@ impl Sim {
                 // shape words, dir, max toi, mask
                 let w = query::SHAPE_WORDS;
                 let f = self.filter(o, w + 4);
-                let hit = query::shape_of(&Self::shape_args(o))
+                let hit = query::shape_of(o.f64s())
                     .and_then(|(s, at, q)| p.shape_cast(&s, at, q, o.v3(w), o.num(w + 3), &f));
                 let slot = hit.as_ref().map_or(NO_SLOT, |h| self.hit_slot(h));
                 answer(link, o.ticket, |r| {
@@ -165,7 +198,7 @@ impl Sim {
             OVERLAP_SHAPE => {
                 // shape words, mask
                 let f = self.filter(o, query::SHAPE_WORDS);
-                let found = query::shape_of(&Self::shape_args(o))
+                let found = query::shape_of(o.f64s())
                     .map(|(s, at, q)| p.overlap_shape(&s, at, q, &f))
                     .unwrap_or_default();
                 self.answer_found(link, o.ticket, &found);

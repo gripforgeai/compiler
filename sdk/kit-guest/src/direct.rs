@@ -32,7 +32,6 @@ mod link {
         pub fn w_acting_player() -> u32;
         pub fn w_scope_push(lo: u64, hi: u64);
         pub fn w_scope_pop() -> u32;
-        pub fn w_set_anim(lo: u64, hi: u64, clip: u32);
     }
     #[cfg(target_arch = "wasm32")]
     #[link(wasm_import_module = "gf:kithost.world@^1.8")]
@@ -41,8 +40,7 @@ mod link {
     }
     #[cfg(all(feature = "common-memory", not(target_arch = "wasm32")))]
     pub use crate::native::link::{
-        w_acting_player, w_component, w_has, w_has_tag, w_scope_pop, w_scope_push, w_set_anim,
-        w_transform,
+        w_acting_player, w_component, w_has, w_has_tag, w_scope_pop, w_scope_push, w_transform,
     };
     #[cfg(target_arch = "wasm32")]
     #[link(wasm_import_module = "gf:kithost.state@^2.0")]
@@ -86,7 +84,6 @@ mod link {
     pub unsafe fn w_scope_pop() -> u32 {
         0
     }
-    pub unsafe fn w_set_anim(_: u64, _: u64, _: u32) {}
     pub unsafe fn w_has_tag(_: u64, _: u64, _: u32) -> u32 {
         0
     }
@@ -259,6 +256,15 @@ pub fn transform(id: &str) -> Option<Option<[f64; 4]>> {
     }
 }
 
+/// [`transform`] with the revision the physics published for the entity's body when it owns the pose (`None`: the
+/// pose is the entity's own): what a kept copy compares to know its transform still is the body's.
+pub fn transform_body(id: &str) -> Option<Option<([f64; 4], Option<u32>)>> {
+    let pose = transform(id)?;
+    // SAFETY: the register the call above just wrote.
+    let body = unsafe { link::reg_u64(4) };
+    Some(pose.map(|p| (p, (body != u64::MAX).then_some(body as u32))))
+}
+
 /// `entities.component(id, name)` when it is absent or a scalar.
 pub fn component(id: &str, name: &str) -> Option<Option<Json>> {
     let (lo, hi) = pack(id)?;
@@ -366,16 +372,6 @@ pub fn has_component(entity: &str, component: &str) -> Option<bool> {
     let (lo, hi) = pack(entity)?;
     // SAFETY: as `has`.
     Some(unsafe { link::w_component(lo, hi, atom(component)) } != ABSENT)
-}
-
-/// `kx.set_anim(entity, clip)`: false when the id does not pack.
-pub fn set_anim(entity: &str, clip: &str) -> bool {
-    let Some((lo, hi)) = pack(entity) else {
-        return false;
-    };
-    // SAFETY: as `has`.
-    unsafe { link::w_set_anim(lo, hi, atom(clip)) };
-    true
 }
 
 /// `host.has_service(capability)`.

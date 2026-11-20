@@ -9,6 +9,8 @@ publish = false
 # MKP kits/kit_guest (docs/sources.md); natively a module keeps its own allocator (D3).
 
 [dependencies]
+# The shared contracts it reads or writes (docs/decisions/2026-11-20-abi-par-contrat.md §8): one feature each.
+gripforge-contracts = { workspace = true, features = ["abi.intent.view", "abi.scene.drawn", "abi.scene.render_yaw", "abi.physics.body_state", "abi.physics.joint", "abi.physics.vehicle", "abi.physics.vehicle_wheel", "abi.physics.vehicle_input", "abi.physics.vehicle_state", "abi.physics.vehicle_wheel_state", "abi.physics.buoyancy", "abi.physics.buoyancy_cell", "abi.physics.fluid", "abi.physics.wave", "abi.physics.shape_table", "abi.physics.shapes", "abi.sensor.contacts", "abi.mem.fixed_value", "abi.mem.fixed_pair", "abi.mem.fixed_block", "abi.mem.bytes", "abi.kit.ctx", "abi.fast.hook", "abi.fast.scalar", "abi.fast.service", "abi.calls.header", "abi.calls.reply", "abi.zone.buffer", "abi.zone.directory", "abi.zone.state", "abi.zone.events", "abi.zone.event", "abi.zone.regions", "abi.engine.entity", "abi.engine.world", "abi.native.host", "abi.native.kit", "abi.native.links", "abi.native.bytes", "abi.native.zone_place", "abi.native.svc_provider", "abi.zone.input", "abi.zone.published", "abi.input.pointer", "abi.mail.head", "abi.mail.message", "abi.mail.entry", "abi.mail.table", "abi.debug.pipe", "abi.intent.step", "abi.intent.velocity", "abi.intent.target", "abi.intent.follow", "abi.intent.force", "abi.intent.jump", "abi.intent.burst", "abi.intent.set_velocity", "abi.intent.turn"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value"] }
 # The contract (once gripforge-kitcall and gripforge-modcall with `guest`).
 gripforge-abi = { workspace = true, features = ["guest"] }

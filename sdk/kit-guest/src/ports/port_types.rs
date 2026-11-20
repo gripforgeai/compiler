@@ -6,6 +6,7 @@ use super::{CharacterOptions, Shape};
 use serde_json::{json, Value as Json};
 
 pub type V3 = [f64; 3];
+
 pub type Quat = [f64; 4];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -164,7 +165,9 @@ pub trait PhysicsPort {
         false
     }
     /// Holds (`mode` 1), lets go with its speed (0) or at rest (2) one body: out of context
-    /// (docs/hors-contexte.md). Returns false when unsupported.
+    /// (docs/hors-contexte.md); `mode` 3 (1.12): a vehicle carries it, its colliders off (no contact, no query)
+    /// until any other mode lets it back; `mode` 4: a kit takes control of it (`take_control`: kinematic, its velocity
+    /// kept for its release by mode 0). Returns false when unsupported.
     fn hold_body(&mut self, entity: &str, mode: u32) -> bool {
         false
     }
@@ -367,6 +370,15 @@ pub trait PhysicsPort {
     }
     /// `removeJoint`: lets go of the joint `id` (nothing when there is none; a removed body takes its joints along).
     fn remove_joint(&mut self, id: &str) {}
+    /// The bus: what the port publishes, JSON `[{"name", "code", "schema"}]` (`[]`: none, the default).
+    fn bus_capabilities(&self) -> String {
+        "[]".to_string()
+    }
+    /// The mailboxes this port opened (docs/decisions/2026-11-19-canaux-directs.md): `(name, kind, block address)`,
+    /// written once in the directory when the port is installed; the port reads them at its own step.
+    fn mailboxes(&self) -> Vec<(String, u32, usize)> {
+        Vec::new()
+    }
     /// Every pose of [`Self::poses`] given in turn with whether it is a character's — nothing made for the list (a
     /// port that keeps its poses in place gives them where they are).
     fn for_each_pose(&self, f: &mut dyn FnMut(&str, V3, f64, bool)) {
@@ -501,14 +513,32 @@ pub trait Physics {
         false
     }
     fn remove_joint(&mut self, id: &str) {}
+    /// `busCapabilities` ([`PhysicsPort::bus_capabilities`]).
+    fn bus_capabilities(&self) -> String {
+        "[]".to_string()
+    }
     /// Queue zone assignment after body creation. False means unsupported or invalid.
     fn set_collision_space(&mut self, entity: &str, space: &str) -> bool {
         false
     }
     /// Holds (`mode` 1), lets go with its speed (0) or at rest (2) one body: out of context
-    /// (docs/hors-contexte.md). Returns false when unsupported.
+    /// (docs/hors-contexte.md); `mode` 3 (1.12): a vehicle carries it, its colliders off (no contact, no query)
+    /// until any other mode lets it back; `mode` 4: a kit takes control of it (`take_control`: kinematic, its velocity
+    /// kept for its release by mode 0). Returns false when unsupported.
     fn hold_body(&mut self, entity: &str, mode: u32) -> bool {
         false
+    }
+    /// `takeControl` — for one-off cases only (an object picked up, a body made kinematic, the editor); the normal way
+    /// is the body's kind declared in data. The body becomes driven (kinematic): the physics no longer moves it, the
+    /// other bodies feel it (it pushes them, they stop on it), and a write of its pose is the target of its next step.
+    /// Decided by the kit's code, never automatic. False when unsupported
+    /// (docs/decisions/2026-11-18-proprietaire-position.md).
+    fn take_control(&mut self, entity: &str) -> bool {
+        self.hold_body(entity, 4)
+    }
+    /// `release`: a body taken by [`Physics::take_control`] is dynamic again, with the velocity it had.
+    fn release_control(&mut self, entity: &str) -> bool {
+        self.hold_body(entity, 0)
     }
     /// `null` or `rapier` (or the engine's).
     fn kind(&self) -> &'static str;

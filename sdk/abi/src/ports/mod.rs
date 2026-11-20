@@ -18,6 +18,12 @@ pub use shape_types::*;
 #[path = "../../../kit-guest/src/ports/joint_types.rs"]
 mod joint_types;
 pub use joint_types::*;
+#[path = "../../../kit-guest/src/ports/vehicle_types.rs"]
+mod vehicle_types;
+pub use vehicle_types::*;
+#[path = "../../../kit-guest/src/ports/fluid_types.rs"]
+mod fluid_types;
+pub use fluid_types::*;
 /// The entries of a physics module that is a library of its own (signatures and records shared by the module and
 /// the core).
 pub mod abi;
@@ -27,8 +33,13 @@ pub mod body_turns;
 /// The link of a module that runs asynchronously on a thread of its own: orders, tickets, published state
 /// (docs/kit-modules.md §7.17).
 pub mod link;
+/// The mailboxes between modules: boxes opened by each module, a directory hosted at start, messages read in
+/// place (docs/decisions/2026-11-19-canaux-directs.md).
+pub mod mailbox;
 /// The physics over a link: its orders, its published state, and the physics' side (`serve_live`, `serve_loop`).
 pub mod physics_link;
+/// The register of the revision keys: one slot per owner of a part of an entity, the same number on every Worker.
+pub mod revision_keys;
 /// The engine's tree as a kit module reaches it (`kithost.scene@1`): find, read and write by handle, create, adopt.
 pub mod scene;
 /// The shape table a physics module publishes (ABI 2.6) and its reader: the colliders read in place.

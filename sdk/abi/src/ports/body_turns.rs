@@ -9,15 +9,14 @@
 //!
 //! Used by: `core/gateway` (`gfk_body_turn`, the engines' bound nodes) and the Bevy demos of the kits.
 
-use super::shape_table::{load_f64, shape_kind, ShapeRec, ShapeTable, MAX_NAME, MAX_RECORDS};
+use super::shape_table::{pose_of, shape_kind, with_rows, ShapeTable, MAX_NAME};
 use super::Quat;
 use std::collections::HashMap;
-use std::sync::atomic::Ordering::SeqCst;
 
 /// The index of the moving bodies of one shape table: entity name → its first record that is not fixed.
 #[derive(Default, Debug)]
 pub struct BodyTurns {
-    /// The array and count the index was built from (the table swaps a new array when its set changes).
+    /// The block (its first row) and count the index was built from (the table swaps a new block when its set changes).
     recs: usize,
     count: usize,
     index: HashMap<Box<str>, usize>,
@@ -31,10 +30,7 @@ impl BodyTurns {
     /// # Safety
     /// `t` is a live table (`shape_table::table_at`): the world that published it is not dropped during the call.
     pub unsafe fn turn(&mut self, t: &ShapeTable, entity: &str) -> Option<Quat> {
-        t.readers.fetch_add(1, SeqCst);
-        let found = self.read(t, entity);
-        t.readers.fetch_sub(1, SeqCst);
-        found
+        with_rows(t, |rows| self.read(rows?, entity))
     }
 
     /// Bodies indexed (a test, the debugger).
@@ -47,43 +43,36 @@ impl BodyTurns {
         self.index.is_empty()
     }
 
-    unsafe fn read(&mut self, t: &ShapeTable, entity: &str) -> Option<Quat> {
-        // `recs`, `count`, `recs`: the same array both times means `count` is that array's (the reader protocol of
-        // `shape_table::read_shapes`); an array is never freed while a reader is in.
-        let first = t.recs.load(SeqCst);
-        let count = t.count.load(SeqCst);
-        if first == 0 || first != t.recs.load(SeqCst) || count > MAX_RECORDS {
-            return None;
-        }
-        let recs = first as *const ShapeRec;
-        if (first, count) != (self.recs, self.count) {
+    unsafe fn read(&mut self, rows: super::shape_table::Rows, entity: &str) -> Option<Quat> {
+        // The block in service (`shape_table::with_rows`: `recs`, its count, `recs`); a block is never freed while a
+        // reader is in. Indexed again only when another block was published.
+        let first = rows.row(0) as usize;
+        if (first, rows.count) != (self.recs, self.count) {
             self.index.clear();
-            for i in 0..count {
-                let r = &*recs.add(i);
-                if r.kind == shape_kind::FIXED
-                    || r.kind > shape_kind::DYNAMIC
-                    || r.name_len == 0
-                    || r.name_len > MAX_NAME
-                    || r.name.is_null()
+            let mut i = 0;
+            while i < rows.count {
+                let r = &*rows.row(i);
+                let skip = r.parts as usize;
+                let (at, len) = (r.name.addr as usize, r.name.len as usize);
+                if r.kind != shape_kind::FIXED
+                    && r.kind <= shape_kind::DYNAMIC
+                    && len != 0
+                    && len <= MAX_NAME
+                    && at != 0
                 {
-                    continue;
+                    if let Ok(name) =
+                        std::str::from_utf8(std::slice::from_raw_parts(at as *const u8, len))
+                    {
+                        self.index.entry(name.into()).or_insert(i);
+                    }
                 }
-                let Ok(name) = std::str::from_utf8(std::slice::from_raw_parts(r.name, r.name_len))
-                else {
-                    continue;
-                };
-                self.index.entry(name.into()).or_insert(i);
+                // The parts of a compound are in its frame: never a body's turn.
+                i += 1 + skip;
             }
-            (self.recs, self.count) = (first, count);
+            (self.recs, self.count) = (first, rows.count);
         }
         let i = *self.index.get(entity)?;
-        let qb = std::ptr::addr_of!((*recs.add(i)).q) as *const f64;
-        let q = [
-            load_f64(qb),
-            load_f64(qb.add(1)),
-            load_f64(qb.add(2)),
-            load_f64(qb.add(3)),
-        ];
+        let (_, q) = pose_of(rows.row(i));
         let len2: f64 = q.iter().map(|x| x * x).sum();
         (q.iter().all(|x| x.is_finite()) && len2 > 1e-12).then_some(q)
     }
@@ -94,6 +83,7 @@ mod tests {
     use super::super::shape_writer::ShapeWriter;
     use super::super::{BodyKind, Shape};
     use super::*;
+    use std::sync::atomic::Ordering::SeqCst;
 
     fn ball() -> Shape {
         Shape::Sphere { radius: 0.5 }
@@ -127,7 +117,7 @@ mod tests {
         w.after_step(|e| (e == "e1").then_some(([2.0, 0.5, 0.0], [0.0, 0.0, h, h])));
         let q = unsafe { turns.turn(t, "e1") }.unwrap();
         assert!((q[2] - h).abs() < 1e-12, "{q:?}");
-        assert_eq!(t.readers.load(SeqCst), 0, "the reader counted itself out");
+        assert_eq!(t.readers().load(SeqCst), 0, "the reader counted itself out");
     }
 
     #[test]

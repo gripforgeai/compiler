@@ -67,6 +67,8 @@ mod raw {
         static ZONE: RefCell<Vec<u8>> = RefCell::new({
             let mut z = vec![0u8; layout::SIZE as usize];
             layout::write_directory(&mut z);
+            // The head of INPUT, as the core lays it with the zone (contract `abi.zone.input`).
+            layout::input::lay(&mut z, layout::INPUT.offset as usize);
             z
         });
     }
@@ -213,6 +215,25 @@ pub fn zone_region(len: u32) -> u32 {
     unsafe { raw::zone_region(len) }
 }
 
+/// The address of the zone's byte `off` NOW, in the memory this module shares with the core and the physics (common
+/// memory only; `None` in an isolated module or out of the zone). Never kept: the zone moves when it grows, so a
+/// reader that holds it (a physics intention bound to a block, docs/decisions/2026-11-20-entrees-datees-et-intentions.md)
+/// is given it again whenever it changes.
+pub fn address(off: u32) -> Option<usize> {
+    #[cfg(feature = "common-memory")]
+    {
+        if off == 0 || off >= crate::mem::zone_size() {
+            return None;
+        }
+        Some(crate::mem::zone_base() + off as usize)
+    }
+    #[cfg(not(feature = "common-memory"))]
+    {
+        let _ = off;
+        None
+    }
+}
+
 /// Gives a block of [`zone_region`] back (false: not a block in use).
 pub fn zone_region_free(off: u32) -> bool {
     // SAFETY: as the accessors.
@@ -293,7 +314,7 @@ macro_rules! one_buffer {
     )*};
 }
 one_buffer!(
-    /// The `INPUT` buffer (core.input' records, the pointer total, the look).
+    /// The `INPUT` buffer (the pointer total, the ring, the directory of the published regions).
     input,
     /// The `WORLD` buffer (the entity rows).
     world,
@@ -303,19 +324,21 @@ one_buffer!(
     events
 );
 
-/// The look of player 0 now, read in place (the core's `kitcall::zone::look_now`): `look + (pointer - taken) × gain`,
-/// as core.input wrote it at its last tick and the pointer moved since. `None` while no look is published.
-pub fn look_now() -> Option<(f64, f64)> {
-    use layout::input as l;
-    let at = input().offset;
-    if at == 0 || zone_read_u32(at + l::LOOK_ACTION) == l::NO_ACTION {
-        return None;
+/// The fields of the head of the `INPUT` buffer (contract `abi.zone.input`: the pointer total, where the ring, the
+/// bindings and the directory of the published regions are), its `TableHead` read once per [`refresh`]; `None` without
+/// a zone or with a head this build does not read.
+pub fn input_fields() -> Option<layout::input::Fields> {
+    thread_local! {
+        static AT: std::cell::Cell<(u32, Option<layout::input::Fields>)> = const { std::cell::Cell::new((0, None)) };
     }
-    let f = |off: u32| zone_read_f64(at + off);
-    Some((
-        f(l::LOOK) + (f(l::POINTER) - f(l::TAKEN)) * f(l::GAIN),
-        f(l::LOOK + 8) + (f(l::POINTER + 8) - f(l::TAKEN + 8)) * f(l::GAIN + 8),
-    ))
+    let generation = generation();
+    let (known, f) = AT.with(std::cell::Cell::get);
+    if known == generation && f.is_some() {
+        return f;
+    }
+    let f = layout::input::Fields::bind(input().offset, zone_read_u32);
+    AT.with(|c| c.set((generation, f)));
+    f
 }
 
 #[cfg(all(test, not(feature = "common-memory")))]

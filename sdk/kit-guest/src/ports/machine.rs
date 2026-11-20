@@ -3,7 +3,6 @@
 
 use super::codec::{platform_fn as f, *};
 use super::{args, ask, tell, Arena};
-use serde_json::Value as Json;
 use std::cell::Cell;
 
 // ---- save stores -------------------------------------------------------------------------------------------------
@@ -188,65 +187,6 @@ impl Platform {
 }
 
 // ---- audio, display, pointer -------------------------------------------------------------------------------------
-
-/// `Host::audio` (`AudioRenderer` of the core).
-#[derive(Default)]
-pub struct AudioProxy {
-    kept: Arena<Vec<Json>>,
-}
-
-impl AudioProxy {
-    pub fn enter(&mut self) {
-        self.kept.clear();
-    }
-    pub fn start(&mut self, voice: &Json) {
-        tell(
-            crate::func!(f::AUDIO_START),
-            &args(|w| {
-                w.value(voice);
-            }),
-        );
-    }
-    pub fn update(&mut self, id: f64, gain: f64, pitch: f64, position: Option<[f64; 3]>) {
-        tell(
-            crate::func!(f::AUDIO_UPDATE),
-            &args(|w| {
-                w.f64(id).f64(gain).f64(pitch);
-                w_opt_v3(w, position);
-            }),
-        );
-    }
-    pub fn acoustics(&mut self, id: f64, params: &Json) {
-        tell(
-            crate::func!(f::AUDIO_ACOUSTICS),
-            &args(|w| {
-                w.f64(id).value(params);
-            }),
-        );
-    }
-    pub fn stop(&mut self, id: f64) {
-        tell(
-            crate::func!(f::AUDIO_STOP),
-            &args(|w| {
-                w.f64(id);
-            }),
-        );
-    }
-    pub fn bus(&mut self, bus: &str, gain: f64) {
-        tell(
-            crate::func!(f::AUDIO_BUS),
-            &args(|w| {
-                w.str(bus).f64(gain);
-            }),
-        );
-    }
-    pub fn recorded(&self) -> &[Json] {
-        self.kept
-            .keep(ask(crate::func!(f::AUDIO_RECORDED), &args(|_| {}), |r| {
-                r.values()
-            }))
-    }
-}
 
 /// `Host::display` (`DisplayPort` of the core).
 #[derive(Default)]

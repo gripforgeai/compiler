@@ -9,8 +9,9 @@
 //! colliders that left go to a holding place, emptied only at a step where no reader is in. The poses of the bodies
 //! that are not fixed are rewritten in place at each step.
 
-use super::shape_table::{self as st, shape_kind, ShapeRec, ShapeTable};
+use super::shape_table::{self as st, shape_kind, shapes, ShapeTable};
 use super::{BodyKind, Quat, Shape, V3};
+use gripforge_contracts::table_head::Str;
 use std::sync::atomic::Ordering::SeqCst;
 
 /// One collider as the port keeps it: what its record points at.
@@ -25,11 +26,13 @@ struct Entry {
     indices: Box<[u32]>,
     /// The collider follows the body of its entity (its pose read at each step).
     follows: bool,
+    /// A compound: the entries of its parts that follow it (their pose in its frame).
+    parts: u32,
 }
 
 /// What a reader may still be reading: an array swapped out, the buffers of a collider that left.
 enum Held {
-    Recs(#[allow(dead_code, reason = "kept alive, never read")] Box<[ShapeRec]>),
+    Recs(#[allow(dead_code, reason = "kept alive, never read")] Box<[u64]>),
     Entry(#[allow(dead_code, reason = "kept alive, never read")] Entry),
 }
 
@@ -38,8 +41,9 @@ pub struct ShapeWriter {
     /// Boxed: its address never changes while the world lives (what `gfp_shapes` answers).
     table: Box<ShapeTable>,
     entries: Vec<Entry>,
-    /// The array the table points at (built from `entries`, in their order, while `dirty` is false).
-    current: Box<[ShapeRec]>,
+    /// The `abi.physics.shapes` block the table points at (built from `entries`, in their order, while `dirty` is
+    /// false).
+    current: Box<[u64]>,
     /// `entries` changed since `current` was built.
     dirty: bool,
     held: Vec<Held>,
@@ -80,7 +84,7 @@ impl ShapeWriter {
     }
 
     fn level_changed(&self) {
-        self.table.revision.fetch_add(1, SeqCst);
+        self.table.revision_word().fetch_add(1, SeqCst);
     }
 
     /// One more collider of `entity` (empty: nobody's). `streams`: the buffers in place of the shape's own (a mesh the
@@ -99,23 +103,62 @@ impl ShapeWriter {
         q: Quat,
         follows: bool,
     ) {
-        let (floats, indices) = streams.or_else(|| shape.streams()).unwrap_or((&[], &[]));
         let kind = kind_of(kind);
-        self.entries.push(Entry {
-            name: entity.into(),
-            kind,
-            code: shape.code(),
-            numbers: shape.numbers(),
-            p,
-            q,
-            floats: floats.into(),
-            indices: indices.into(),
-            follows,
-        });
+        if let Shape::Compound { .. } = shape {
+            // A compound: its row, then a row per part at its place in the compound (never rewritten).
+            let parts = shape.parts();
+            self.entries.push(Entry {
+                name: entity.into(),
+                kind,
+                code: shape.code(),
+                numbers: [0.0; 3],
+                p,
+                q,
+                floats: Box::new([]),
+                indices: Box::new([]),
+                follows,
+                parts: parts.len() as u32,
+            });
+            for (part, lp, lq) in parts {
+                let (f, i) = part.streams().unwrap_or((&[], &[]));
+                self.entries.push(Entry {
+                    name: entity.into(),
+                    kind,
+                    code: part.code(),
+                    numbers: part.numbers(),
+                    p: lp,
+                    q: lq,
+                    floats: f.into(),
+                    indices: i.into(),
+                    follows: false,
+                    parts: 0,
+                });
+            }
+        } else {
+            let (floats, indices) = streams.or_else(|| shape.streams()).unwrap_or((&[], &[]));
+            self.entries.push(Entry {
+                name: entity.into(),
+                kind,
+                code: shape.code(),
+                numbers: shape.numbers(),
+                p,
+                q,
+                floats: floats.into(),
+                indices: indices.into(),
+                follows,
+                parts: 0,
+            });
+        }
         self.dirty = true;
         if kind == shape_kind::FIXED {
             self.level_changed();
         }
+    }
+
+    /// The one collider of `entity`, in place of any it had, following its body (no rotation at first).
+    pub fn replace_moving(&mut self, entity: &str, kind: BodyKind, shape: &Shape, p: V3) {
+        self.forget(entity);
+        self.add(entity, kind, shape, None, p, [0.0, 0.0, 0.0, 1.0], true);
     }
 
     /// Drops every collider of `entity`; their buffers are held until no reader is in.
@@ -144,28 +187,36 @@ impl ShapeWriter {
         if !self.dirty {
             return;
         }
-        let recs: Box<[ShapeRec]> = self
-            .entries
-            .iter()
-            .map(|e| ShapeRec {
-                name: e.name.as_ptr(),
-                name_len: e.name.len(),
-                kind: e.kind,
-                code: e.code,
-                numbers: e.numbers,
-                p: e.p,
-                q: e.q,
-                floats: e.floats.as_ptr(),
-                floats_len: e.floats.len(),
-                indices: e.indices.as_ptr(),
-                indices_len: e.indices.len(),
-            })
-            .collect();
-        let t = &self.table;
-        t.count.store(0, SeqCst);
-        t.recs.store(recs.as_ptr() as usize, SeqCst);
-        t.count.store(recs.len(), SeqCst);
-        let old = std::mem::replace(&mut self.current, recs);
+        let n = self.entries.len() as u32;
+        let mut block: Box<[u64]> = vec![0u64; shapes::bytes(n).div_ceil(8)].into();
+        let at = block.as_mut_ptr() as *mut u8;
+        // SAFETY: the block just made, `bytes(n)` long, aligned on 8; nobody reads it before `recs` names it.
+        unsafe {
+            shapes::init(at, n);
+            for (i, e) in self.entries.iter().enumerate() {
+                *shapes::row_mut(at, i as u32) = shapes::Row {
+                    name: Str {
+                        addr: e.name.as_ptr() as usize as u64,
+                        len: e.name.len() as u32,
+                        zero: 0,
+                    },
+                    kind: e.kind,
+                    code: e.code,
+                    numbers: e.numbers,
+                    p: e.p,
+                    q: e.q,
+                    floats: e.floats.as_ptr() as usize as u64,
+                    indices: e.indices.as_ptr() as usize as u64,
+                    floats_len: e.floats.len() as u32,
+                    indices_len: e.indices.len() as u32,
+                    parts: e.parts,
+                    _pad0: [0; 4],
+                };
+            }
+            shapes::publish(at, n);
+        }
+        self.table.recs().store(at as usize as u64, SeqCst);
+        let old = std::mem::replace(&mut self.current, block);
         self.held.push(Held::Recs(old));
         self.dirty = false;
     }
@@ -200,8 +251,11 @@ impl ShapeWriter {
         e.q = q;
         self.level_moved |= e.kind == shape_kind::FIXED;
         if in_place {
-            let r = &mut self.current[i] as *mut ShapeRec;
-            // SAFETY: a record of the published array, rewritten word by word (readers load the same words).
+            // SAFETY: row `i` of the block in service (built from `entries` in their order), at this build's stride.
+            let r = unsafe {
+                shapes::row_mut(self.current.as_mut_ptr() as *mut u8, i as u32) as *mut shapes::Row
+            };
+            // SAFETY: a record of the published block, rewritten word by word (readers load the same words).
             unsafe {
                 let pw = std::ptr::addr_of_mut!((*r).p) as *mut f64;
                 for (k, x) in p.iter().enumerate() {
@@ -223,7 +277,7 @@ impl ShapeWriter {
         }
         self.publish();
         // After the swap: a reader that came in later reads the new array only.
-        if !self.held.is_empty() && self.table.readers.load(SeqCst) == 0 {
+        if !self.held.is_empty() && self.table.readers().load(SeqCst) == 0 {
             self.held.clear();
         }
     }
@@ -283,9 +337,9 @@ mod tests {
             ]
         );
         // Moved in place: the array is the same.
-        let at = s.table.recs.load(SeqCst);
+        let at = s.table.recs().load(SeqCst);
         s.after_step(|e| (e == "crate").then_some(([3.0, 1.0, 1.0], id)));
-        assert_eq!(s.table.recs.load(SeqCst), at);
+        assert_eq!(s.table.recs().load(SeqCst), at);
         assert_eq!(read(&s)[1].2, [3.0, 1.0, 1.0]);
         s.forget("wall");
         assert_ne!(s.table.revision(), r0, "a fixed collider left");
@@ -305,13 +359,68 @@ mod tests {
         s.after_step(|_| None);
         s.held.clear();
         // A reader is in (another thread, mid read): nothing it may hold is freed.
-        s.table.readers.fetch_add(1, SeqCst);
+        s.table.readers().fetch_add(1, SeqCst);
         s.forget("floor");
         s.after_step(|_| None);
         assert_eq!(s.held(), 2, "the buffers that left and the old array");
-        s.table.readers.fetch_sub(1, SeqCst);
+        s.table.readers().fetch_sub(1, SeqCst);
         s.after_step(|_| None);
         assert_eq!(s.held(), 0, "freed at the first step with no reader");
         assert!(read(&s).is_empty());
+    }
+
+    #[test]
+    fn a_compound_is_published_as_its_parts_at_their_place() {
+        let mut s = ShapeWriter::default();
+        let id = [0.0, 0.0, 0.0, 1.0];
+        let compound = Shape::compound(&[
+            (Shape::Box { size: [1.0; 3] }, [0.0, 0.5, 0.0], id),
+            (
+                Shape::Capsule {
+                    radius: 0.25,
+                    height: 1.0,
+                },
+                [0.0, 1.5, 0.0],
+                id,
+            ),
+        ]);
+        s.add(
+            "cart",
+            BodyKind::Dynamic,
+            &compound,
+            None,
+            [4.0, 0.0, 0.0],
+            id,
+            true,
+        );
+        s.after_step(|e| (e == "cart").then_some(([5.0, 0.0, 0.0], id)));
+        let mut seen = Vec::new();
+        // SAFETY: the table of `s`, alive through the read.
+        unsafe {
+            st::read_shapes(st::table_at(s.address()).unwrap(), |v| {
+                let parts: Vec<(u32, V3, V3)> =
+                    v.parts.iter().map(|p| (p.code, p.numbers, p.p)).collect();
+                seen.push((v.code, v.p, parts, v.shape()));
+            })
+        };
+        assert_eq!(seen.len(), 1, "one compound, its parts with it");
+        let (code, p, parts, shape) = &seen[0];
+        assert_eq!(
+            (*code, *p),
+            (st::shape_code::COMPOUND, [5.0, 0.0, 0.0]),
+            "the compound follows its body"
+        );
+        assert_eq!(
+            parts,
+            &vec![
+                (st::shape_code::BOX, [1.0; 3], [0.0, 0.5, 0.0]),
+                (st::shape_code::CAPSULE, [0.25, 1.0, 0.0], [0.0, 1.5, 0.0])
+            ],
+            "each part with its size, at its place in the compound"
+        );
+        assert_eq!(
+            shape, &compound,
+            "a reader that keeps it gets the same compound back"
+        );
     }
 }

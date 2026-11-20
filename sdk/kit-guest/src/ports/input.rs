@@ -57,7 +57,9 @@ impl InputPort {
 
     /// The pointer total (x right, y down) the host's devices added since the start, read in place in the zone.
     pub fn pointer(&self) -> (f64, f64) {
-        let at = crate::zone::input().offset + crate::zone::layout::input::POINTER;
+        let Some(at) = crate::zone::input_fields().map(|f| f.pointer) else {
+            return (0.0, 0.0);
+        };
         (
             crate::zone::zone_read_f64(at),
             crate::zone::zone_read_f64(at + 8),

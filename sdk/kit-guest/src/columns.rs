@@ -48,14 +48,20 @@ pub(crate) fn has_row(id: &str) -> bool {
     }
 }
 
-/// x, y, z, yaw of the entity `id` from its row; `None` when the row cannot say (no table here, no row, no
-/// transform object, or the core handed the entity out for any change): the caller asks the core.
+/// x, y, z, yaw of the entity `id` from its row — for a pose the physics owns (`F_OWNED`), from the core by the direct
+/// link; `None` when the row cannot say (no table here, no row, no transform object, or the core handed the entity
+/// out for any change): the caller asks the core.
 #[inline]
 pub(crate) fn pose(id: &str) -> Option<[f64; 4]> {
     let row = table()?.readable(id)?;
     // SAFETY: a row of the table; the base is within every row.
     unsafe {
-        if rows::get::<u32>(row, row::FLAGS) & row::F_POSE == 0 {
+        let flags = rows::get::<u32>(row, row::FLAGS);
+        // A pose the physics owns: the core reads it where the physics published it, never this module's copy.
+        if flags & row::F_OWNED != 0 {
+            return crate::direct::transform(id).flatten();
+        }
+        if flags & row::F_POSE == 0 {
             return None;
         }
         Some([
@@ -65,6 +71,16 @@ pub(crate) fn pose(id: &str) -> Option<[f64; 4]> {
             rows::get(row, row::ROTATION),
         ])
     }
+}
+
+/// Whether the row of `id` says the physics owns its pose (`F_OWNED`); false without a row here.
+#[inline]
+pub(crate) fn owned(id: &str) -> bool {
+    let Some(row) = table().and_then(|t| t.readable(id)) else {
+        return false;
+    };
+    // SAFETY: a row of the table; the base is within every row.
+    unsafe { rows::get::<u32>(row, row::FLAGS) & row::F_OWNED != 0 }
 }
 
 /// The revision of the entity `id` and its last change that is more than new x, y, z, yaw (the core's columns
@@ -326,6 +342,21 @@ pub fn read(kit: &str, id: &str, name: &str) -> Result<Option<[f64; 3]>, String>
     let Some(row) = row_of(id) else {
         return Ok(None);
     };
+    // The base of a pose the physics owns (`F_OWNED`: a character's position and heading) is not kept in the row: the
+    // core reads it where the physics published it, as [`pose`] does (no copy of the publication in the row).
+    let base = c.offset == row::POSITION || c.offset == row::ROTATION;
+    // SAFETY: a row of the table; the base is within every row.
+    if base && unsafe { rows::get::<u32>(row, row::FLAGS) } & row::F_OWNED != 0 {
+        let p = crate::direct::transform(id).flatten();
+        let heading = c.offset == row::ROTATION;
+        return Ok(p.map(|p| {
+            if heading {
+                [p[3], 0.0, 0.0]
+            } else {
+                [p[0], p[1], p[2]]
+            }
+        }));
+    }
     // SAFETY: a column of the schema is within the row.
     Ok(Some(unsafe {
         if c.code == rows::T_F64X3 {

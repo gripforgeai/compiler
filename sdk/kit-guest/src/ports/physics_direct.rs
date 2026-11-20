@@ -140,39 +140,26 @@ pub fn has_body(entity: &str) -> Option<bool> {
     Some(unsafe { ph_has_body(lo, hi) } != 0)
 }
 pub fn body(entity: &str) -> Option<Option<BodyState>> {
+    use gripforge_abi::ports::abi::{body_state as bs, BODY_WORDS};
     let (lo, hi) = pack(entity)?;
-    let mut w = [0f64; 14];
-    // SAFETY: as above; `w` is 14 `f64` of this module's stack, in the memory the core shares.
+    let mut w = [0f64; BODY_WORDS];
+    // SAFETY: as above; `w` is the words of `abi.physics.body_state` on this module's stack, in the memory the core
+    // shares.
     if unsafe { ph_body(lo, hi, w.as_mut_ptr()) } == 0 {
         return Some(None);
     }
     Some(Some(BodyState {
         entity: entity.to_string(),
-        p: [w[0], w[1], w[2]],
-        q: [w[3], w[4], w[5], w[6]],
-        v: [w[7], w[8], w[9]],
-        w: [w[10], w[11], w[12]],
-        sleeping: w[13] != 0.0,
+        p: bs::position(&w),
+        q: bs::rotation(&w),
+        v: bs::linvel(&w),
+        w: bs::angvel(&w),
+        sleeping: bs::sleeping(&w) != 0.0,
     }))
 }
 pub fn set_body(s: &BodyState) -> Option<()> {
     let (lo, hi) = pack(&s.entity)?;
-    let w = [
-        s.p[0],
-        s.p[1],
-        s.p[2],
-        s.q[0],
-        s.q[1],
-        s.q[2],
-        s.q[3],
-        s.v[0],
-        s.v[1],
-        s.v[2],
-        s.w[0],
-        s.w[1],
-        s.w[2],
-        s.sleeping as u8 as f64,
-    ];
+    let w = gripforge_abi::ports::abi::state_words(s.p, s.q, s.v, s.w, s.sleeping);
     // SAFETY: as `body`.
     unsafe { ph_set_body(lo, hi, w.as_ptr()) };
     Some(())

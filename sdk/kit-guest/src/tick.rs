@@ -20,6 +20,10 @@ pub const TICK_EPS: f64 = 1e-9;
 /// The default logic rate of a game (game.engine `tick.hz`): the game maker's choice, any rate in
 /// [`MIN_TICK_HZ`]..[`MAX_TICK_HZ`] (a strategy game 10-20, an action game 30, a twitch shooter 60).
 pub const DEFAULT_TICK_HZ: f64 = 30.0;
+/// The physics step by default, in Hz, on a host that owns the physics clock (the web, the Rapier of core.physics
+/// natively). Independent of the action tick: only `tick.physicsHz` changes it (an engine with physics of its own
+/// keeps its setting unless the game sets `tick.physicsHz`).
+pub const DEFAULT_PHYSICS_HZ: f64 = 60.0;
 pub const MIN_TICK_HZ: f64 = 5.0;
 pub const MAX_TICK_HZ: f64 = 120.0;
 
@@ -298,8 +302,8 @@ pub fn max_catch_up_of(project: &Json) -> u32 {
 pub struct Loops {
     /// `independent` (default: the TickClock runs on real time) or `engine-physics` (counted from the physics loop of the engine).
     pub source: String,
-    /// The physics step the host sets in Hz: `tick.physicsHz`, else `tick.hz` when the game sets it and `syncPhysics`
-    /// is on; None: the engine setting is left alone.
+    /// The physics step the game sets in Hz (`tick.physicsHz`, 1..240), never derived from the action tick. None: the
+    /// host's default ([`DEFAULT_PHYSICS_HZ`] where it owns the physics clock, the engine setting otherwise).
     pub physics_hz: Option<f64>,
     /// Render interpolation between two ticks.
     pub interpolate: bool,
@@ -309,32 +313,18 @@ pub struct Loops {
     pub thread: String,
 }
 
-/// Resolve the requested physics rate without allocating loop descriptions on a frame path.
+/// The physics step the game sets (`game.engine.tick.physicsHz`, bounded to 1..240), or None. The action tick
+/// (`tick.hz`) never changes it: the two loops are not correlated.
 pub fn physics_hz_of(project: &Json) -> Option<f64> {
-    physics_hz(project, None)
-}
-
-/// Resolve syncPhysics against the actual action tick, including an embedder's fixedDt override.
-/// An explicit physicsHz still takes priority; without a configured tick keep the engine default.
-pub fn physics_hz_at_tick(project: &Json, tick_hz: f64) -> Option<f64> {
-    physics_hz(project, Some(tick_hz))
-}
-
-fn physics_hz(project: &Json, actual_tick_hz: Option<f64>) -> Option<f64> {
-    let tick = engine_config(project).and_then(|c| c.get("tick"));
-    let get = |k: &str| tick.and_then(|t| t.get(k));
-    let explicit = get("physicsHz")
+    engine_config(project)
+        .and_then(|c| c.get("tick"))
+        .and_then(|t| t.get("physicsHz"))
         .and_then(Json::as_f64)
         .filter(|h| h.is_finite() && *h >= 1.0)
-        .map(|h| h.clamp(1.0, 240.0));
-    let sync = get("syncPhysics").and_then(Json::as_bool).unwrap_or(true);
-    let tick_hz = get("hz")
-        .and_then(Json::as_f64)
-        .map(|hz| valid_hz(actual_tick_hz.unwrap_or(hz)));
-    explicit.or(if sync { tick_hz } else { None })
+        .map(|h| h.clamp(1.0, 240.0))
 }
 
-/// The loops of a project (`game.engine.tick.{source, physicsHz, syncPhysics, interpolate}`).
+/// The loops of a project (`game.engine.tick.{source, physicsHz, interpolate}`).
 pub fn loops_of(project: &Json) -> Loops {
     let tick = engine_config(project).and_then(|c| c.get("tick"));
     let get = |k: &str| tick.and_then(|t| t.get(k));
@@ -492,7 +482,7 @@ mod tests {
     #[test]
     fn resolve_reads_the_game_s_tuning() {
         let p = json!({ "installed": [{ "id": "game.engine", "config": { "tick": { "hz": 20, "maxCatchUp": 2,
-            "systems": { "npc.core.decide": 5, "world.lighting.update": { "every": 4, "offset": 1 }, "quest.graph.check": { "hz": 5 } } } } }] });
+            "systems": { "npc.core.decide": 5, "light.rig.update": { "every": 4, "offset": 1 }, "quest.graph.check": { "hz": 5 } } } } }] });
         assert!((tick_dt_of(&p) - 0.05).abs() < 1e-12);
         assert_eq!(max_catch_up_of(&p), 2);
         assert_eq!(
@@ -500,7 +490,7 @@ mod tests {
             5
         );
         assert_eq!(
-            resolve(&p, "world.lighting", "update", Every::new(1), 0.05),
+            resolve(&p, "light.rig", "update", Every::new(1), 0.05),
             Every {
                 every: 4,
                 offset: 1
@@ -524,10 +514,10 @@ mod tests {
         let l = loops_of(&p);
         assert_eq!(
             (l.source.as_str(), l.physics_hz, l.interpolate),
-            ("independent", Some(20.0), true)
+            ("independent", None, true)
         );
         let l = loops_of(
-            &json!({ "installed": [{ "id": "game.engine", "config": { "tick": { "hz": 20, "source": "independent", "syncPhysics": false, "interpolate": false } } }] }),
+            &json!({ "installed": [{ "id": "game.engine", "config": { "tick": { "hz": 20, "source": "independent", "interpolate": false } } }] }),
         );
         assert_eq!(
             (l.source.as_str(), l.physics_hz, l.interpolate),

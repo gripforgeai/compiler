@@ -36,16 +36,13 @@ pub mod world {
     pub const SCOPE_POP: u32 = B | 0x2b;
     pub const REGISTER_FACTORY: u32 = B | 0x2c;
 
-    pub const ANIM_OVERRIDE: u32 = B | 0x30;
-    pub const SET_ANIM: u32 = B | 0x31;
-    pub const PLAY_ANIM_ONCE: u32 = B | 0x32;
-    pub const CANCEL_ANIM: u32 = B | 0x33;
-    /// 1.6 — the animation layers.
-    pub const PLAY_ANIM_LAYERED: u32 = B | 0x34;
-    pub const ACTION_MOVEMENT: u32 = B | 0x35;
-    pub const SET_ACTION_LAYERS: u32 = B | 0x36;
+    // RETIRED (#1766): `anim_override` 0x30, `set_anim` 0x31, `cancel_anim` 0x33 (a clip by name in `model.anim`: every clip
+    // is a weight of core.animation's block now) and the direct link `w_set_anim`; their numbers stay taken.
+    // RETIRED (#1766): `play_anim_once` 0x32 (a one-shot clip decided by the core: core.animation chooses the clips); its number stays taken.
+    // RETIRED (#1766): `play_anim_once_layered` 0x34, `action_movement` 0x35, `set_action_layers` 0x36 (the layers, masks and fades
+    // of an action are core.animation's, the scale of the move core.locomotion's); their numbers stay taken.
     // RETIRED (#655): `decide_action_movement` 0x37 (the action a character decided: that is the controller kit's, not the core's); its number stays taken.
-    pub const ACTION_LAYER_MOVEMENT: u32 = B | 0x38;
+    // RETIRED (#1766): `action_layer_movement` 0x38; its number stays taken.
 
     /// 1.1 — the scope the direct link `w_scope_pop` popped when its id is too long for the registers.
     pub const SCOPE_POPPED: u32 = B | 0x40;

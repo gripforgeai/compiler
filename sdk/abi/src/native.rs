@@ -17,7 +17,22 @@ use std::sync::atomic::{AtomicU32, AtomicUsize};
 
 /// The contract of this file (`major << 16 | minor`). Major 2 (decision D3, docs/plan-refonte.md): no allocator is
 /// shared between native libraries; a block given away carries the function that frees it, so whoever allocated frees.
-pub const ABI: u32 = 2 << 16;
+///
+/// History since 2.0, the value unchanged:
+/// - 20/11 (feat/abi-dev, docs/decisions/2026-11-20-abi-dev.md): the value is `ABI_DEV` in the repository, the
+///   number of core/abi/abi-versions.json is written at the tag only. Rebuild every binary once (player, modules,
+///   gateways): a binary of before answers its old number and is refused.
+/// - 20/11 (feat/abi-contrat-chargement, docs/decisions/2026-11-20-abi-par-contrat.md §8): `struct_bytes` is read
+///   at load on both sides ([`HOST_TABLE_NEEDS`], [`KIT_TABLE_NEEDS`], [`covers`]): a table shorter than the fields
+///   the reader uses is refused by name, a longer one (a later minor) is read up to what the reader knows. A kit
+///   library may export `gf_contracts` (the contracts it reads or writes, [`crate::contract`]), checked by the host.
+///   No field added, nothing to rebuild.
+/// - lot 5 (feat/abi-contrat-lot5, docs/decisions/2026-11-20-abi-par-contrat.md §9): the tables are the record
+///   contracts `abi.native.host`, `abi.native.kit`, `abi.native.links`, `abi.native.bytes`, `abi.native.zone_place`,
+///   `abi.native.svc_provider`, declared by the host and every kit library (`gf_contracts`) and compared at load;
+///   the word `layout` (the PROBE of `gripforge.structs`) becomes `reserved`, 0, no longer compared. Rebuild every
+///   native kit library and the native player once.
+pub const ABI: u32 = crate::ABI_DEV;
 /// The contract as the manifest of the libraries names it.
 pub const CONTRACT: &str = "kithost.native@2";
 /// The manifest next to the libraries.
@@ -133,7 +148,6 @@ macro_rules! native_links {
             w_acting_player() -> u32;
             w_scope_push(lo: u64, hi: u64) -> ();
             w_scope_pop() -> u32;
-            w_set_anim(lo: u64, hi: u64, clip: u32) -> ();
             st_get(path: u32) -> u32;
             st_set_f64(path: u32, value: f64) -> ();
             st_set_i64(path: u32, value: i64) -> ();
@@ -215,10 +229,12 @@ pub struct SvcProvider {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct HostTable {
-    /// Bytes of this structure as the host knows it, its ABI and its structures (`layout::probe`).
+    /// Bytes of this structure as the host knows it, and its ABI. `reserved`: 0 (was `layout`, the number folded from
+    /// the table `gripforge.structs`, retired at lot 5: the contracts are compared one by one at load). The layout
+    /// of the table is the record contract `abi.native.host` (src/layout.rs).
     pub struct_bytes: u32,
     pub abi: u32,
-    pub layout: u64,
+    pub reserved: u64,
     /// The host's allocator, for the shared zones and the buffers the host owns (D3): a kit module never makes it its
     /// global allocator, and frees with it only what it allocated with it.
     pub alloc: unsafe extern "C" fn(usize, usize) -> *mut u8,
@@ -233,6 +249,19 @@ pub struct HostTable {
     pub links: Links,
 }
 
+/// The bytes of [`HostTable`] a kit module reads: up to the end of `links`, the last field of minor 0. Fixed: a field
+/// added later is read only when the host's `struct_bytes` covers it ([`covers`]).
+pub const HOST_TABLE_NEEDS: usize =
+    core::mem::offset_of!(HostTable, links) + core::mem::size_of::<Links>();
+/// The bytes of [`KitTable`] the host reads: up to the end of `view`, the last field of minor 0.
+pub const KIT_TABLE_NEEDS: usize = core::mem::offset_of!(KitTable, view)
+    + core::mem::size_of::<unsafe extern "C" fn(u32) -> u64>();
+
+/// Whether a table of `struct_bytes` (what its writer says it has) holds a field ending at `end`.
+pub const fn covers(struct_bytes: u32, end: usize) -> bool {
+    struct_bytes as usize >= end
+}
+
 // SAFETY: a table of functions and numbers, written once.
 unsafe impl Send for HostTable {}
 unsafe impl Sync for HostTable {}
@@ -241,9 +270,10 @@ unsafe impl Sync for HostTable {}
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KitTable {
+    /// As [`HostTable`]: `reserved` 0 (was `layout`); the layout is the record contract `abi.native.kit`.
     pub struct_bytes: u32,
     pub abi: u32,
-    pub layout: u64,
+    pub reserved: u64,
     /// The general entry: one function of `kithost.kit@1`.
     pub enter: Enter,
     /// The short entries (`gripforge_abi::fast`).
@@ -285,6 +315,14 @@ pub fn file_name(kit: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tables_say_their_bytes_and_the_needs_are_those_of_minor_0() {
+        assert_eq!(HOST_TABLE_NEEDS, std::mem::size_of::<HostTable>());
+        assert_eq!(KIT_TABLE_NEEDS, std::mem::size_of::<KitTable>());
+        assert!(covers(KIT_TABLE_NEEDS as u32, KIT_TABLE_NEEDS));
+        assert!(!covers(KIT_TABLE_NEEDS as u32 - 8, KIT_TABLE_NEEDS));
+    }
 
     #[test]
     fn bytes_cross_without_a_copy() {

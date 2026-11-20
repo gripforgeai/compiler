@@ -1,7 +1,7 @@
 //! The entity rows of the `WORLD` buffer of the zone (docs/kit-modules.md §7.9, docs/game-schema.md `entity`): one
 //! row per entity, laid out by the game schema — the fixed base (`core.id@1`, `core.position@1`,
 //! `core.rotation@1`), then every column the modules and the game declared. The core keeps the base of each row
-//! equal to the entity's `transform`; the other columns hold only what their writers put there.
+//! equal to the entity's pose (none when the physics owns it); the other columns hold what their writers put there.
 //!
 //! Every integer is little-endian; offsets are from the start of the `WORLD` buffer.
 //!
@@ -30,7 +30,7 @@
 //! | at | type | field |
 //! |---|---|---|
 //! | 0 | u32 | `core.id@1`: the number of the id (`e12` → 12); 0 an empty row, `0xffff_ffff` a row left by a destroyed entity |
-//! | 4 | u32 | flags: 1 the base is readable (the entity has a transform object), 2 a force waits in `physics.force@1`, 4 the four numbers of the base are plain numbers of the transform, bits 4–7 which of them are floats |
+//! | 4 | u32 | flags: 1 the base is readable (the entity has a transform object), 2 a force waits in `physics.force@1`, 4 the four numbers of the base are plain numbers of the transform, bits 4–7 which of them are floats, 256 the engine holds the pose, 512 the physics owns it (no base: `F_OWNED`) |
 //! | 8 | f64 × 3 | `core.position@1`: x, y, z |
 //! | 32 | f64 | `core.rotation@1`: yaw |
 //! | 40 … | | the columns of the schema, at their offsets |
@@ -51,7 +51,7 @@
 //! ## The mirror table (a count, then 64-byte records, [`mirror`])
 //!
 //! A column a module declared as the mirror of **a scalar field of a component** (`of: { component, field }` in
-//! the schema: `vehicle.speed@1` is `vehicle.state.speed`) is kept equal to that field by the core at every change
+//! the schema: `vehicle.speed@1` is `car.state.speed`) is kept equal to that field by the core at every change
 //! of the component; the component stays the truth (saves, the frame the player reads). The table says, for every
 //! such column of the game, where it is in a row and which field it mirrors. The block starts with the number of
 //! records (`u32`, then 4 bytes left at 0); each record: `offset u32`, `type u8` (`f64`, `bool`,
@@ -68,35 +68,37 @@
 
 /// `GFW1`.
 pub const MAGIC: u32 = 0x3157_4647;
-/// Bytes of the header when no schema says otherwise.
-pub const HEADER: u32 = 64;
+/// Bytes of the header when no schema says otherwise: the record contract `abi.engine.world`.
+pub const HEADER: u32 = gripforge_contracts::abi_engine_world::SIZE as u32;
 /// Rows when no schema says otherwise.
 pub const CAPACITY: u32 = 1024;
 
 /// The header: offsets in the `WORLD` buffer.
+/// The positions are those of the record contract `abi.engine.world` (core/abi/contracts/abi.engine.world.json),
+/// generated in gripforge-contracts: no number is written here.
 pub mod header {
-    pub const MAGIC: u32 = 0;
-    pub const CAPACITY: u32 = 4;
-    pub const ROW_BYTES: u32 = 8;
-    pub const HEADER_BYTES: u32 = 12;
-    pub const OWNER: u32 = 16;
-    pub const LENT: u32 = 20;
-    pub const ROWS: u32 = 24;
-    pub const GRAVES: u32 = 28;
-    pub const PENDING: u32 = 32;
-    pub const INBOX: u32 = 36;
-    pub const INBOX_CAPACITY: u32 = 40;
-    pub const INBOX_LEN: u32 = 44;
-    /// u64: the epoch of the world the rows speak of (the clock value of its last change), written by the core at
-    /// every change: a module reads it here instead of asking (`hot_epoch`).
-    pub const EPOCH: u32 = 48;
+    use gripforge_contracts::abi_engine_world::at;
+    pub const MAGIC: u32 = at::MAGIC as u32;
+    pub const CAPACITY: u32 = at::CAPACITY as u32;
+    pub const ROW_BYTES: u32 = at::ROW_BYTES as u32;
+    pub const HEADER_BYTES: u32 = at::HEADER_BYTES as u32;
+    pub const OWNER: u32 = at::OWNER as u32;
+    pub const LENT: u32 = at::LENT as u32;
+    pub const ROWS: u32 = at::ROWS as u32;
+    pub const GRAVES: u32 = at::GRAVES as u32;
+    pub const PENDING: u32 = at::PENDING as u32;
+    pub const INBOX: u32 = at::INBOX as u32;
+    pub const INBOX_CAPACITY: u32 = at::INBOX_CAPACITY as u32;
+    pub const INBOX_LEN: u32 = at::INBOX_LEN as u32;
+    /// u64: the world's epoch (the clock value of its last change), written by the core at each change (`hot_epoch`).
+    pub const EPOCH: u32 = at::EPOCH as u32;
     /// u32: the phase of the step the owner of the rows is in ([`super::phase`]), written by the core at each
     /// change of phase. A column says who writes it at which phase (the game schema, `entity.phases`): a write is
     /// checked against this word where it is made — the owner's thread or another.
-    pub const PHASE: u32 = 56;
+    pub const PHASE: u32 = at::PHASE as u32;
     /// The mirror table (`mirror`): its offset from the start of the `WORLD` buffer (0: none). The block starts
     /// with its number of records (`mirror::PREFIX` bytes), the records follow.
-    pub const MIRRORS: u32 = 60;
+    pub const MIRRORS: u32 = at::MIRRORS as u32;
 }
 
 /// The phases of a step, as the header names them (`header::PHASE`) and as `col_info` masks them (bit `1 << phase`).
@@ -134,10 +136,11 @@ pub mod row {
     pub const F_EXACT: u32 = 4;
     pub const FLOATS_SHIFT: u32 = 4;
     pub const F_FLOATS: u32 = 0xf << FLOATS_SHIFT;
-    /// The engine holds the pose (a node of the game the game moves, tag `game.engine.held`): the base is the pose it had
-    /// when it was seen; the pose now is read from the engine at the moment it is needed (`game.engine.nodes.pose`, or the
-    /// core's `transform`, which does it).
+    /// The engine holds the pose (a node the game moves, tag `game.engine.held`): the base is its pose when seen;
+    /// the pose now is read from the engine when it is needed (`game.engine.nodes.pose`, or the core's `transform`).
     pub const F_HELD: u32 = 1 << 8;
+    /// The physics owns the pose (no `F_POSE`): a reader asks the core (`transform`), which reads its publication.
+    pub const F_OWNED: u32 = 1 << 9;
 }
 
 /// The names of the base columns and of the physics column.
@@ -276,30 +279,9 @@ pub fn unpack16(lo: u64, hi: u64) -> Option<String> {
     std::str::from_utf8(&buf[..len]).ok().map(str::to_string)
 }
 
-/// A contact in a result buffer: `a` (2 words), `b` (2 words), a value, flags.
-pub mod contact {
-    pub const WORDS: usize = 6;
-    pub const F_BEGAN: u64 = 1;
-
-    /// Writes one contact; false when a name does not pack (the caller answers by the call instead).
-    pub fn write(out: &mut [u64], a: &str, b: &str, value: f64, began: bool) -> bool {
-        let (Some(a), Some(b)) = (super::pack16(a), super::pack16(b)) else {
-            return false;
-        };
-        out[..WORDS].copy_from_slice(&[a.0, a.1, b.0, b.1, value.to_bits(), began as u64]);
-        true
-    }
-
-    /// Reads one contact: `(a, b, value, began)`.
-    pub fn read(w: &[u64]) -> Option<(String, String, f64, bool)> {
-        Some((
-            super::unpack16(w[0], w[1])?,
-            super::unpack16(w[2], w[3])?,
-            f64::from_bits(w[4]),
-            w[5] & F_BEGAN != 0,
-        ))
-    }
-}
+/// A contact in a result buffer (contract `abi.physics.contact`, words of u64): `a` (2 words), `b` (2 words), a value,
+/// flags — the index of each word generated.
+pub mod contact;
 
 /// The types of a column: the code a view carries, bytes, alignment (docs/game-schema.md).
 pub const TYPES: &[(&str, u8, u32, u32)] = &[
@@ -758,14 +740,7 @@ mod tests {
         let mut buf = vec![0u64; 16];
         let t = buf.as_mut_ptr() as *mut u8;
         unsafe {
-            assert!(mirror::write(
-                t,
-                0,
-                72,
-                mirror::T_F64,
-                "vehicle.state",
-                "speed"
-            ));
+            assert!(mirror::write(t, 0, 72, mirror::T_F64, "car.state", "speed"));
             assert!(mirror::write(t, 1, 80, mirror::T_ATOM, "team", ""));
             assert!(!mirror::write(
                 t,
@@ -777,7 +752,7 @@ mod tests {
             ));
             assert_eq!(
                 mirror::read(t, 0),
-                Some((72, mirror::T_F64, "vehicle.state", "speed"))
+                Some((72, mirror::T_F64, "car.state", "speed"))
             );
             assert_eq!(mirror::read(t, 1), Some((80, mirror::T_ATOM, "team", "")));
         }

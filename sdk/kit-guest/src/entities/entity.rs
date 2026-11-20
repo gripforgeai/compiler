@@ -283,7 +283,7 @@ pub fn near_one(e: &Entity, x: f64, z: f64, radius: f64, conds: &[Cond]) -> Opti
 }
 
 /// A scalar field of a component that a kit writes and reads **in place** (`Entities::set_fields`, `field`):
-/// `static SPEED: Field = Field::new("vehicle.state", "speed");`. The component stays the truth; when the kit
+/// `static SPEED: Field = Field::new("car.state", "speed");`. The component stays the truth; when the kit
 /// declared a column that mirrors the field (`of: { component, field }` in its `<kit>.schema.json`), a kit module
 /// of the common memory reads it as a load in the entity's row and writes it by scalars — no value is built,
 /// encoded or copied (docs/kit-modules.md §7.12).

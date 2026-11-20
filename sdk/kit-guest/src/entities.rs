@@ -12,6 +12,7 @@
 //! when it is dropped.
 
 mod entity;
+mod owned_pose;
 pub use entity::{
     default_transform, field_flag, field_num, field_vec3, fields_into, fields_merge, merge,
     near_one, pose_exact, pose_exact_into, pose_into, pose_patch_into, Cond, Entity, Field,
@@ -442,6 +443,8 @@ impl Entities {
                     seen: reads.check,
                     lent: reads.era,
                     other: 0,
+                    body: hot::NO_BODY,
+                    body_seen: 0,
                 }));
                 Self::stamp(fresh);
                 // SAFETY: a live box.
@@ -495,7 +498,7 @@ impl Entities {
 
     /// The current copy of `id`: the kept one when the world did not change since it was checked, else what the
     /// core says changed since its revision.
-    fn fresh(&self, id: &str) -> Option<*mut Kept> {
+    fn fresh_copy(&self, id: &str) -> Option<*mut Kept> {
         if let Some(p) = self.current(id) {
             // SAFETY: a live box of `kept`.
             unsafe { (*p).lent = self.reads.borrow().era };
@@ -1295,10 +1298,18 @@ impl Entities {
         if let Some([x, y, z, yaw]) = crate::columns::pose(id) {
             return Some(Pos { x, y, z, yaw });
         }
+        // No rows here (a module in its own memory): the core answers, which reads a pose the physics owns where it
+        // was published — never this module's copies, which an owned pose does not follow.
+        if crate::columns::table().is_none() {
+            if let Some(t) = crate::direct::transform(id) {
+                return t.map(|[x, y, z, yaw]| Pos { x, y, z, yaw });
+            }
+            // Neither rows nor a direct link: the core's accessor (src/entities/owned_pose.rs).
+            return self.transform_by_bridge(id);
+        }
         self.sync();
         if let Some(p) = self.current(id) {
-            // SAFETY: a live box of `kept`.
-            return Pos::of(unsafe { (*p).entity.component("transform") });
+            return self.kept_pose(p);
         }
         {
             let r = self.reads.borrow();
@@ -1313,19 +1324,7 @@ impl Entities {
         if let Some(t) = crate::direct::transform(id) {
             return t.map(|[x, y, z, yaw]| Pos { x, y, z, yaw });
         }
-        let bytes = call(crate::func!(f::TRANSFORM), |w| {
-            w.str(id);
-        });
-        let mut r = Reader::new(&bytes);
-        if !r.bool().unwrap_or(false) {
-            return None;
-        }
-        Some(Pos {
-            x: r.f64().ok()?,
-            y: r.f64().ok()?,
-            z: r.f64().ok()?,
-            yaw: r.f64().ok()?,
-        })
+        self.transform_by_bridge(id)
     }
 
     /// `setTransform(id, partial)`: merges into the current transform.
@@ -1585,10 +1584,10 @@ mod near_link {
         }
         let atom = |s: &str| crate::direct::atom(s) as u64;
         let mut spec = [0u64; n::HEAD + n::COND * n::MAX_CONDS];
-        spec[0] = x.to_bits();
-        spec[1] = z.to_bits();
-        spec[2] = radius.to_bits();
-        spec[3] = conds.len() as u64;
+        spec[n::question::at::X] = x.to_bits();
+        spec[n::question::at::Z] = z.to_bits();
+        spec[n::question::at::RADIUS] = radius.to_bits();
+        spec[n::question::at::CONDS] = conds.len() as u64;
         let (rows, _) = spec[n::HEAD..].as_chunks_mut::<{ n::COND }>();
         for (c, w) in conds.iter().zip(rows) {
             let (kind, a, b, v) = match *c {
@@ -1603,9 +1602,9 @@ mod near_link {
                 Cond::Tag(t) => (n::TAG, t, "", 0.0),
                 Cond::NoTag(t) => (n::NO_TAG, t, "", 0.0),
             };
-            w[0] = kind as u64 | atom(a) << 32;
-            w[1] = atom(b);
-            w[2] = v.to_bits();
+            w[n::cond::at::KIND] = kind as u64 | atom(a) << 32;
+            w[n::cond::at::FIELD] = atom(b);
+            w[n::cond::at::NUMBER] = v.to_bits();
         }
         OUT.with(|o| {
             let mut o = o.borrow_mut();
@@ -1622,7 +1621,12 @@ mod near_link {
                 return None;
             }
             let (hits, _) = o.as_chunks::<{ n::HIT }>();
-            let near = |h: &[u64; n::HIT]| (id_of(h[0] as u32), f64::from_bits(h[1]));
+            let near = |h: &[u64; n::HIT]| {
+                (
+                    id_of(n::hit::entity(h) as u32),
+                    f64::from_bits(n::hit::distance(h)),
+                )
+            };
             Some(hits.iter().take(found as usize).map(near).collect())
         })
     }
