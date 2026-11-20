@@ -5,6 +5,10 @@
   "description": "A scene of a GripForge project: a tree of typed nodes, its sub-scenes, the kits' sections, its bindings. JSON, owned by the game, without a version field: read with tolerance (docs/dev-builder.md, docs/ecrire-un-projet.md).",
   "type": "object",
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "For editors only: the path of the schema a scene file follows; kept as written, never read."
+    },
     "requires": {
       "$ref": "#/$defs/requires"
     },

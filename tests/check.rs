@@ -278,3 +278,52 @@ fn the_generator_writes_one_module_per_scene_parents_first() {
         "the values are typed in the code"
     );
 }
+
+/// `$schema` (the path of the published schema, for the editors) is accepted at the head of the project: `check`
+/// passes, no `field_unknown` (D03 of gripforgeai/gripforge#420: never refused, never dropped in silence).
+#[test]
+fn a_project_with_its_schema_checks_clean() {
+    let mut p = room();
+    let o = p.as_object_mut().unwrap();
+    let mut with = serde_json::Map::new();
+    with.insert(
+        "$schema".into(),
+        json!("./.gripforge/kits/schema/gripforge.full.schema.json"),
+    );
+    with.extend(std::mem::take(o));
+    *o = with;
+    let a = check(p);
+    assert_eq!(a["ok"], true, "{a}");
+    assert!(
+        !a["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["field"] == "$schema"),
+        "{a}"
+    );
+}
+
+/// `$schema` at the head of a scene file is accepted the same way.
+#[test]
+fn a_scene_file_with_its_schema_checks_clean() {
+    let mut p = room();
+    let level = scene(&mut p, "level").clone();
+    let mut file =
+        json!({ "$schema": "../schema/gripforge.full.schema.json", "nodes": level["nodes"] });
+    if let Some(k) = level.get("kits") {
+        file["kits"] = k.clone();
+    }
+    if let Some(r) = level.get("requires") {
+        file["requires"] = r.clone();
+    }
+    let s = scene(&mut p, "level");
+    for k in ["nodes", "kits", "requires"] {
+        s.as_object_mut().unwrap().remove(k);
+    }
+    s["file"] = json!("scenes/level.gfscene");
+    let a = run(
+        &json!({ "op": "check", "project": p, "files": { "scenes/level.gfscene": file }, "kits": kits() }),
+    );
+    assert_eq!(a["ok"], true, "{a}");
+}

@@ -1,0 +1,18 @@
+# The acceptance of D01 (gripforgeai/gripforge#420) on the template fps-shooter: written by run.sh from this file
+# (@MK@: the checkout of the kits repository), never a member of the compiler's workspace.
+[package]
+name = "gf-accept-fps-shooter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# The game as gripforge-build generated it around the template's index.rs, laid as is at the root of the project.
+gripforge-app-fps-shooter = { path = "game/.build/app" }
+serde_json = "1"
+# The folder of kit libraries a gateway loads (kit-modules-native.json), as the templates' check writes it.
+gripforge-kit-common = { path = "@MK@/core/kit-common", features = ["tests"] }
+
+# The generated crates under game/ are workspaces of their own.
+[workspace]
+exclude = ["game"]

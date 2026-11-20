@@ -12,6 +12,10 @@
   `the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder_does` of `tests/lower.rs`, at commit
   `108031bf9f6ca9a5ea811a55058c3600b2c5227d` (`place::node_kind`, the accessors' `Spec` with the node's kind and its parent); the same
   change made to `src/code.rs`, which differs from the source here.
+  Then the `$schema` key of `src/project.rs` (`PROJECT_KEYS`) and `src/tree.rs` (`FILE_KEYS`), unchanged, at commit
+  `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema` accepted at the head of a project and of a scene file); the
+  same key declared, by hand, in `schema/gripforge.schema.json` and `schema/gfscene.schema.json`, which differ from the
+  source here.
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).

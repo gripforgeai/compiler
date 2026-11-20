@@ -1,5 +1,18 @@
 # Changes
 
+## [Unreleased] (0.1.2)
+
+- `$schema` (the path of the published schema, for the editors) is accepted at the head of a project and of a scene
+  file: `check` and the build pass, the key is kept as written and never read (decision D03 of
+  gripforgeai/gripforge#420). Taken from module-kits (`core/scene-format`, see `PROVENANCE.md`).
+- The creator's `index.rs` (decision D01 of gripforgeai/gripforge#420): a Bevy plugin at the root of the project, with
+  their modules in `src/`, never written. With it, the build writes `.build/app/`, the Bevy game: `index.rs` and `src/`
+  taken by path, `KitsPlugin` then the creator's plugin (found by convention: one `pub struct X;` with
+  `impl Plugin for X`), a window (`src/main.rs`). New codes: `index_plugin_missing`, `index_plugin_ambiguous`,
+  `src_module_invalid`, `gateway_by_git` (warning). The gateway `gfkits-bevy-native` from `--sdk`, else by git.
+- The generated module of `game.main` is `src/module.rs` (was `src/index.rs`: that name is now the creator's).
+- `tests/accept/fps-shooter/run.sh`: the template fps-shooter built and played headless (by hand, on a build machine).
+
 ## [0.1.1]
 
 - The generated crate takes the public part of the kits SDK (`gripforge-abi`, `gripforge-kit-guest`,
