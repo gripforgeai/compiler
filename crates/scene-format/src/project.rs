@@ -1,6 +1,6 @@
-//! The project file (`<name>.gripforge`): its validation (its own `requires`, its scenes and their files, every scene
-//! checked down to its sub-scenes) and its packing into the `game.json` today's loaders read, the scene files carried
-//! in `data.scene_files` for game.engine to lower (crate::expand).
+//! The project file (`<name>.gripforge`): its validation (its own `requires`, its scenes, every scene checked down to
+//! its sub-scenes) and its packing into the `game.json` envelope of the development mode (the kits' lock beside the
+//! project), the sub-scenes carried in `data.scene_files` for game.engine to lower (crate::expand).
 
 use crate::expand::{installed_of, SCENE_FILES};
 use crate::issue::{has_errors, Issue};
@@ -43,7 +43,14 @@ const FLOW_KEYS: &[&str] = &[
 ];
 
 /// Check a whole project: the file itself, its required kits, each scene file and what game.engine will get of it.
+/// The project is resolved first (crate::include: its includes, its nodes' variables, its `$var`).
 pub fn validate_project(project: &Json, files: Files, reg: &Registry) -> Vec<Issue> {
+    let (resolved, mut out) = crate::include::resolve_project(project, files);
+    out.extend(validate_resolved(&resolved, files, reg));
+    out
+}
+
+fn validate_resolved(project: &Json, files: Files, reg: &Registry) -> Vec<Issue> {
     // The sub-scene files a project in one file carries (`data.scene_files`) come before the disk.
     let carried = crate::build::carried(project);
     let all = |p: &str| carried.get(p).cloned().or_else(|| files(p));
@@ -89,13 +96,14 @@ pub fn validate_project(project: &Json, files: Files, reg: &Registry) -> Vec<Iss
             out.extend(crate::registry::check_config(reg, id, c));
         }
     }
+    let mut physics_nodes: Vec<(String, String, String)> = Vec::new();
     let scenes = project
         .pointer("/data/scenes")
         .and_then(Json::as_array)
         .cloned()
         .unwrap_or_default();
     if scenes.is_empty() {
-        out.push(Issue::warning("scenes_missing", "the project has no scene", "list the scenes in data.scenes: [{ \"id\": \"level\", \"role\": \"level\", \"file\": \"scenes/level.gfscene\" }]").at("", "data.scenes"));
+        out.push(Issue::warning("scenes_missing", "the project has no scene", "list the scenes in data.scenes: [{ \"id\": \"level\", \"role\": \"level\", \"requires\": [\"game.engine\"], \"nodes\": [] }]").at("", "data.scenes"));
     }
     let start = project
         .pointer("/installed")
@@ -134,6 +142,7 @@ pub fn validate_project(project: &Json, files: Files, reg: &Registry) -> Vec<Iss
             if let Some(doc) = crate::build::inline_doc(s) {
                 let label = crate::build::inline_label(id);
                 let tree = crate::tree::resolve_doc(&label, &doc, reg, files);
+                physics_users(&tree, reg, &mut physics_nodes);
                 out.extend(check_tree(id, &label, tree, reg, Some(&installed)));
             }
             continue;
@@ -154,9 +163,71 @@ pub fn validate_project(project: &Json, files: Files, reg: &Registry) -> Vec<Iss
                 .at("", &format!("{at}.{k}")),
             );
         }
-        out.extend(validate_scene(id, file, files, reg, Some(&installed)));
+        let tree = resolve(file, reg, files);
+        physics_users(&tree, reg, &mut physics_nodes);
+        out.extend(check_tree(id, file, tree, reg, Some(&installed)));
     }
+    out.extend(physics_not_run(project, &installed, &physics_nodes));
     out
+}
+
+/// The kits whose sections need the physics running (`needsRun: "physics"` of their scene entries).
+fn needs_physics(reg: &crate::Registry) -> impl Iterator<Item = &String> {
+    reg.sections
+        .iter()
+        .filter(|(_, s)| s.needs_run.iter().any(|r| r == "physics"))
+        .map(|(k, _)| k)
+}
+
+/// The nodes of a scene that carry the section of a kit that needs the physics running (a collision, a body...):
+/// `(file, node path, kit)`.
+fn physics_users(
+    tree: &crate::tree::Tree,
+    reg: &crate::Registry,
+    into: &mut Vec<(String, String, String)>,
+) {
+    for n in &tree.nodes {
+        let Some(kits) = n.raw.get("kits").and_then(Json::as_object) else {
+            continue;
+        };
+        if let Some(kit) = needs_physics(reg).find(|k| kits.contains_key(k.as_str())) {
+            into.push((n.file.clone(), n.path.clone(), kit.clone()));
+        }
+    }
+}
+
+/// A kit whose sections need the physics running is installed and nodes use it, but the project says no physics runs
+/// (`run.physics`, `none` by default): the game loads, and no node makes a body nor tells anything. One warning, with
+/// the line to write.
+fn physics_not_run(
+    project: &Json,
+    installed: &[(String, Option<String>)],
+    users: &[(String, String, String)],
+) -> Option<Issue> {
+    let (file, node, kit) = users.first()?;
+    if !installed.iter().any(|(k, _)| k == kit) {
+        return None;
+    }
+    let run = project
+        .pointer("/run/physics")
+        .and_then(Json::as_str)
+        .unwrap_or("none");
+    if matches!(run, "rapier" | "engine") {
+        return None;
+    }
+    let more = match users.len() {
+        1 => String::new(),
+        n => format!(" (and {} more)", n - 1),
+    };
+    Some(
+        Issue::warning(
+            "physics_not_run",
+            format!("{node} carries a {kit} section{more} but no physics runs (run.physics is \"{run}\"): no body is made and nothing is told"),
+            "write \"run\": { \"physics\": \"rapier\" } in the project file, or remove the collision nodes",
+        )
+        .in_file(file)
+        .at(node, &format!("kits.{kit}")),
+    )
 }
 
 /// Check one scene file: its nodes, sub-scenes, sections, bindings and required kits (`installed`: the project's
@@ -223,8 +294,9 @@ fn not_required(kit: &str, file: &str, node: &str, field: &str) -> Issue {
     Issue::warning("section_not_required", format!("the section {kit} is used but {kit} is not in the requires of the file"), format!("add \"{kit}\" to the requires of {file}, so the build and the tools know the scene needs it")).in_file(file).at(node, field)
 }
 
-/// Pack a project into the `game.json` today's loaders read: `{ format_version, project_id, seed, fixed_hz, project,
-/// lock, physics }`, every scene file (sub-scenes included) carried in `project.data.scene_files`. `version` gives the
+/// Pack a project into the `game.json` envelope of the development mode (what dev.builder and game.engine are given
+/// when the game runs without a build): `{ format_version, project_id, seed, fixed_hz, project, lock, physics }`, every
+/// sub-scene the scenes instance carried in `project.data.scene_files`. `version` gives the
 /// version of a kit whose `installed` entry has none (its kit.api.json). Refused with the issues when there are errors.
 pub fn pack(
     project: &Json,
@@ -235,9 +307,9 @@ pub fn pack(
     pack_with(project, files, reg, version, false).map(|(game, _)| game)
 }
 
-/// [`pack`], and with `keep_errors` the game.json written in spite of the errors of the scene files (a missing kit, an
-/// invalid section), given back with them: what proves that the kits refuse such a scene at load, cleanly
-/// (`gfscene pack --keep-errors`). The errors of the pack itself (a kit version unknown) still refuse it.
+/// [`pack`], and with `keep_errors` the game.json made in spite of the errors of the scenes (a missing kit, an invalid
+/// section), given back with them: what proves that the kits refuse such a scene at load, cleanly (the room `errors`
+/// of dev.builder's tests). The errors of the pack itself (a kit version unknown) still refuse it.
 pub fn pack_with(
     project: &Json,
     files: Files,
@@ -245,7 +317,9 @@ pub fn pack_with(
     version: &dyn Fn(&str) -> Option<String>,
     keep_errors: bool,
 ) -> Result<(Json, Vec<Issue>), Vec<Issue>> {
-    let mut issues = Vec::new();
+    // Resolved once with the plain reader: the included files are not sub-scenes to carry.
+    let (resolved, mut issues) = crate::include::resolve_project(project, files);
+    let project = &resolved;
     let read: RefCell<Vec<(String, Json)>> = RefCell::new(Vec::new());
     let recording = |p: &str| {
         let f = files(p);
@@ -256,7 +330,7 @@ pub fn pack_with(
         }
         f
     };
-    issues.extend(validate_project(project, &recording, reg));
+    issues.extend(validate_resolved(project, &recording, reg));
     let mut p = project.clone();
     let mut order = Vec::new();
     let mut kits = Map::new();
@@ -301,7 +375,7 @@ pub fn pack_with(
     if p.get("schema").is_none() {
         p["schema"] = json!("gripforge.gameproject/1");
     }
-    // The files the project carries (one-file form) and the ones read from the disk.
+    // The sub-scenes the project carries and the ones read beside it.
     let mut scene_files = crate::build::carried(project);
     for (k, v) in read.into_inner() {
         scene_files.insert(k, v);
@@ -315,7 +389,8 @@ pub fn pack_with(
             "format_version": 1,
             "project_id": id,
             "seed": run.get("seed").cloned().unwrap_or(json!(7)),
-            "fixed_hz": run.get("fixedHz").cloned().unwrap_or(json!(60)),
+            // The action tick: `run.fixedHz`, else game.engine `tick.hz`, else its default (30 Hz).
+            "fixed_hz": run.get("fixedHz").cloned().unwrap_or_else(|| json!(engine_tick_hz(&p))),
             "project": p,
             "lock": { "schema": "gripforge.gamekits.lock/1", "project": id, "order": order, "kits": kits },
             "physics": run.get("physics").cloned().unwrap_or(json!("none")),
@@ -324,42 +399,17 @@ pub fn pack_with(
     ))
 }
 
-/// The model files the scenes of a project name (`model.asset` of their model nodes, sub-scenes and overrides
-/// included, scenes in files and inline), each once, in order: what a loader binds as model slots (a model node is
-/// lowered into an archetype whose `asset.slot` is that path; `gfscene pack --present` writes them in the
-/// `present.json` the players read, each with its [`package_path`]).
-pub fn model_files(project: &Json, files: Files, reg: &Registry) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let scenes = project
-        .get("data")
-        .and_then(|d| d.get("scenes"))
-        .and_then(Json::as_array);
-    for scene in scenes.into_iter().flatten() {
-        let Some((_, tree)) = crate::build::resolve_scene(scene, reg, files) else {
-            continue;
-        };
-        for n in tree.nodes {
-            let asset = n
-                .raw
-                .get("model")
-                .and_then(|m| m.get("asset"))
-                .and_then(Json::as_str);
-            if let Some(a) = asset.filter(|a| n.ty == "model" && !a.is_empty()) {
-                if !out.iter().any(|x| x == a) {
-                    out.push(a.to_string());
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Where a file of the project goes in a package the players open: under `assets/` beside `present.json` (the players
-/// read a slot's file there, and only there: core/present-abi `safe_path`). A path already under `assets/` stays.
-pub fn package_path(project_path: &str) -> String {
-    if project_path.starts_with("assets/") {
-        project_path.to_string()
-    } else {
-        format!("assets/{project_path}")
-    }
+/// game.engine `tick.hz` of a project, else the default action tick (30 Hz, never the physics step).
+fn engine_tick_hz(project: &Json) -> f64 {
+    project
+        .get("installed")
+        .and_then(Json::as_array)
+        .and_then(|l| {
+            l.iter()
+                .find(|k| k.get("id").and_then(Json::as_str) == Some("game.engine"))
+        })
+        .and_then(|k| k.pointer("/config/tick/hz"))
+        .and_then(Json::as_f64)
+        .filter(|h| h.is_finite() && *h > 0.0)
+        .unwrap_or(30.0)
 }

@@ -9,7 +9,7 @@ use crate::tree::{Node, Tree};
 use serde_json::{Map, Value as Json};
 
 /// The keys of `entity` on a scene node.
-const ENTITY_KEYS: &[&str] = &["states", "bind"];
+const ENTITY_KEYS: &[&str] = &["states", "bind", "sockets"];
 
 /// Adds to `tree.issues` what is wrong in the states, the reflections and the bound values of its nodes.
 pub fn check(tree: &mut Tree) {

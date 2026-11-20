@@ -1,6 +1,6 @@
 //! What a scene asks of the kits when it is entered, decided once for both ways of posing it
 //! (docs/design/build-gripforge.md): the dev.builder kit at run time (the « not built » mode of development) and the
-//! Rust code `gfscene code` writes ahead of time (the built game). One source, so both give the same scene.
+//! Rust code the build (gripforge-build, crate::code) writes ahead of time (the built game). One source, so both give the same scene.
 //!
 //! - the light and camera nodes: what core.light and core.camera receive ([`light_params`], [`camera_look`],
 //!   [`camera_params`]);

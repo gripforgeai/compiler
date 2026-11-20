@@ -23,7 +23,7 @@ fn level() -> Json {
 }
 
 #[test]
-fn a_scene_becomes_instances_entries_zones_and_the_script_of_its_bindings() {
+fn a_scene_becomes_instances_entries_the_zones_of_world_zones_and_the_script_of_its_bindings() {
     let list = [("level.gfscene", level())];
     let t = resolve("level.gfscene", &Registry::base(), &files(&list));
     let l = lower("level", &t, &Registry::base());
@@ -45,13 +45,16 @@ fn a_scene_becomes_instances_entries_zones_and_the_script_of_its_bindings() {
         ]
     );
     assert_eq!(
-        l.content["zones"],
+        l.content["data"]["zones"],
         json!([{ "id": "hall_door", "shape": "box", "center": [0, 1.5, -10], "size": [2, 3, 1] }])
     );
     let rules = &l.scripts[0]["rules"];
     assert_eq!(l.scripts[0]["on"], json!("scene:level"));
     assert_eq!(rules[0]["when"], json!({ "interact": "hall_crate" }));
-    assert_eq!(rules[1]["when"], json!({ "enter": "hall_door" }));
+    assert_eq!(
+        rules[1]["when"],
+        json!({ "event": "world.zones.entered", "match": { "zone": "hall_door" } })
+    );
     assert_eq!(
         rules[1]["then"][0]["on"],
         json!("hall_crate"),
@@ -112,7 +115,7 @@ fn a_missing_required_kit_refuses_the_scene_and_says_what_to_install() {
     let x = expand_project(&p, &Registry::base()).expect("expanded");
     let s = &x["data"]["scenes"][0];
     assert!(
-        s.get("instances").is_none() && s.get("zones").is_none(),
+        s.get("instances").is_none() && s.get("data").is_none_or(|d| d.get("zones").is_none()),
         "nothing of a refused scene is placed: {s}"
     );
     let i = &x["data"]["scene_file_issues"][0];
@@ -269,6 +272,24 @@ fn the_project_level_of_a_kit_is_checked_against_its_config_schema() {
         "{got:?}"
     );
     assert!(!got.iter().any(|g| g.1.ends_with("defaultMass")), "{got:?}");
+}
+
+#[test]
+fn the_common_key_debugger_of_a_kit_config_is_accepted_by_a_closed_schema_as_game_engine_accepts_it(
+) {
+    let api = json!({ "id": "core.physics", "configSchema": { "type": "object", "additionalProperties": false,
+        "properties": { "defaultMass": { "type": "number", "default": 1 } } } });
+    let mut reg = Registry::base();
+    reg.add_kit_api(&api);
+    let project = json!({ "id": "t", "requires": ["game.engine", "core.physics"],
+        "installed": [{ "id": "game.engine" }, { "id": "core.physics", "config": { "debugger": { "icon": "cube" } } }],
+        "data": { "scenes": [{ "id": "a", "role": "level", "nodes": [] }] } });
+    let list: [(&str, Json); 0] = [];
+    let issues = project::validate_project(&project, &files(&list), &reg);
+    assert!(
+        !issues.iter().any(|i| i.field.ends_with("config.debugger")),
+        "{issues:?}"
+    );
 }
 
 #[test]
@@ -467,4 +488,118 @@ fn the_code_of_a_collision_under_a_group_gives_its_kit_the_parent_as_dev_builder
             && level.contains(r#"parent_type: Some("group")"#),
         "the collision acts on its parent group, as dev.builder tells core.physics:\n{level}"
     );
+}
+
+#[test]
+fn a_watch_node_of_core_physics_is_checked_with_a_fix_and_read_by_its_kit_as_its_parents() {
+    use gripforge_scene_format::place;
+    // The real declaration of core.physics (its `watch` node type, docs/design/core-physics-surveillances.md).
+    let api: Json =
+        serde_json::from_str(include_str!("../../../kits/core_physics/kit.api.json")).unwrap();
+    let mut reg = Registry::base();
+    reg.add_kit_api(&api);
+    assert!(
+        reg.node_types.contains_key("watch"),
+        "core.physics declares the node type watch"
+    );
+    let scene = json!({ "requires": ["core.physics"], "nodes": [
+        { "name": "Door", "type": "shape", "shape": { "shape": "box" }, "position": [0, 1, -8], "children": [
+            { "name": "Near", "type": "watch", "watch": { "kind": "around", "radius": 3, "tags": ["hero"], "radiu": 2 } }
+        ] }
+    ] });
+    let list = [("level.gfscene", scene)];
+    let tree = resolve("level.gfscene", &reg, &files(&list));
+    let typo = tree
+        .issues
+        .iter()
+        .find(|i| i.code == "section_field_unknown")
+        .expect("the typo is said");
+    assert_eq!(typo.field, "kits.core.physics.radiu");
+    assert!(
+        typo.fix.contains("radius"),
+        "the fix names the right fields: {}",
+        typo.fix
+    );
+    let w = place::wanted(&tree, "level.gfscene")
+        .into_iter()
+        .find(|w| w.node == "Door/Near")
+        .expect("the watch node is a section of core.physics");
+    let (el, props, _) = place::resolve_section(&reg, &w).unwrap();
+    assert_eq!(
+        (w.kit.as_str(), el.name.as_str()),
+        ("core.physics", "watch")
+    );
+    let node = tree.nodes.iter().find(|n| n.path == "Door/Near");
+    let up = tree.nodes.iter().find(|n| n.path == "Door");
+    let spec = place::element_spec("level", &w, &el, &props, node, up, Json::Null);
+    assert_eq!(
+        (spec["parentNode"].clone(), spec["props"]["radius"].clone()),
+        (json!("Door"), json!(3))
+    );
+    assert_eq!(spec["props"]["tags"], json!(["hero"]));
+}
+
+#[test]
+fn a_shape_under_a_node_that_has_an_entity_hangs_under_it() {
+    // A crate holds its states on a group (an element) and is drawn by its child shape; a ball is a shape with a
+    // shape under it; a lamp under a plain group follows nobody.
+    let scene = json!({ "requires": ["game.engine"], "nodes": [
+        { "name": "Crate", "id": "crate", "position": [-6, 0.4, 0],
+          "entity": { "states": { "crate": { "values": ["intact", "broken"] } } },
+          "children": [
+            { "name": "Box", "type": "shape", "shape": { "shape": "box", "size": [0.8, 0.8, 0.8] } },
+            { "name": "Lid", "type": "group", "children": [
+                { "name": "Plank", "type": "shape", "shape": { "shape": "box" }, "position": [0, 0.4, 0] }
+            ] }
+          ] },
+        { "name": "Ball", "id": "ball", "type": "shape", "shape": { "shape": "sphere", "radius": 0.25 },
+          "children": [ { "name": "Dot", "type": "shape", "shape": { "shape": "sphere", "radius": 0.05 } } ] },
+        { "name": "Hall", "children": [ { "name": "Lamp", "type": "shape", "shape": { "shape": "cone" } } ] }
+    ] });
+    let list = [("s.gfscene", scene)];
+    let t = resolve("s.gfscene", &Registry::base(), &files(&list));
+    let l = lower("s", &t, &Registry::base());
+    let parent = |id: &str| {
+        l.content["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == json!(id))
+            .unwrap_or_else(|| panic!("no instance {id}"))
+            .get("parent")
+            .cloned()
+    };
+    assert_eq!(parent("crate"), None);
+    assert_eq!(parent("crate_box"), Some(json!("crate")));
+    assert_eq!(parent("crate_lid_plank"), Some(json!("crate")));
+    assert_eq!(parent("ball"), None);
+    assert_eq!(parent("ball_dot"), Some(json!("ball")));
+    assert_eq!(parent("hall_lamp"), None);
+}
+
+#[test]
+fn an_element_keeps_the_place_its_node_asks_for() {
+    // A vase holds its states on a group (an element) raised on its pedestal: `kits.game.engine.place: none` keeps the
+    // place the file gives it; without it, game.engine's default (ground) is left as it is.
+    let scene = json!({ "requires": ["game.engine"], "nodes": [
+        { "name": "Vase", "id": "vase", "position": [-2, 1.2, 0], "kits": { "game.engine": { "place": "none" } },
+          "entity": { "states": { "vase": { "values": ["intact", "broken"] } } } },
+        { "name": "Crate", "id": "crate", "position": [-6, 0.4, 0],
+          "entity": { "states": { "crate": { "values": ["intact", "broken"] } } } }
+    ] });
+    let list = [("s.gfscene", scene)];
+    let t = resolve("s.gfscene", &Registry::base(), &files(&list));
+    let l = lower("s", &t, &Registry::base());
+    let place = |id: &str| {
+        l.content["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == json!(id))
+            .unwrap_or_else(|| panic!("no instance {id}"))
+            .get("place")
+            .cloned()
+    };
+    assert_eq!(place("vase"), Some(json!("none")));
+    assert_eq!(place("crate"), None);
 }

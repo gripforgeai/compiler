@@ -1,16 +1,10 @@
-//! The tolerant validator (a wrong field warns and the scene still loads; only a required kit missing refuses), the
-//! two forms of a project (scenes inline in one file, or one file per scene) and the passage between them (`build`,
-//! `bundle`), the stable `id` of a node and a rotation written as a quaternion.
+//! The tolerant validator (a wrong field warns and the scene still loads; only a required kit missing refuses), a
+//! scene inline in the project beside one naming a carried sub-scene, the stable `id` of a node and a rotation written
+//! as a quaternion.
 
 use gripforge_scene_format::{
-    build::{build, bundle},
-    expand::expand_project,
-    issue::has_errors,
-    lower::lower,
-    ops::apply_command,
-    project::validate_project,
-    tree::resolve,
-    Registry,
+    expand::expand_project, issue::has_errors, lower::lower, ops::apply_command,
+    project::validate_project, tree::resolve, Registry,
 };
 use serde_json::{json, Value as Json};
 
@@ -117,83 +111,6 @@ fn an_inline_scene_is_checked_and_given_to_game_engine_like_a_file() {
 }
 
 #[test]
-fn build_publishes_one_resolved_file_per_scene_and_a_manifest() {
-    let list = disk();
-    let asset = |id: &str| (id == "crate").then(|| "library/crate/crate.glb".to_string());
-    let b = build(
-        &project(),
-        &files(&list),
-        &Registry::base(),
-        &asset,
-        "scenes",
-    )
-    .expect("built");
-    let scenes = b.project["data"]["scenes"].as_array().unwrap();
-    assert_eq!(scenes[0]["file"], json!("scenes/level.gfscene"));
-    assert_eq!(scenes[1]["file"], json!("scenes/annex.gfscene"));
-    assert!(
-        scenes[1].get("nodes").is_none(),
-        "nothing inline in the published project"
-    );
-    let get = |p: &str| b.files.iter().find(|(k, _)| k == p).map(|(_, v)| v.clone());
-    let level = get("scenes/level.gfscene").unwrap();
-    let shelf = &level["nodes"][1];
-    assert_eq!(shelf["type"], json!("group"), "the sub-scene is resolved");
-    assert!(shelf.get("scene").is_none() && shelf.get("overrides").is_none());
-    assert_eq!(
-        shelf["children"][0]["visible"],
-        json!(false),
-        "the override by id is applied"
-    );
-    assert_eq!(shelf["children"][0]["id"], json!("shelf_book"));
-    let annex = get("scenes/annex.gfscene").unwrap();
-    assert_eq!(
-        annex["nodes"][0]["model"]["asset"],
-        json!("library/crate/crate.glb")
-    );
-    assert!(b
-        .issues
-        .iter()
-        .any(|i| i.code == "asset_unresolved" && i.node == "Rock" && !i.is_error()));
-    let m = get("build.json").unwrap();
-    assert_eq!(
-        m["scenes"][1]["assets"],
-        json!(["library/crate/crate.glb", "boulder"])
-    );
-    assert_eq!(m["scenes"][0]["requires"], json!(["game.engine"]));
-}
-
-#[test]
-fn bundle_gathers_the_project_into_one_file_that_reads_the_same() {
-    let list = disk();
-    let reg = Registry::base();
-    let (one, issues) = bundle(&project(), &files(&list));
-    assert!(issues.is_empty(), "{issues:?}");
-    let first = &one["data"]["scenes"][0];
-    assert!(first.get("file").is_none());
-    assert_eq!(first["nodes"], level_nodes());
-    assert_eq!(
-        one["data"]["scene_files"]["scenes/shelf.gfscene"],
-        shelf(),
-        "the sub-scene is carried"
-    );
-    let nothing = |_: &str| None;
-    assert!(!has_errors(&validate_project(&one, &nothing, &reg)));
-    let mut split = project();
-    split["data"]["scene_files"] =
-        json!({ "scenes/level.gfscene": level(), "scenes/shelf.gfscene": shelf() });
-    assert_eq!(
-        expand_project(&one, &reg).unwrap()["data"]["scenes"],
-        expand_project(&split, &reg).unwrap()["data"]["scenes"],
-        "one file or one file per scene: game.engine gets the same"
-    );
-}
-
-fn level_nodes() -> Json {
-    level()["nodes"].clone()
-}
-
-#[test]
 fn a_node_is_found_by_its_path_or_by_its_id() {
     let scene = json!({ "requires": ["game.engine"], "nodes": [
         { "name": "Crate", "id": "crate_1", "type": "shape" },
@@ -262,4 +179,91 @@ fn a_rotation_written_as_a_quaternion_reads_as_its_degrees() {
     for i in 0..4 {
         assert!((q[i] - d[i]).abs() < 1e-9, "{q:?} vs {d:?}");
     }
+}
+
+/// A project with core.physics installed and one scene whose crate carries a core.physics section.
+fn physics_project(run: Option<Json>) -> Json {
+    let mut p = json!({ "id": "arena", "requires": ["game.engine", "core.physics"],
+        "installed": [{ "id": "game.engine", "config": { "startScene": "level" } }, { "id": "core.physics" }],
+        "data": { "scenes": [{ "id": "level", "role": "level", "requires": ["game.engine", "core.physics"], "nodes": [
+            { "name": "Crate", "type": "shape", "kits": { "core.physics": { "body": "dynamic" } } },
+            { "name": "Wall", "type": "shape", "kits": { "core.physics": { "body": "static" } } }
+        ] }] } });
+    if let Some(run) = run {
+        p["run"] = run;
+    }
+    p
+}
+
+#[test]
+fn collision_nodes_without_a_running_physics_warn_with_the_line_to_write() {
+    // The kit declares that its sections need the physics running (`needsRun`, docs/design/noyau-sans-noms-de-kits.md):
+    // the scene format names no kit. Without that declaration, nothing to say.
+    let none = |_: &str| None;
+    let base = validate_project(&physics_project(None), &none, &Registry::base());
+    assert!(base.iter().all(|i| i.code != "physics_not_run"), "{base:?}");
+    let mut reg = Registry::base();
+    reg.add_entries(
+        "core.physics",
+        &json!([{ "id": "core.physics.collider", "for": ["scene"], "at": "node", "needsRun": "physics",
+            "create": "core.physics.elementCreate", "set": "core.physics.elementSet",
+            "remove": "core.physics.elementRemove", "get": "core.physics.elementGet",
+            "props": { "body": { "type": "enum", "choices": ["static", "dynamic"], "default": "static" } } }]),
+    );
+    for run in [
+        None,
+        Some(json!({ "seed": 7 })),
+        Some(json!({ "physics": "none" })),
+    ] {
+        let issues = validate_project(&physics_project(run), &none, &reg);
+        let found: Vec<_> = issues
+            .iter()
+            .filter(|i| i.code == "physics_not_run")
+            .collect();
+        assert_eq!(found.len(), 1, "one warning for the project: {issues:?}");
+        assert!(
+            !has_errors(&issues),
+            "a warning, never an error: {issues:?}"
+        );
+        assert_eq!(found[0].node, "Crate");
+        assert!(
+            found[0].message.contains("and 1 more"),
+            "{}",
+            found[0].message
+        );
+        assert!(
+            found[0].fix.contains("\"physics\": \"rapier\""),
+            "{}",
+            found[0].fix
+        );
+    }
+    let running = validate_project(
+        &physics_project(Some(json!({ "physics": "rapier" }))),
+        &none,
+        &reg,
+    );
+    assert!(
+        running.iter().all(|i| i.code != "physics_not_run"),
+        "{running:?}"
+    );
+    // Without a core.physics node there is nothing to say.
+    let mut plain = project();
+    plain["run"] = json!({ "physics": "none" });
+    let issues = validate_project(&plain, &files(&disk()), &reg);
+    assert!(issues.iter().all(|i| i.code != "physics_not_run"));
+}
+
+#[test]
+fn the_schema_path_of_an_editor_is_a_known_key_of_the_project_and_of_a_scene_file() {
+    let schema = "../core/scene-format/schema/gripforge.full.schema.json";
+    let mut p = project();
+    p["$schema"] = json!(schema);
+    let mut list = disk();
+    list[0].1["$schema"] = json!(schema);
+    let issues = validate_project(&p, &files(&list), &Registry::base());
+    let unknown: Vec<_> = issues
+        .iter()
+        .filter(|i| i.code == "field_unknown")
+        .collect();
+    assert!(unknown.is_empty(), "{unknown:?}");
 }

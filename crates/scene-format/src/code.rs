@@ -2,14 +2,13 @@
 //! that poses it, `init_scene.rs` and one `init_scene/<scene>.rs` per scene. The code does what the dev.builder kit
 //! does when the scene is entered (nodes of the engine's tree, light and camera nodes, the kits' sections in their
 //! order), decided ahead of time from the same resolution (`build::resolve_scene`) and the same rules
-//! ([`crate::place`]); it calls the kits through their Rust accessors (one crate per kit, `gripforge-kit-access-<kit>`,
-//! shipped in the kit's folder and generated from its `kit.api.json` by tools/kit-api), never through a line of a kit:
-//! the kits stay modules loaded apart.
+//! ([`crate::place`]); it calls the kits through their Rust accessors (one crate per kit, `gripforge-kit-access-<kit>` in
+//! `kits/<kit>/access/rust`, generated from its `kit.api.json` by tools/kit-api, over `gripforge-kit-access`), never through a line of a kit: the kits stay modules loaded apart.
 //!
-//! The same writer serves the build of a game (`gfscene code`, `gripforge project build`) and the templates (a
+//! The same writer serves the build of a game (gripforge-build, `gripforge project build`) and the templates (a
 //! template is a `project.gripforge` and this `init_scene.rs`, beside its own `index.rs`).
 //!
-//! Who uses it: the `gfscene` tool (`code`), the test of kits/dev_builder/tests/build.rs.
+//! Who uses it: gripforge-build (its copy of this crate, gripforgeai/compiler), the test of kits/dev_builder/tests/build.rs.
 
 use crate::build::resolve_scene;
 use crate::issue::{has_errors, Issue};
@@ -110,6 +109,10 @@ pub fn code(
     if has_errors(&issues) {
         return Err(issues);
     }
+    // The scenes written are those of the project resolved (crate::include: its included files, its nodes' variables,
+    // its `$var`), as the validator above and the pack read it; the issues of the resolution are already in `issues`.
+    let (resolved, _) = crate::include::resolve_project(project, files);
+    let project = &resolved;
     let kits: Vec<String> = installed(project).into_iter().map(|(id, _)| id).collect();
     let mut reg = reg.clone();
     reg.sections.retain(|k, _| kits.contains(k));
@@ -158,7 +161,7 @@ fn index(scenes: &[(String, String)], origin: &str) -> String {
     s.push_str("//! The scenes of the project posed in code: what dev.builder would do when each one is entered, written\n");
     s.push_str("//! ahead of time. The game calls `enter` from its `scene_enter` and `Posed::leave` from its `scene_exit`.\n\n");
     s.push_str("use gripforge_kit_access::{Host, Posed};\n\n");
-    // Generated: never reformatted (a game's `cargo fmt` would make it differ from what `gfscene code` writes).
+    // Generated: never reformatted (a game's `cargo fmt` would make it differ from what gripforge-build writes).
     for (_, m) in scenes {
         let _ = writeln!(s, "#[rustfmt::skip]\npub mod {m};");
     }
@@ -220,9 +223,9 @@ impl Writer<'_> {
         uses.sort();
         uses.dedup();
         s.push_str("#![allow(unused_imports, unused_variables, clippy::all)]\n\n");
-        // One crate per kit: the accessor the kit ships in its own folder (`<kit>/access/rust`, gripforge-kit-access-<kit>).
-        for u in &uses {
-            let _ = writeln!(s, "use gripforge_kit_access_{u} as {u};");
+        // One crate per kit's accessor (kits/<kit>/access/rust, shipped in the kit's package), named by its module.
+        for m in &uses {
+            let _ = writeln!(s, "use gripforge_kit_access_{m} as {m};");
         }
         s.push_str("use gripforge_kit_access::{json, Host, Json, Posed, Spec};\n\n");
         let _ = writeln!(
@@ -361,25 +364,9 @@ impl Writer<'_> {
         } else {
             w.node.clone()
         };
-        // A node of a type its kit declares (`nodeType`: a collision, an animation) is that kit's section: said so, with
-        // the node it acts on (its parent). The spec below carries what it needs of that parent.
-        let typed = node.filter(|n| {
-            self.reg
-                .node_types
-                .get(&n.ty)
-                .is_some_and(|t| t.section.is_some())
-        });
-        let what = typed.map_or(String::new(), |n| {
-            let up = if n.parent.is_empty() {
-                "the scene".to_string()
-            } else {
-                n.parent.clone()
-            };
-            format!(" (node of type {}, acting on {up})", n.ty)
-        });
         let _ = writeln!(
             s,
-            "    // kits.{} on {place}{what}: the element {} of {}.",
+            "    // kits.{} on {place}: the element {} of {}.",
             w.kit, el.name, w.kit
         );
         let transform = node.map_or("None".to_string(), |n| {
@@ -447,7 +434,7 @@ impl Writer<'_> {
         );
     }
 
-    /// A property's value as Rust, typed as the accessor declares it (tools/kit-api/langs/rust_facade.mjs).
+    /// A property's value as Rust, typed as the accessor declares it (tools/kit-api/langs/rust_access.mjs).
     fn value(&mut self, f: &Field, v: &Json, key: &str, module: &str) -> String {
         match f.kind.as_str() {
             "string" | "path" => format!("{:?}.into()", v.as_str().unwrap_or("")),

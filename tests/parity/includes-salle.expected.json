@@ -1,0 +1,611 @@
+{
+  "project": {
+    "bindings": {},
+    "data": {
+      "archetypes": [
+        {
+          "asset": {
+            "color": "#e08a2c",
+            "height": 2.4,
+            "radius": 0.35,
+            "roughness": 0.6,
+            "shape": "cylinder"
+          },
+          "components": {
+            "size": [
+              0.7,
+              2.4,
+              0.7
+            ]
+          },
+          "id": "beacon",
+          "kind": "prop"
+        },
+        {
+          "asset": {
+            "color": "#3f7fd8",
+            "height": 2.4,
+            "radius": 0.3,
+            "roughness": 0.6,
+            "shape": "cylinder"
+          },
+          "components": {
+            "size": [
+              0.6,
+              2.4,
+              0.6
+            ]
+          },
+          "id": "cell_post_blue",
+          "kind": "prop"
+        },
+        {
+          "asset": {
+            "color": "#3fae6a",
+            "height": 2.4,
+            "radius": 0.3,
+            "roughness": 0.6,
+            "shape": "cylinder"
+          },
+          "components": {
+            "size": [
+              0.6,
+              2.4,
+              0.6
+            ]
+          },
+          "id": "cell_post_green",
+          "kind": "prop"
+        },
+        {
+          "asset": {
+            "color": "#9a5fd0",
+            "height": 2.4,
+            "radius": 0.3,
+            "roughness": 0.6,
+            "shape": "cylinder"
+          },
+          "components": {
+            "size": [
+              0.6,
+              2.4,
+              0.6
+            ]
+          },
+          "id": "cell_post_violet",
+          "kind": "prop"
+        }
+      ],
+      "scenes": [
+        {
+          "entries": [
+            {
+              "at": [
+                0,
+                0,
+                0
+              ],
+              "id": "spawn",
+              "yaw": 0
+            }
+          ],
+          "id": "room",
+          "instances": [],
+          "kind": "3d",
+          "role": "level",
+          "title": "Room"
+        },
+        {
+          "entries": [
+            {
+              "at": [
+                0,
+                0,
+                0
+              ],
+              "id": "door",
+              "yaw": 0
+            }
+          ],
+          "id": "north_cell",
+          "instances": [
+            {
+              "archetype": "cell_post_blue",
+              "at": [
+                -1.5,
+                1.2,
+                -9.5
+              ],
+              "id": "north_cell_post_1",
+              "place": "none"
+            },
+            {
+              "archetype": "cell_post_blue",
+              "at": [
+                1.5,
+                1.2,
+                -9.5
+              ],
+              "id": "north_cell_post_2",
+              "place": "none"
+            }
+          ],
+          "kind": "3d",
+          "kits": {
+            "asset.preload": {
+              "cell": {
+                "center": [
+                  0,
+                  -8
+                ],
+                "radius": 3
+              }
+            }
+          },
+          "role": "other",
+          "title": "north_cell"
+        },
+        {
+          "entries": [
+            {
+              "at": [
+                0,
+                0,
+                0
+              ],
+              "id": "door",
+              "yaw": 0
+            }
+          ],
+          "id": "east_cell",
+          "instances": [
+            {
+              "archetype": "cell_post_green",
+              "at": [
+                9.5,
+                1.2,
+                -1.5
+              ],
+              "id": "east_cell_post_1",
+              "place": "none"
+            },
+            {
+              "archetype": "cell_post_green",
+              "at": [
+                9.5,
+                1.2,
+                1.5
+              ],
+              "id": "east_cell_post_2",
+              "place": "none"
+            }
+          ],
+          "kind": "3d",
+          "kits": {
+            "asset.preload": {
+              "cell": {
+                "center": [
+                  8,
+                  0
+                ],
+                "mode": "screen",
+                "radius": 3
+              }
+            }
+          },
+          "role": "other",
+          "title": "east_cell"
+        },
+        {
+          "entries": [
+            {
+              "at": [
+                0,
+                0,
+                0
+              ],
+              "id": "door",
+              "yaw": 0
+            }
+          ],
+          "id": "hall_cell",
+          "instances": [
+            {
+              "archetype": "cell_post_violet",
+              "at": [
+                -9.5,
+                1.2,
+                8
+              ],
+              "id": "hall_cell_post_1",
+              "place": "none"
+            },
+            {
+              "archetype": "cell_post_violet",
+              "at": [
+                -8,
+                1.2,
+                9.5
+              ],
+              "id": "hall_cell_post_2",
+              "place": "none"
+            }
+          ],
+          "kind": "3d",
+          "kits": {
+            "asset.preload": {
+              "cell": {
+                "neighbours": [
+                  "room"
+                ]
+              }
+            }
+          },
+          "role": "other",
+          "title": "hall_cell"
+        },
+        {
+          "id": "salle_preuve",
+          "kind": "3d",
+          "nodes": [
+            {
+              "name": "Start",
+              "position": [
+                0,
+                0,
+                4
+              ],
+              "type": "entry"
+            },
+            {
+              "entity": {
+                "states": {
+                  "var_pilier_shown": {
+                    "derived": {
+                      "var": "pilier.shown"
+                    }
+                  }
+                }
+              },
+              "id": "pilier",
+              "name": "Pilier",
+              "position": [
+                -1.5,
+                1.5,
+                0
+              ],
+              "reflect": [
+                {
+                  "set": {
+                    "visible": true
+                  },
+                  "when": {
+                    "var_pilier_shown": true
+                  }
+                },
+                {
+                  "set": {
+                    "visible": false
+                  },
+                  "when": {
+                    "var_pilier_shown": false
+                  }
+                }
+              ],
+              "shape": {
+                "color": "#d03030",
+                "height": 3,
+                "radius": 0.5,
+                "shape": "cylinder"
+              },
+              "type": "shape"
+            },
+            {
+              "children": [
+                {
+                  "id": "caisse",
+                  "name": "Caisse",
+                  "position": [
+                    1.5,
+                    0.5,
+                    0
+                  ],
+                  "shape": {
+                    "color": "#a07040",
+                    "shape": "box",
+                    "size": 1.2
+                  },
+                  "type": "shape"
+                },
+                {
+                  "id": "boule",
+                  "name": "Boule",
+                  "position": [
+                    0,
+                    0.5,
+                    -1.5
+                  ],
+                  "shape": {
+                    "color": "#3050d0",
+                    "radius": 0.5,
+                    "shape": "sphere"
+                  },
+                  "type": "shape"
+                }
+              ],
+              "name": "Props",
+              "type": "group"
+            }
+          ],
+          "requires": [
+            "game.engine"
+          ],
+          "role": "level",
+          "title": "salle de preuve"
+        },
+        {
+          "id": "salle_annexe",
+          "kind": "3d",
+          "nodes": [],
+          "requires": [
+            "game.engine"
+          ],
+          "role": "level",
+          "title": "annexe"
+        }
+      ],
+      "scripts": [],
+      "spawns": []
+    },
+    "id": "includes_salle",
+    "installed": [
+      {
+        "config": {
+          "debug": false,
+          "flow": {
+            "title": "off"
+          },
+          "placement": "baked",
+          "sceneFlow": {
+            "loading": "none",
+            "minLoadingMs": 0,
+            "transition": "replace",
+            "unload": "release"
+          },
+          "startScene": "room"
+        },
+        "enabled": true,
+        "id": "game.engine",
+        "version": "1.23.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.physics",
+        "version": "1.6.0"
+      },
+      {
+        "config": {
+          "actions": [
+            {
+              "bindings": [
+                {
+                  "down": "KeyS",
+                  "left": "KeyA",
+                  "right": "KeyD",
+                  "up": "KeyW"
+                },
+                "StickLeft"
+              ],
+              "kind": "vector",
+              "name": "move"
+            },
+            {
+              "bindings": [
+                "Space"
+              ],
+              "name": "jump"
+            },
+            {
+              "bindings": [
+                "ShiftLeft"
+              ],
+              "name": "run"
+            },
+            {
+              "bindings": [
+                "MouseMotion"
+              ],
+              "kind": "vector",
+              "name": "look"
+            },
+            {
+              "bindings": [
+                "KeyE"
+              ],
+              "name": "interact"
+            }
+          ],
+          "pointer": {
+            "lock": "click"
+          }
+        },
+        "enabled": true,
+        "id": "core.input",
+        "version": "2.0.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.camera",
+        "version": "1.0.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.control",
+        "version": "0.2.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.locomotion",
+        "version": "0.2.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.animation",
+        "version": "0.4.0"
+      },
+      {
+        "config": {
+          "keys": {
+            "crouch": {
+              "bindings": [
+                "KeyC",
+                "ControlLeft",
+                "Pad1"
+              ],
+              "kind": "button"
+            },
+            "jump": {
+              "bindings": [
+                "Space",
+                "Pad0"
+              ],
+              "kind": "button"
+            },
+            "move_pad": {
+              "bindings": [
+                "StickLeft"
+              ],
+              "invertY": true,
+              "kind": "vector"
+            },
+            "move_x": {
+              "bindings": [
+                {
+                  "neg": "KeyA",
+                  "pos": "KeyD"
+                },
+                {
+                  "neg": "ArrowLeft",
+                  "pos": "ArrowRight"
+                }
+              ],
+              "kind": "axis"
+            },
+            "move_y": {
+              "bindings": [
+                {
+                  "neg": "KeyS",
+                  "pos": "KeyW"
+                },
+                {
+                  "neg": "ArrowDown",
+                  "pos": "ArrowUp"
+                }
+              ],
+              "kind": "axis"
+            },
+            "orbit": {
+              "bindings": [
+                "Mouse0"
+              ],
+              "kind": "button"
+            },
+            "sprint": {
+              "bindings": [
+                "ShiftLeft",
+                "ShiftRight",
+                "Pad10"
+              ],
+              "kind": "button"
+            },
+            "steer": {
+              "bindings": [
+                "Mouse2"
+              ],
+              "kind": "button"
+            }
+          }
+        },
+        "enabled": true,
+        "id": "locomotion.third_person",
+        "version": "0.2.0"
+      },
+      {
+        "config": {
+          "edit": {
+            "gizmo": {
+              "keys": {
+                "move": "KeyW",
+                "rotate": "KeyE",
+                "space": "KeyT",
+                "turnAxis": "Wheel",
+                "turnCcw": "ShiftLeft+KeyR",
+                "turnCw": "KeyR",
+                "undo": "ControlLeft+KeyZ"
+              }
+            },
+            "toggleKey": "F2"
+          },
+          "replay": {
+            "ignore": [
+              "debug.",
+              "core.camera.rigs",
+              "kits.core.camera",
+              "core.camera.watched",
+              "core.light.lights"
+            ]
+          },
+          "snapshotWatchTicks": 1200,
+          "toggleKey": "F9"
+        },
+        "enabled": true,
+        "id": "debug.inspector",
+        "version": "1.8.0"
+      },
+      {
+        "config": {
+          "cells": {
+            "everyTicks": 5,
+            "keepS": 2,
+            "maxLoaded": 4,
+            "mode": "background",
+            "preload": 1.5,
+            "trigger": "auto"
+          }
+        },
+        "enabled": true,
+        "id": "asset.preload",
+        "version": "2.1.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.light",
+        "version": "1.0.0"
+      },
+      {
+        "config": {},
+        "enabled": true,
+        "id": "core.webui",
+        "version": "1.10.0"
+      }
+    ],
+    "meta": {
+      "about": "The world loaded by cells on the room of the socle (configs/cells.json, web/cells-stations.mjs): three cells around the room (north by distance, east by distance in mode screen, hall by neighbours of the room), each a scene of game.engine put in beside the room by asset.preload 2.1. Data only."
+    },
+    "name": "salle incluse (preuve du format)",
+    "preset": null,
+    "schema": "gripforge.gameproject/1",
+    "variables": {
+      "annexe": true,
+      "pilier": true,
+      "pilier.shown": true
+    }
+  },
+  "resolveIssues": []
+}

@@ -1,12 +1,12 @@
-# The format of a GripForge project (`<name>.gripforge`) and of its scenes (`<name>.gfscene`): reading (tolerant),
-# validation (stable codes, the node's path, the fix), sub-scenes and their overrides, the lowering of a scene into the
-# documents game.engine already reads, the conversion of an inline `data.scenes` into files, and the packing of a
-# project into the `game.json` today's loaders read. Moved from the kits SDK (PROVENANCE.md); game.engine, the
-# dev.builder kit and the tools all read the same format without one kit depending on another
-# (docs/dev-builder.md). JSON in, JSON out: no host, no kit, no engine.
+# The format of a GripForge project (`<name>.gripforge`): reading (tolerant), resolution (includes, node variables,
+# `$var`), validation (stable codes, the node's path, the fix), sub-scenes and their overrides, the lowering of a scene
+# into the documents game.engine already reads, the packing of a project and the generator of `init_scene.rs`.
+# A copy, unchanged, of core/scene-format of the kits repository (tools/sync-scene-format, scene-format.json,
+# PROVENANCE.md): dev.builder, devGame, the validator and gripforge-build read a project with the same code.
+# Only this file is this repository's own (no workspace inheritance here).
 [package]
 name = "gripforge-scene-format"
-description = "The GripForge project file (project.gripforge) and scene file (<name>.gfscene) format: tolerant reading, validator, sub-scenes, lowering into game.engine documents, conversion and packing."
+description = "The GripForge project file (project.gripforge) format: tolerant reading, resolution, validator, sub-scenes, lowering into game.engine documents, packing."
 version = "0.1.1"
 edition = "2021"
 rust-version = "1.99"
@@ -15,7 +15,3 @@ publish = false
 
 [dependencies]
 serde_json = { workspace = true }
-
-[[bin]]
-name = "gfscene"
-path = "src/bin/gfscene.rs"

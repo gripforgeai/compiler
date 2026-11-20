@@ -70,7 +70,7 @@ fn a_transform_by_path_changes_only_the_line_of_the_node() {
 
 #[test]
 fn a_command_of_the_debugging_editor_lands_as_the_local_transform_of_the_node() {
-    // editor.scene names the game.engine instance (hall_crate) and gives its place in the world, a yaw of 90°.
+    // The debugging editor (debug.inspector.edit) names the game.engine instance (hall_crate) and gives its place in the world, a yaw of 90°.
     let q = from_euler_deg([0.0, 90.0, 0.0]);
     let out = cmd(LEVEL, json!({ "type": "transform", "id": "hall_crate", "transform": {
         "translation": { "x": 2.5, "y": 0.4, "z": -5 }, "rotation": { "x": q[0], "y": q[1], "z": q[2], "w": q[3] }, "scale": { "x": 1, "y": 1, "z": 1 } } })).unwrap();

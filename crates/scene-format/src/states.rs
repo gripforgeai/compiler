@@ -7,7 +7,7 @@
 //!
 //! The states live in the game.engine entity (`archetype.states`): the lowering puts `entity.states` as they are on
 //! the archetype of the node's instance (game.engine checks them). The rules are resolved by game.engine's own
-//! resolver (the crate `gfkit-game-engine-resolve`), node by node, in the dev.builder kit: no second resolver
+//! resolver (the crate `gfkit-core-render-resolve`), node by node, in the dev.builder kit: no second resolver
 //! here, only what reads and checks the file.
 //!
 //! Who uses it: the validator (`tree.rs`, [`check`]), the lowering (`lower.rs`), the dev.builder kit (`reflect.rs`).
@@ -25,7 +25,7 @@ pub use check::check;
 /// `shape`, `morphs`, `fade`), and what only a node of a scene has (`light`, `play`, `playing`, `spin`, `on`).
 pub const SET_PROPS: &[&str] = &[
     "visible", "rotation", "scale", "offset", "material", "anim", "slot", "shape", "morphs",
-    "fade", "light", "play", "playing", "spin", "on",
+    "fade", "light", "play", "playing", "spin", "on", "attach",
 ];
 
 /// The render values a node may bind to a number state (`entity.bind[].property`), game.engine's: degrees for a
@@ -43,8 +43,9 @@ pub const BIND_PROPS: &[&str] = &[
     "offset.z",
 ];
 
-/// The sources a derived state reads (game.engine's).
-pub const DERIVED_SOURCES: &[&str] = &["var", "component", "expr", "hook"];
+/// The sources a derived state reads (game.engine's; 1.31: `calc`, a formula over the states whose names
+/// game.engine resolves and checks when it compiles the game, docs/regles-calculees.md).
+pub const DERIVED_SOURCES: &[&str] = &["var", "component", "expr", "hook", "calc"];
 
 /// The states a node declares, when it declares any (`entity.states`, a non-empty object).
 pub fn declared(n: &Node) -> Option<&Map<String, Json>> {
@@ -132,7 +133,7 @@ fn engine_state(name: &str, decl: &Json) -> Result<Vec<String>, String> {
             .filter(|(k, _)| DERIVED_SOURCES.contains(&k.as_str()))
         else {
             return Err(
-                "derived takes one source: { var }, { component }, { expr } or { hook: true }"
+                "derived takes one source: { calc }, { var }, { component }, { expr } or { hook: true }"
                     .into(),
             );
         };
@@ -150,6 +151,7 @@ fn engine_state(name: &str, decl: &Json) -> Result<Vec<String>, String> {
                         .is_some_and(|s| !s.is_empty())
             }
             "expr" => expr_vars(v, 0, &mut vars),
+            "calc" => v.as_str().is_some_and(|s| !s.trim().is_empty()),
             _ => v == &Json::Bool(true),
         };
         return if ok {
