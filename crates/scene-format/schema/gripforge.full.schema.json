@@ -6290,6 +6290,10 @@
           "contexts": {
             "of": "input context",
             "description": "The contexts, by name; a mod adds one or maps an action its own way."
+          },
+          "rumbleProfiles": {
+            "of": "rumble profile",
+            "description": "The rumbles of a pad by name ({ strong, weak (0..1 at strength 1), seconds (a one-shot's length), release }), for vibrate and bind and the key rumble of a reflect: the kit gives hit, engine, explosion, tap; the game or a mod adds or changes one in the config key rumbleProfiles, field by field."
           }
         }
       },
@@ -8636,7 +8640,7 @@
             "archetypes": {
               "type": "object",
               "default": {},
-              "description": "The collision of the archetypes, for the collision nodes (scene element core.physics.collision): { <archetype>: { shape, type, size, radius, height, mass, material, layers, collidesWith, asset, heights, joint } }, the same fields as a collision node. A collision node's field left neutral (empty, 0, [0,0,0], null) takes its archetype's (its parent's game.engine archetype). An entity of game.engine whose archetype is here gets its body when it spawns (heard only when this registry is not empty). A game or a mod adds or changes one (moddable).",
+              "description": "The collision of the archetypes, for the collision nodes (scene element core.physics.collision): { <archetype>: { shape, type, size, radius, height, mass, buoyancy (PROVISIONAL: as for addBody, the instance floats in the fluids), material, layers, collidesWith, asset, heights, joint } }, the same fields as a collision node. A collision node's field left neutral (empty, 0, [0,0,0], null) takes its archetype's (its parent's game.engine archetype). An entity of game.engine whose archetype is here gets its body when it spawns (heard only when this registry is not empty). A game or a mod adds or changes one (moddable).",
               "additionalProperties": {
                 "type": "object"
               }
@@ -17811,7 +17815,7 @@
                   },
                   "thrust": {
                     "type": "object",
-                    "description": "{ forward, reverse, vertical (N), yaw (N·m), autoLevel (pull back upright) } (floats, hover pads, space)."
+                    "description": "{ forward, reverse, vertical (N), yaw, roll (lean into a turn), pitch (bow up under the throttle) (N·m), autoLevel (pull back upright) } (floats, hover pads, space)."
                   },
                   "hover": {
                     "type": "object",

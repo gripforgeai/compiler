@@ -3,7 +3,14 @@
   "id": "core.physics",
   "version": "1.13.0",
   "requires": [],
-  "dependencies": [],
+  "dependencies": [
+    {
+      "kit": "core.material",
+      "range": "*",
+      "optional": true,
+      "reason": "When it is loaded, the fluids of its catalogue of surface behaviours (genre fluid: world.water's lakes, rivers, seas) are read when the catalogue changes and floated on. Without it the only fluid is the fallback `fluidLevel`."
+    }
+  ],
   "provides": [
     {
       "id": "core.physics",
@@ -84,7 +91,7 @@
       "archetypes": {
         "type": "object",
         "default": {},
-        "description": "The collision of the archetypes, for the collision nodes (scene element core.physics.collision): { <archetype>: { shape, type, size, radius, height, mass, material, layers, collidesWith, asset, heights, joint } }, the same fields as a collision node. A collision node's field left neutral (empty, 0, [0,0,0], null) takes its archetype's (its parent's game.engine archetype). An entity of game.engine whose archetype is here gets its body when it spawns (heard only when this registry is not empty). A game or a mod adds or changes one (moddable).",
+        "description": "The collision of the archetypes, for the collision nodes (scene element core.physics.collision): { <archetype>: { shape, type, size, radius, height, mass, buoyancy (PROVISIONAL: as for addBody, the instance floats in the fluids), material, layers, collidesWith, asset, heights, joint } }, the same fields as a collision node. A collision node's field left neutral (empty, 0, [0,0,0], null) takes its archetype's (its parent's game.engine archetype). An entity of game.engine whose archetype is here gets its body when it spawns (heard only when this registry is not empty). A game or a mod adds or changes one (moddable).",
         "additionalProperties": {"type": "object"}
       },
       "watches": {
