@@ -1,0 +1,17 @@
+# The digest of the game's code (`sources` of a project.gripforge): FNV-1a 64 over the declared files, `const fn`s only.
+# The one copy of the function: gripforge-build writes its file into the crate of game.main, the common core of the
+# format (gripforge-scene-format) re-exports it, the kits repository (gripforgeai/module-kits, dev.builder and the wasm of
+# the page) imports it by git at a pinned commit of this repository. Pure Rust, no dependency.
+[package]
+name = "gripforge-sources-digest"
+description = "The digest of the game's code of a GripForge project: FNV-1a 64 over the declared source files, const fn."
+version = "0.1.1"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = { workspace = true }

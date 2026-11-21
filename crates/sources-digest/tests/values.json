@@ -1,5 +1,5 @@
 {
-  "note": "The digest of the game's code (core/scene-format/src/sources_digest.rs): the same values for the Rust function, the page (core/gateway-web/dev-project.mjs sourcesDigest) and the compiler's copy. Computed by an independent implementation of FNV-1a 64.",
+  "note": "The digest of the game's code (src/sources_digest.rs): the values every caller checks, the Rust function here, the common core of the format (gripforge_scene_format::sources_digest) and the page (module-kits core/scene-format-wasm gf_sources_digest). Computed by an independent implementation of FNV-1a 64.",
   "cases": [
     {
       "files": [],
