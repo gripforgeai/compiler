@@ -15,3 +15,5 @@ publish = false
 
 [dependencies]
 serde_json = { workspace = true }
+# The digest of the game's code (re-exported as sources_digest): its one copy, crates/sources-digest of this repository.
+gripforge-sources-digest = { path = "../sources-digest", version = "0.1.1" }

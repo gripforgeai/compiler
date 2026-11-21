@@ -2,6 +2,12 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The digest of the game's code has one copy** (`crates/sources-digest`, crate `gripforge-sources-digest`; decision of
+  Damien, 21/11: the code common to the compiler and dev.builder lives in this public repository, module-kits imports
+  it by git at a pinned commit): `src/sources_digest.rs` and `tests/sources-digest.json` are gone, the generated crate
+  gets the crate's file (`SOURCE`), the common core of the format re-exports the crate (`sources_digest`). The digest
+  values do not change; the comment at the top of the generated `src/sources_digest.rs` does.
+
 - **The embedded SDK follows the ABI by contract** (module-kits#1865): `sdk/` is taken again from module-kits `67a42985` and gains `gripforge-contracts` (`tools/sync-sdk` copies `core/contracts`). A `game.main` built by the previous SDK had no section `gripforge.contracts` and the host refused it (`contract_missing`); the CI now builds the `--dev` module to wasm and checks the section.
 
 - **The game's code in the development mode** (decision of Damien, voie B of module-kits

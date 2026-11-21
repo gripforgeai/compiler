@@ -13,6 +13,7 @@ pub mod json;
 pub mod project;
 pub mod report;
 pub mod sources;
-pub mod sources_digest;
+/// The digest of the game's code: the crate `gripforge-sources-digest` of this repository (its one copy).
+pub use gripforge_sources_digest as sources_digest;
 pub mod strict;
 pub mod textures;
