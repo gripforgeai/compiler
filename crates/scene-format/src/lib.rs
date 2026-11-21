@@ -41,7 +41,9 @@ pub mod project;
 pub mod registry;
 pub mod requires;
 pub mod sources;
-pub mod sources_digest;
+/// The digest of the game's code: the crate `gripforge-sources-digest` of the compiler's public repository (its one
+/// copy, decision of Damien 21/11), re-exported so the readers of the format name it here.
+pub use gripforge_sources_digest as sources_digest;
 pub mod states;
 pub mod tree;
 pub mod verbs;

@@ -163,6 +163,7 @@ dependencies = [
 name = "gripforge-scene-format"
 version = "0.1.1"
 dependencies = [
+ "gripforge-sources-digest",
  "serde_json",
 ]
 
