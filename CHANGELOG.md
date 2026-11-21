@@ -2,6 +2,15 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The format of a project has one copy, here** (`crates/scene-format`, crate `gripforge-scene-format`; same decision):
+  it is no longer a copy of module-kits `core/scene-format`, which imports it by git at a pinned commit (dev.builder,
+  game.engine and the wasm of the development mode call it). `tools/sync-scene-format` and
+  `crates/scene-format/scene-format.json` are gone; a change to the format is made here first (its pull request), then
+  module-kits raises its pin. The JSON schemas (`schema/`) leave the crate: the kits repository keeps and assembles them
+  and checks the syntax schema against the registry (the test moved there). The fixtures the crate's tests read
+  (`tests/base-room/configs/includes*.gripforge`, `kits/core_physics/kit.api.json`, `tests/parity`) are now this
+  repository's own. Nothing changes for a user of `gripforge-build`.
+
 - **The digest of the game's code has one copy** (`crates/sources-digest`, crate `gripforge-sources-digest`; decision of
   Damien, 21/11: the code common to the compiler and dev.builder lives in this public repository, module-kits imports
   it by git at a pinned commit): `src/sources_digest.rs` and `tests/sources-digest.json` are gone, the generated crate
