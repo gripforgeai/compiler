@@ -1795,6 +1795,13 @@
             "$ref": "gripforge.kit/game.engine#/$defs/data/code_modules"
           }
         },
+        "presentKinds": {
+          "type": "array",
+          "description": "The documents of data.presentKinds (game.engine).",
+          "items": {
+            "$ref": "gripforge.kit/game.engine#/$defs/data/presentKinds"
+          }
+        },
         "kinds": {
           "type": "array",
           "description": "The documents of data.kinds (game.engine).",
@@ -2665,10 +2672,8 @@
     },
     "reflect_rule": {
       "type": "object",
-      "required": [
-        "set"
-      ],
-      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property.",
+      "required": [],
+      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property. Its effects of presentation (docs/design/intentions-presentation.md): enter / leave (a dated one-shot at the render time of the passage) and while (a link laid while the rule holds, the output following a value read in place); the kit of each way compiles them once, the presentation module that evaluates the reflect writes them at the render.",
       "properties": {
         "when": {
           "type": "object",
@@ -2702,6 +2707,30 @@
             }
           },
           "additionalProperties": false
+        },
+        "enter": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule starts to hold (never at the first reflection): [{ <sort>: <profile>, strength?, seconds?, key?, audience? }]."
+        },
+        "leave": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule stops to hold."
+        },
+        "while": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "Links laid while the rule holds, taken back when it stops: [{ <sort>: <profile>, bind: { value: \"col:<column>[i]\", input: [in0, in1], <outputs of the way>: [a, b], curve, smooth, start, release } }]."
         }
       },
       "additionalProperties": false
@@ -5560,13 +5589,8 @@
             },
             "intents": {
               "type": "object",
-              "description": "The audio intentions in the zone, read in place by every speaker (docs/design/core-audio-intentions.md): lanes (one per kind of writer: the kit, the page, the physics, the render), cueSlots (rows of one lane of core.audio.cues), boundSlots (held sounds following a value, core.audio.bound), heardSlots (voices whose position heard is published, core.audio.heard), sourceSlots (drawn poses of the sources, core.audio.shown), late (what a dated cue does when its time has passed: drop, play, skip; a sound of the bank may say its own) and lateMax (s: how late a drop may still play).",
+              "description": "The audio intentions in the zone, read in place by every speaker (docs/design/core-audio-intentions.md): cueSlots (rows of one lane of core.audio.cues, contract abi.present.cues: four lanes, one per kind of writer: the kit, the page, the physics, the render), boundSlots (held sounds following a value, core.audio.bound, contract abi.present.bound), renderSlots (the last bound rows kept for the reflect at the render), heardSlots (voices whose position heard is published, core.audio.heard), sourceSlots (drawn poses of the sources, the core's abi.present.shown when core.audio lays it), late (what a dated cue does when its time has passed: drop, play, skip; a sound of the bank may say its own) and lateMax (s: how late a drop may still play).",
               "properties": {
-                "lanes": {
-                  "type": "integer",
-                  "minimum": 4,
-                  "maximum": 16
-                },
                 "cueSlots": {
                   "type": "integer",
                   "minimum": 2,
@@ -5575,6 +5599,11 @@
                 "boundSlots": {
                   "type": "integer",
                   "minimum": 1,
+                  "maximum": 4096
+                },
+                "renderSlots": {
+                  "type": "integer",
+                  "minimum": 0,
                   "maximum": 4096
                 },
                 "heardSlots": {
@@ -6385,6 +6414,53 @@
               "type": "string",
               "default": "en",
               "description": "The language of the labels when none is asked (core.i18n for others)."
+            },
+            "rumbleProfiles": {
+              "type": "object",
+              "description": "The rumbles of a pad by name (registry rumbleProfiles, over the built-in hit, engine, explosion, tap, field by field): { strong, weak (0..1 at strength 1), seconds (a one-shot's length), release (s) }. Read by vibrate, bind and the effects rumble of a reflect; executed at the render (docs/design/intentions-presentation.md).",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "strong": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "weak": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "seconds": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "release": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "intents": {
+              "type": "object",
+              "description": "The sizes of the regions of the way rumble: cueSlots (rows of one lane of core.input.cues), boundSlots (links of the kit in core.input.bound), renderSlots (links kept for the reflect at the render).",
+              "properties": {
+                "cueSlots": {
+                  "type": "integer",
+                  "minimum": 2
+                },
+                "boundSlots": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "renderSlots": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
             },
             "mirrorToEngine": {
               "type": "boolean",
@@ -12344,6 +12420,10 @@
           "kinds": {
             "of": "entity kind",
             "description": "The entity kinds (docs/design/game-engine-kinds.md): kits and the game register kinds with kind properties (collection kinds, registerKind at run time); contributions merge property by property."
+          },
+          "presentKinds": {
+            "of": "sort of presentation",
+            "description": "The sorts of presentation intentions (docs/design/intentions-presentation.md): the keys a reflect rule names in its enter / leave / while effects (sound, rumble, shake...), each executed by the kit of its way. A kit declares its sorts in its kit.api.json (presents: { <sort>: { audience, cue, bind, unbind, row } }, methods of its service), then the project collection presentKinds ({ id, kit, cue, bind, unbind, row, audience }) adds a sort or changes one key by key. The one dispatcher of the reflect and of game.engine.cue / bind / unbind. Served by game.engine.presentKinds()."
           }
         }
       },
@@ -14250,6 +14330,51 @@
             "required": [
               "id",
               "target"
+            ],
+            "additionalProperties": false
+          },
+          "presentKinds": {
+            "description": "A `present kind` document of data.presentKinds.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-zA-Z0-9]*$",
+                "description": "The sort: the key a reflect effect names (sound, rumble, shake)."
+              },
+              "kit": {
+                "type": "string",
+                "description": "The kit of its way."
+              },
+              "audience": {
+                "enum": [
+                  "personal",
+                  "world"
+                ],
+                "description": "personal: the local players in the entity; world: all who see or hear it."
+              },
+              "cue": {
+                "type": "string",
+                "description": "The method of the kit for a one-shot."
+              },
+              "bind": {
+                "type": "string",
+                "description": "The method of the kit for a link."
+              },
+              "unbind": {
+                "type": "string",
+                "description": "The method of the kit that takes a link back."
+              },
+              "row": {
+                "type": "string",
+                "description": "The method of the kit that compiles the row of an effect of a reflect."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
             ],
             "additionalProperties": false
           },
@@ -17877,6 +18002,48 @@
               "type": "boolean",
               "default": true,
               "description": "A vehicle nobody drives holds its handbrake."
+            },
+            "crash": {
+              "type": "object",
+              "description": "When a change of a vehicle's velocity is a shock, and what it makes the player perceive (docs/design/intentions-presentation.md, criterion 4): threshold (m/s of change in one tick from which it is a shock), full (m/s at which its strength is 1), gap (s between two shocks of one vehicle), presents (a list of { sort, profile, strength } of the registry presentKinds, each laid by game.engine.cue on the vehicle, dated at the tick of the contact; none by default: the game chooses).",
+              "properties": {
+                "threshold": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "full": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "gap": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "presents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sort": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "strength": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "sort",
+                      "profile"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
             },
             "debugger": {
               "type": "object",
