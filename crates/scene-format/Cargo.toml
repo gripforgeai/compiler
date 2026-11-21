@@ -1,9 +1,10 @@
 # The format of a GripForge project (`<name>.gripforge`): reading (tolerant), resolution (includes, node variables,
 # `$var`), validation (stable codes, the node's path, the fix), sub-scenes and their overrides, the lowering of a scene
 # into the documents game.engine already reads, the packing of a project and the generator of `init_scene.rs`.
-# A copy, unchanged, of core/scene-format of the kits repository (tools/sync-scene-format, scene-format.json,
-# PROVENANCE.md): dev.builder, devGame, the validator and gripforge-build read a project with the same code.
-# Only this file is this repository's own (no workspace inheritance here).
+# Its one copy (decision of 21/11: the code common to the compiler and dev.builder lives in this public repository): the
+# kits repository (gripforgeai/module-kits) imports it by git at a pinned commit, so dev.builder, game.engine, devGame
+# (its wasm), the validator and gripforge-build read a project with the same code. A change is made here first, then
+# the kits repository raises its pin (its line `Jumelle : gripforgeai/compiler#N`, guard parity-twin there).
 [package]
 name = "gripforge-scene-format"
 description = "The GripForge project file (project.gripforge) format: tolerant reading, resolution, validator, sub-scenes, lowering into game.engine documents, packing."
