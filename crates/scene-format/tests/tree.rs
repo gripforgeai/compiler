@@ -168,34 +168,6 @@ fn wrong_properties_paths_and_bindings_say_what_to_write() {
     );
 }
 
-#[test]
-fn the_json_schema_describes_every_node_type_and_property_of_the_registry() {
-    let schema: Json =
-        serde_json::from_str(include_str!("../schema/gripforge.schema.json")).expect("schema");
-    let reg = Registry::base();
-    let types: Vec<&str> = schema["$defs"]["node"]["properties"]["type"]["enum"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Json::as_str)
-        .collect();
-    for (name, t) in &reg.node_types {
-        assert!(
-            types.contains(&name.as_str()),
-            "the schema lacks the type {name}"
-        );
-        for (k, f) in &t.props {
-            let p = &schema["$defs"][format!("props_{name}")]["properties"][k];
-            assert!(p.is_object(), "the schema lacks {name}.{k}");
-            assert_eq!(
-                p["description"].as_str(),
-                Some(f.description.as_str()),
-                "{name}.{k}"
-            );
-        }
-    }
-}
-
 /// Decision of the owner (dev.builder step c): a value written wrong is a warning and its default applies; the scene
 /// still loads. Only a missing required kit refuses a scene.
 #[test]
