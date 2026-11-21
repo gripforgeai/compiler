@@ -2665,10 +2665,8 @@
     },
     "reflect_rule": {
       "type": "object",
-      "required": [
-        "set"
-      ],
-      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property.",
+      "required": [],
+      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property. Its effects of presentation (docs/design/intentions-presentation.md): enter / leave (a dated one-shot at the render time of the passage) and while (a link laid while the rule holds, the output following a value read in place); the kit of each way compiles them once, the presentation module that evaluates the reflect writes them at the render.",
       "properties": {
         "when": {
           "type": "object",
@@ -2702,6 +2700,30 @@
             }
           },
           "additionalProperties": false
+        },
+        "enter": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule starts to hold (never at the first reflection): [{ <sort>: <profile>, strength?, seconds?, key?, audience? }]."
+        },
+        "leave": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule stops to hold."
+        },
+        "while": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "Links laid while the rule holds, taken back when it stops: [{ <sort>: <profile>, bind: { value: \"col:<column>[i]\", input: [in0, in1], <outputs of the way>: [a, b], curve, smooth, start, release } }]."
         }
       },
       "additionalProperties": false
@@ -6290,6 +6312,10 @@
           "contexts": {
             "of": "input context",
             "description": "The contexts, by name; a mod adds one or maps an action its own way."
+          },
+          "rumbleProfiles": {
+            "of": "rumble profile",
+            "description": "The rumbles of a pad by name ({ strong, weak (0..1 at strength 1), seconds (a one-shot's length), release }), for vibrate and bind and the key rumble of a reflect: the kit gives hit, engine, explosion, tap; the game or a mod adds or changes one in the config key rumbleProfiles, field by field."
           }
         }
       },
@@ -12340,6 +12366,10 @@
           "kinds": {
             "of": "entity kind",
             "description": "The entity kinds (docs/design/game-engine-kinds.md): kits and the game register kinds with kind properties (collection kinds, registerKind at run time); contributions merge property by property."
+          },
+          "presentKinds": {
+            "of": "sort of presentation",
+            "description": "The sorts of presentation intentions (docs/design/intentions-presentation.md): the keys a reflect rule names in its enter / leave / while effects (sound, rumble, shake...), each executed by the kit of its way. A kit declares its sorts in its kit.api.json (presents: { <sort>: { audience, cue, bind, unbind, row } }, methods of its service), then the project collection presentKinds ({ id, kit, cue, bind, unbind, row, audience }) adds a sort or changes one key by key. The one dispatcher of the reflect and of game.engine.cue / bind / unbind. Served by game.engine.presentKinds()."
           }
         }
       },

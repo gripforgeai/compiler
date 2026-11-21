@@ -912,10 +912,8 @@
     },
     "reflect_rule": {
       "type": "object",
-      "required": [
-        "set"
-      ],
-      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property.",
+      "required": [],
+      "description": "A rule of the reflection (game.engine's): when the states match (partial: only the states named, one value each; empty: always), set the given properties on nodes of the element's subtree. Every matching rule applies, in order: a later one wins on the same property. Its effects of presentation (docs/design/intentions-presentation.md): enter / leave (a dated one-shot at the render time of the passage) and while (a link laid while the rule holds, the output following a value read in place); the kit of each way compiles them once, the presentation module that evaluates the reflect writes them at the render.",
       "properties": {
         "when": {
           "type": "object",
@@ -949,6 +947,30 @@
             }
           },
           "additionalProperties": false
+        },
+        "enter": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule starts to hold (never at the first reflection): [{ <sort>: <profile>, strength?, seconds?, key?, audience? }]."
+        },
+        "leave": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "One-shots played at the render time the rule stops to hold."
+        },
+        "while": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One effect: the key of its sort (registry presentKinds of game.engine: sound, rumble, shake...) names a profile of its way, the other keys are its options (strength, seconds, key, audience...)."
+          },
+          "description": "Links laid while the rule holds, taken back when it stops: [{ <sort>: <profile>, bind: { value: \"col:<column>[i]\", input: [in0, in1], <outputs of the way>: [a, b], curve, smooth, start, release } }]."
         }
       },
       "additionalProperties": false
