@@ -38,10 +38,11 @@ fn declared_sources_are_a_known_key_checked_and_not_packed() {
     assert_eq!(codes(&project(json!({ "a": 1 }))), ["sources_invalid"]);
 }
 
-/// The digest of the game's code: the values of tests/sources-digest.json (the page and the compiler check the same).
+/// The digest of the game's code this crate names (`sources_digest`, the re-export of gripforge-sources-digest) gives
+/// the shared values of that crate (the page's binding checks the same).
 #[test]
 fn the_digest_of_the_sources_is_the_one_of_the_shared_values() {
-    let cases: Json = serde_json::from_str(include_str!("sources-digest.json")).unwrap();
+    let cases: Json = serde_json::from_str(gripforge_scene_format::sources_digest::VALUES).unwrap();
     for c in cases["cases"].as_array().unwrap() {
         let files: Vec<(String, Vec<u8>)> = c["files"]
             .as_array()
