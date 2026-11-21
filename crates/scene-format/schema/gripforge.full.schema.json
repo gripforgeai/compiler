@@ -3806,7 +3806,7 @@
           "properties": {
             "cells": {
               "type": "object",
-              "description": "2.1: the world loaded by cells (docs/design/monde-par-cellules.md): the defaults of every cell. A cell is a scene of game.engine declared in its section kits[\"asset.preload\"].cell, in list, or in code (declareCell).",
+              "description": "2.1: the world loaded by cells (docs/design/monde-par-cellules.md): the defaults of every cell. A cell is a scene of game.engine declared in its section kits[\"asset.preload\"], in list, or in code (declareCell).",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -3868,7 +3868,7 @@
                   "maxItems": 256,
                   "items": {
                     "type": "object",
-                    "description": "A cell: scene, then the fields of the section kits[\"asset.preload\"].cell."
+                    "description": "A cell: scene, then the fields of the section kits[\"asset.preload\"]."
                   },
                   "description": "Cells declared in the config (the sections of the scenes come after and win)."
                 }
