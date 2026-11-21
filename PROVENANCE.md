@@ -13,11 +13,11 @@
   `6da0bb9650c1fa6221fff448b9a52f05e0c1acad` and `108031bf9f6ca9a5ea811a55058c3600b2c5227d` and `b2b670825edc57305de74b1c83b001be35d91d22` (`$schema`) with local changes; the
   local changes and the `gfscene` tool are gone since the copy became whole again (the kits repository retired
   `gfscene` and `.gfscene` in `9cbb3a5d9`).
-- `src/sources_digest.rs` and `tests/sources-digest.json` are copies, unchanged, of `core/scene-format/src/sources_digest.rs`
-  and `core/scene-format/tests/sources-digest.json` of the kits repository (the same files as the ones of
-  `crates/scene-format`, which `tools/sync-scene-format` now copies at `7b9e4013acb7db7a2ec5cb2b6975aae1d484ad8b`, branch
-  `feat/devbuilder-game-main`, module-kits#1862): the digest of the game's code. They stay at the top of this repository
-  because the generated crate writes `src/sources_digest.rs` as it is (byte for byte the same as `crates/scene-format`'s).
+- `crates/sources-digest` (the digest of the game's code) is this repository's own, the one copy of the function: moved
+  from `core/scene-format/src/sources_digest.rs` and `core/scene-format/tests/sources-digest.json` of the kits
+  repository (by way of this repository's former copies `src/sources_digest.rs` and `tests/sources-digest.json`), its
+  header rewritten. The kits repository imports it by git at a pinned commit (decision of 21/11: the common code lives
+  here); `crates/scene-format`, still a copy of `core/scene-format`, re-exports it.
 - `src/core.rs` and `src/strict.rs` come from the same repository, `tools/compiler/wasm/src` (commit
   `837cb5e19dbed150b4437e464ecdecbf93fc8511`), without their wasm surface; the rest of `src/` rewrites in Rust the
   JavaScript of `tools/compiler` (`lib/`), and `tests/` its tests (golden files kept, see the pull request).

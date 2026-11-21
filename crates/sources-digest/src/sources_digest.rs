@@ -1,13 +1,14 @@
 //! The digest of the game's code (`sources` of a project): what tells the development mode that the `game.main` it
-//! loads was compiled from the files the project declares now (docs/design/sources-du-jeu.md). FNV-1a 64 over, for
-//! each declared file in the declared order: its path in the normal form (crate::sources::normal), a zero byte, its
-//! length in bytes (u64, little-endian), its bytes. Written `fnv1a64:` and 16 lowercase hexadecimal digits.
+//! loads was compiled from the files the project declares now (module-kits docs/design/sources-du-jeu.md). FNV-1a 64
+//! over, for each declared file in the declared order: its path in the normal form (gripforge_scene_format::sources::
+//! normal), a zero byte, its length in bytes (u64, little-endian), its bytes. Written `fnv1a64:` and 16 lowercase
+//! hexadecimal digits.
 //!
 //! This file has no `use` and only `const fn`s: gripforge-build writes it as it is into the crate of `game.main`
-//! (`src/sources_digest.rs`), which computes the digest of the bytes it compiles (`include_bytes!`) and keeps it in the
-//! custom section `gripforge.sources` (wasm) or the symbol `GRIPFORGE_SOURCES` (native library). The same function
-//! here, in the compiler and in the page (core/gateway-web/dev-project.mjs `sourcesDigest`), checked against the same
-//! values (core/scene-format/tests/sources-digest.json).
+//! (`src/sources_digest.rs`, crate::crate_gen::DIGEST_RS), which computes the digest of the bytes it compiles
+//! (`include_bytes!`) and keeps it in the custom section `gripforge.sources` (wasm) or the symbol `GRIPFORGE_SOURCES`
+//! (native library). The one function: the compiler, the common core of the format and the page (by the wasm of
+//! module-kits core/scene-format-wasm, `gf_sources_digest`) all call it, checked against tests/values.json.
 
 /// The length of a digest, in bytes of text.
 pub const DIGEST_LEN: usize = 24;

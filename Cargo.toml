@@ -20,12 +20,14 @@ path = "src/main.rs"
 [dependencies]
 serde_json = { workspace = true }
 gripforge-scene-format = { path = "crates/scene-format", version = "0.1.1" }
+# The digest of the game's code: its one copy (the kits repository imports it by git, pinned).
+gripforge-sources-digest = { path = "crates/sources-digest", version = "0.1.1" }
 ureq = "2"
 sha2 = "0.10"
 base64 = "0.22"
 
 [workspace]
-members = [".", "crates/scene-format"]
+members = [".", "crates/scene-format", "crates/sources-digest"]
 # sdk/: the public part of the kits SDK, its own workspace (what the generated game crates compile against).
 exclude = ["sdk"]
 
