@@ -247,6 +247,7 @@ cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all --check
 | Part | Role |
 |---|---|
 | `crates/scene-format` | the common core of the project format: tolerant reading, validator, sub-scenes, lowering for game.engine, packing, the generator of `init_scene.rs` (`code.rs`): an unchanged copy of `core/scene-format` of the kits repository (`tools/sync-scene-format <module-kits checkout> [--check]`, revision in `crates/scene-format/scene-format.json`) |
+| `crates/sources-digest` | the digest of the game's code (`gripforge-sources-digest`: `const fn` FNV-1a 64 over the files of `sources`), its one copy: the generated crate of `game.main` gets its file as it is (`SOURCE`), the kits repository imports the crate by git at a pinned commit (the common code lives here, decision of 21/11) |
 | `src/core.rs`, `src/strict.rs` | the core of a build: the strict rules, the packing of the built game, the call of the generator |
 | `src/project.rs` | reads the project, the scene files it still names, the kits of the project |
 | `src/crate_gen.rs` | the crate of the game's module |

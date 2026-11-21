@@ -153,6 +153,7 @@ version = "0.1.1"
 dependencies = [
  "base64",
  "gripforge-scene-format",
+ "gripforge-sources-digest",
  "serde_json",
  "sha2",
  "ureq",
@@ -160,6 +161,13 @@ dependencies = [
 
 [[package]]
 name = "gripforge-scene-format"
+version = "0.1.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "gripforge-sources-digest"
 version = "0.1.1"
 dependencies = [
  "serde_json",
