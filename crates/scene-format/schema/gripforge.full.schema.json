@@ -3806,7 +3806,7 @@
           "properties": {
             "cells": {
               "type": "object",
-              "description": "2.1: the world loaded by cells (docs/design/monde-par-cellules.md): the defaults of every cell. A cell is a scene of game.engine declared in its section kits[\"asset.preload\"].cell, in list, or in code (declareCell).",
+              "description": "2.1: the world loaded by cells (docs/design/monde-par-cellules.md): the defaults of every cell. A cell is a scene of game.engine declared in its section kits[\"asset.preload\"], in list, or in code (declareCell).",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -3868,7 +3868,7 @@
                   "maxItems": 256,
                   "items": {
                     "type": "object",
-                    "description": "A cell: scene, then the fields of the section kits[\"asset.preload\"].cell."
+                    "description": "A cell: scene, then the fields of the section kits[\"asset.preload\"]."
                   },
                   "description": "Cells declared in the config (the sections of the scenes come after and win)."
                 }
@@ -17071,62 +17071,10 @@
                     "minimum": -3.1416,
                     "maximum": 3.1416,
                     "description": "The heading the rider gets off with, from the steed's (rad, + to the left); 0 by default."
-                  },
-                  "seatOffset": {
-                    "type": "number",
-                    "minimum": -3,
-                    "maximum": 3,
-                    "default": 0,
-                    "description": "Metres of the saddle forward (+) or back (-) along the steed's heading: the steed hangs (or stands) that far behind the rider's origin, in the rider's frame."
-                  },
-                  "grip": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 500,
-                    "default": 25,
-                    "description": "m/s² of the lateral brake: what the steed's velocity has across its heading is taken off at this rate, so that it turns instead of sliding sideways (0: no brake)."
-                  },
-                  "walkFrom": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 40,
-                    "default": 0.2,
-                    "description": "m/s from which the published gait is walk (under it: idle); 10 % margin going down."
-                  },
-                  "gallopFrom": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 60,
-                    "description": "m/s from which the published gait is gallop; absent: halfway between speed and runSpeed."
-                  },
-                  "saddle": {
-                    "type": [
-                      "object",
-                      "boolean",
-                      "null"
-                    ],
-                    "properties": {
-                      "bone": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 64,
-                        "description": "The saddle bone of the steed's model (a name or a * pattern)."
-                      },
-                      "at": {
-                        "type": "array",
-                        "items": {
-                          "type": "number"
-                        },
-                        "minItems": 3,
-                        "maxItems": 3,
-                        "description": "The seat above that bone, metres in the steed's frame (+Y up, +Z forward); [0, 0, 0] by default."
-                      }
-                    },
-                    "description": "The saddle bone the rider's DRAWING sits on, at the render, interpolated (the presentation module of the kit lays the drawn pelvis on it at each frame): posed once at the mount as the rider's component locomotion.mode.mount.saddle, never read at a tick; the physics keeps carrying the rider seat above the steed's feet. Absent, false or null: the rider is drawn where the physics carries it."
                   }
                 }
               },
-              "description": "The registry of steed genres, by name, over the built-in horse (and over a genre of the same name): speed, runSpeed, jump, turnRate, accel, seat, dismount, dismountYaw, seatOffset, grip, walkFrom, gallopFrom, saddle."
+              "description": "The registry of steed genres, by name, over the built-in horse (and over a genre of the same name): speed, runSpeed, jump, turnRate, accel, seat."
             },
             "defaultGenre": {
               "type": "string",
@@ -17153,17 +17101,6 @@
               "maximum": 60,
               "default": 9.81,
               "description": "m/s² of the fall of a mounted body."
-            },
-            "hipBones": {
-              "type": "array",
-              "default": [],
-              "maxItems": 8,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64
-              },
-              "description": "The pelvis bones of the riders' models (names or * patterns) the drawing lays on a saddle; empty: pelvis, *Hips, hips."
             },
             "debugger": {
               "type": "object",
