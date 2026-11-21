@@ -1,0 +1,237 @@
+{
+  "schema": "gripforge.gameproject/1",
+  "id": "banc",
+  "name": "socle du banc de démo",
+  "requires": [
+    "game.engine",
+    "core.physics",
+    "core.control",
+    "core.locomotion",
+    "debug.inspector"
+  ],
+  "installed": [
+    {
+      "id": "game.engine",
+      "config": {
+        "flow": {
+          "title": "off"
+        }
+      }
+    },
+    {
+      "id": "core.physics",
+      "config": {}
+    },
+    {
+      "id": "core.input",
+      "config": {
+        "pointer": {
+          "lock": "click"
+        }
+      }
+    },
+    {
+      "id": "core.camera",
+      "config": {}
+    },
+    {
+      "id": "locomotion.third_person",
+      "config": {
+        "keys": {
+          "move_x": {
+            "kind": "axis",
+            "bindings": [
+              {
+                "neg": "KeyA",
+                "pos": "KeyD"
+              },
+              {
+                "neg": "ArrowLeft",
+                "pos": "ArrowRight"
+              }
+            ]
+          },
+          "move_y": {
+            "kind": "axis",
+            "bindings": [
+              {
+                "neg": "KeyS",
+                "pos": "KeyW"
+              },
+              {
+                "neg": "ArrowDown",
+                "pos": "ArrowUp"
+              }
+            ]
+          },
+          "move_pad": {
+            "kind": "vector",
+            "bindings": [
+              "StickLeft"
+            ],
+            "invertY": true
+          },
+          "sprint": {
+            "kind": "button",
+            "bindings": [
+              "ShiftLeft",
+              "ShiftRight",
+              "Pad10"
+            ]
+          },
+          "jump": {
+            "kind": "button",
+            "bindings": [
+              "Space",
+              "Pad0"
+            ]
+          },
+          "crouch": {
+            "kind": "button",
+            "bindings": [
+              "KeyC",
+              "ControlLeft",
+              "Pad1"
+            ]
+          },
+          "orbit": {
+            "kind": "button",
+            "bindings": [
+              "Mouse0"
+            ]
+          },
+          "steer": {
+            "kind": "button",
+            "bindings": [
+              "Mouse2"
+            ]
+          }
+        },
+        "player": false,
+        "pilots": [
+          {
+            "tag": "player",
+            "mover": {
+              "originOffset": [
+                0,
+                -0.9,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "core.control",
+      "config": {}
+    },
+    {
+      "id": "core.locomotion",
+      "config": {}
+    },
+    {
+      "id": "core.animation",
+      "config": {}
+    },
+    {
+      "id": "asset.preload",
+      "config": {}
+    },
+    {
+      "id": "debug.inspector",
+      "config": {
+        "bench": {
+          "enabled": true,
+          "panel": {
+            "open": true
+          },
+          "keys": {
+            "run_all": "KeyT",
+            "station1": "Digit1",
+            "station2": "Digit2",
+            "station3": "Digit3",
+            "station4": "Digit4",
+            "station5": "Digit5",
+            "station6": "Digit6",
+            "station7": "Digit7",
+            "station8": "Digit8",
+            "station9": "Digit9",
+            "station10": "Digit0"
+          }
+        }
+      }
+    },
+    {
+      "id": "core.webui",
+      "config": {}
+    },
+    {
+      "id": "dev.builder",
+      "config": {}
+    }
+  ],
+  "data": {
+    "archetypes": [
+      {
+        "id": "banc_joueur",
+        "kind": "character",
+        "tags": [
+          "player"
+        ],
+        "asset": {
+          "slot": "capsule"
+        },
+        "states": {
+          "look": {
+            "values": [
+              "capsule",
+              "mannequin",
+              "lina",
+              "ingenieur",
+              "ingenieur_queue"
+            ],
+            "default": "capsule"
+          }
+        },
+        "reflect": [
+          {
+            "when": {
+              "look": "mannequin"
+            },
+            "set": {
+              "slot": "character-mannequin"
+            }
+          },
+          {
+            "when": {
+              "look": "lina"
+            },
+            "set": {
+              "slot": "character-lina"
+            }
+          },
+          {
+            "when": {
+              "look": "ingenieur"
+            },
+            "set": {
+              "slot": "character-ingenieur"
+            }
+          },
+          {
+            "when": {
+              "look": "ingenieur_queue"
+            },
+            "set": {
+              "slot": "character-ingenieur_queue"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "about": "Le socle commun des salles du banc (tests/base-room/common/README.md) : les kits du joueur et du banc, l'archétype du joueur banc_joueur (moteur : core.locomotion piloté par locomotion.third_person, pris par core.control ; l'apparence suit son état look), le banc de debug.inspector (F8, postes data.stations). Chaque salle de base l'inclut et pose le nœud du joueur (id banc_joueur) dans sa scène, à son entrée. Aucune scène ici."
+  }
+}

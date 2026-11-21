@@ -1,0 +1,13 @@
+{
+  "id": "base_room_salle_sans_pilier",
+  "name": "banc · salle de base, sans pilier",
+  "includes": [
+    {
+      "file": "../common/salles/salle.gripforge",
+      "as": "salle",
+      "variables": {
+        "pilier": false
+      }
+    }
+  ]
+}

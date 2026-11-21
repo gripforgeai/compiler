@@ -364,18 +364,23 @@ fn a_reader_that_fetches_gets_the_paths_it_misses() {
     assert_eq!(done["project"], resolve_project(&m, &files(&list)).0);
 }
 
-/// The proof room of the bench (tests/base-room/configs/includes*.gripforge) resolves without an error.
+/// The proof room of the bench (tests/base-room/includes*/project.gripforge, including
+/// common/salles/preuve-inclusions.gripforge) resolves without an error.
 #[test]
 fn the_proof_room_of_the_bench_resolves() {
-    let dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/base-room/configs");
-    let read = |p: &str| {
-        std::fs::read_to_string(dir.join(p))
-            .ok()
-            .and_then(|t| serde_json::from_str::<Json>(&t).ok())
+    let demo = |name: &str| {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/base-room")
+            .join(name);
+        let read = move |p: &str| {
+            std::fs::read_to_string(dir.join(p))
+                .ok()
+                .and_then(|t| serde_json::from_str::<Json>(&t).ok())
+        };
+        resolve_project(&read("project.gripforge").unwrap(), &read)
     };
-    let defaut = resolve_project(&read("includes-defaut.gripforge").unwrap(), &read);
-    let tuned = resolve_project(&read("includes.gripforge").unwrap(), &read);
+    let defaut = demo("includes-defaut");
+    let tuned = demo("includes");
     for (p, issues) in [&defaut, &tuned] {
         assert!(!issues.iter().any(Issue::is_error), "{issues:?}");
         assert_eq!(
@@ -392,6 +397,55 @@ fn the_proof_room_of_the_bench_resolves() {
     let room = scene(&tuned.0, "salle_preuve").unwrap();
     assert_eq!(node(room, "Caisse")["color"], json!("#30c040"));
     assert_eq!(node(room, "Boule")["visible"], json!(false));
+}
+
+/// The room of the bench (tests/base-room/common/salles/salle.gripforge, which includes the bench's base
+/// banc.gripforge), included by its two proof demos (tests/base-room/salle*/project.gripforge): resolved and valid;
+/// the pillar follows `salle.pilier`; the stations stay data.
+#[test]
+fn the_room_of_the_bench_resolves_and_its_pillar_follows_its_variable() {
+    let demo = |name: &str| {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/base-room")
+            .join(name);
+        let read = move |p: &str| {
+            std::fs::read_to_string(dir.join(p))
+                .ok()
+                .and_then(|t| serde_json::from_str::<Json>(&t).ok())
+        };
+        resolve_project(&read("project.gripforge").unwrap(), &read)
+    };
+    let with = demo("salle");
+    let without = demo("salle-sans-pilier");
+    for (p, issues) in [&with, &without] {
+        assert!(!issues.iter().any(Issue::is_error), "{issues:?}");
+        let valid = validate_project(p, &|_: &str| None, &Registry::base());
+        assert!(!valid.iter().any(Issue::is_error), "{valid:?}");
+        assert_eq!(p["data"]["stations"].as_array().unwrap().len(), 5);
+        let room = scene(p, "salle_room").unwrap();
+        let pilier = node(room, "Pilier");
+        assert!(
+            pilier.get("visible").is_none(),
+            "visible became a state and its reflect rules"
+        );
+        assert_eq!(pilier["reflect"].as_array().unwrap().len(), 2);
+    }
+    assert_eq!(with.0["variables"]["salle.pilier"], json!(true));
+    assert_eq!(without.0["variables"]["salle.pilier"], json!(false));
+    // The pillar's `visible` reads the include's variable itself (renamed `salle.pilier`), not a node variable that
+    // only starts from it: a `set_var` of `salle.pilier` in play reaches the render (the bench's stations).
+    for (p, _) in [&with, &without] {
+        let pilier = node(scene(p, "salle_room").unwrap(), "Pilier");
+        let states = pilier["entity"]["states"].as_object().unwrap();
+        assert!(
+            states
+                .values()
+                .any(|d| d == &json!({ "derived": { "var": "salle.pilier" } })),
+            "{states:?}"
+        );
+    }
+    // The trigger's set_var is renamed with the include's `as`, as the stations read it.
+    assert!(with.0.to_string().contains(r#""path":"salle.arrivee""#));
 }
 
 /// The code written for a project poses the scenes of its included files, as the validator and the pack read them

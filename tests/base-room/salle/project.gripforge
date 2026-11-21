@@ -1,0 +1,10 @@
+{
+  "id": "base_room_salle",
+  "name": "banc · salle de base (pilier présent)",
+  "includes": [
+    {
+      "file": "../common/salles/salle.gripforge",
+      "as": "salle"
+    }
+  ]
+}

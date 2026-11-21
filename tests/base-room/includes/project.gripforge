@@ -1,9 +1,9 @@
 {
   "id": "base_room_includes",
-  "name": "preuve des inclusions",
+  "name": "banc · preuve des inclusions (paramétrée)",
   "includes": [
     {
-      "file": "includes-salle.gripforge",
+      "file": "../common/salles/preuve-inclusions.gripforge",
       "as": "salle",
       "variables": {
         "pilier": false,
