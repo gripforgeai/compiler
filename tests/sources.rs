@@ -336,10 +336,10 @@ fn the_dev_module_is_the_games_code_only_with_the_digest_of_its_files() {
         assert!(module.contains(hook), "{hook}: {module}");
     }
     assert!(module.contains("GAME.scene_enter(kx, scene)"));
-    // The function the module compiles is this compiler's copy of the common core's file, byte for byte.
+    // The function the module compiles is the file of crates/sources-digest (its one copy), byte for byte.
     let digest_rs = std::fs::read_to_string(g.join("src/sources_digest.rs")).unwrap();
     let core = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/sources_digest.rs"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/sources-digest/src/sources_digest.rs"),
     )
     .unwrap();
     assert_eq!(digest_rs, core);
@@ -369,11 +369,11 @@ fn the_built_module_carries_the_digest_too() {
     );
 }
 
-/// The digest gives the shared values (tests/sources-digest.json, a copy of module-kits
-/// core/scene-format/tests/sources-digest.json, checked there by the Rust core and by the page too).
+/// The digest the compiler calls (crate::sources_digest, the re-export of crates/sources-digest) gives the shared
+/// values of that crate (its tests/values.json, the one the page's binding checks too).
 #[test]
 fn the_digest_is_the_one_of_the_shared_values() {
-    let cases: Json = serde_json::from_str(include_str!("sources-digest.json")).unwrap();
+    let cases: Json = serde_json::from_str(gripforge_sources_digest::VALUES).unwrap();
     for c in cases["cases"].as_array().unwrap() {
         let files: Vec<(String, Vec<u8>)> = c["files"]
             .as_array()
