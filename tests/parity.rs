@@ -1,7 +1,7 @@
-//! The parity with the development mode of the kits repository: each case of tests/parity (copied with its expected
-//! resolution from module-kits tools/parity/cases by tools/sync-scene-format) read by `gripforge-build --resolve` gives
-//! the project and the resolution issues the kits repository's reference reader wrote, compared canonically (keys
-//! sorted, whole numbers without a fraction). The full corpus (every `.gripforge` of the kits repository, with its
+//! The parity with the development mode of the kits repository: each case of tests/parity (taken with its expected
+//! resolution from module-kits tools/parity/cases; this repository's fixtures since the format lives here) read by
+//! `gripforge-build --resolve` gives the project and the resolution issues the kits repository's reference reader
+//! wrote, compared canonically (keys sorted, whole numbers without a fraction). The full corpus (every `.gripforge` of the kits repository, with its
 //! kits) is compared by the CI of module-kits (tools/parity/parity.mjs --compiler).
 
 use gripforge_compiler::cli::main as cli;

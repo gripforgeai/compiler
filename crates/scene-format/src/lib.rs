@@ -20,10 +20,12 @@
 //! - [`writeback`]: one command written back where its scene lives (inline in the project or its file), with the
 //!   revision of a text and the lines that moved (dev.builder `applyToProject`, the CLI, the MCP).
 //!
-//! Who uses it: game.engine (kits/game_engine/logic, lowering the scenes of a project), the dev.builder kit (the
-//! development mode, the project read at run time), and the compiler (gripforge-build: a copy of this crate,
-//! unchanged, by its tools/sync-scene-format; their parity is checked by tools/parity,
-//! docs/design/parite-compilateur-dev-builder.md).
+//! Who uses it: the compiler (gripforge-build, this repository), and in the kits repository (gripforgeai/module-kits,
+//! which imports this crate by git at a pinned commit: one copy, here, decision of 21/11) game.engine (lowering the
+//! scenes of a project), the dev.builder kit (the development mode, the project read at run time) and the web page of
+//! the development mode (its wasm, core/scene-format-wasm). The JSON schema of the format (gripforge.schema.json,
+//! assembled with the kits' sections into gripforge.full.schema.json) lives in the kits repository, which checks it
+//! against [`registry`] at the pinned commit.
 //! No host, no kit, no engine: JSON in, JSON out.
 
 pub mod build;
