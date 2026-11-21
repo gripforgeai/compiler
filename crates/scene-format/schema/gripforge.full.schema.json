@@ -10023,7 +10023,7 @@
                 "type": "object"
               },
               "default": [],
-              "description": "Weapons put in hands at the start: [{ holder (player, an id, { tag }), weapon, ammo?, reserve? }]."
+              "description": "Weapons put in hands at the start: [{ holder (player, an id, { tag }), weapon, ammo?, reserve?, inventory? }]."
             },
             "hudHolder": {
               "default": "player",
