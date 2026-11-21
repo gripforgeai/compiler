@@ -18980,7 +18980,19 @@
               "type": "number",
               "default": 2,
               "minimum": 0,
-              "description": "Metres an object hidden by distance must come back within before it shows again (no flicker at the edge)."
+              "description": "Metres an object hidden by distance must come back within before it shows again (no flicker at the edge). Also the default margin of isVisible: a box out of the pyramid but within this many metres of it is at the edge."
+            },
+            "hideDelay": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0,
+              "description": "Seconds what leaves the visible stays visible before it is hidden: an object leaving the camera's field or its distance waits this long before its fade, and a box of isVisible stays visible this long after it left (by its id). A camera going back and forth changes nothing. isVisible takes its own in its options."
+            },
+            "poseStep": {
+              "type": "number",
+              "default": 1,
+              "minimum": 0.05,
+              "description": "Metres (and the same in tenths of a radian of turn) the camera moves before the render side gives its pose again (report): the pose isVisible sees, said rarely."
             },
             "fadeSeconds": {
               "type": "number",
@@ -21031,12 +21043,25 @@
             "interaction": {
               "type": "boolean",
               "default": true,
-              "description": "Bend the grass visually around the bodies walking in it (the player, entities with world.natural.bend or character.capsule), in the vertex shader; no physics force or persistent gameplay track. false: nothing bends."
+              "description": "Bend the grass visually around the bodies moving in it (the player, the characters, every body of the physics that is not fixed, entities with world.natural.bend), in the vertex shader; no physics force or persistent gameplay track. false: nothing bends."
+            },
+            "interactionBodies": {
+              "type": "boolean",
+              "default": true,
+              "description": "The bodies of the physics that are not fixed (dynamic, kinematic) bend the grass with nothing declared: read in place from the shape table of core.physics when its set changes, at their drawn pose; radius from the widest half of their box on the ground, contact at the bottom of the box (a body above the blades bends nothing). At most 16 bodies, the nearest to the eye first."
+            },
+            "interactionExclude": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "Kinds that never bend the grass: an entity kind, a tag, or a kind of body (dynamic, kinematic)."
             },
             "interactionPlayer": {
               "type": "boolean",
               "default": true,
-              "description": "The player bends the grass without declaring anything (its transform as the host gives it every frame); other entities declare the component world.natural.bend { radius, strength, offset, enabled }."
+              "description": "The player bends the grass without declaring anything (its transform as the host gives it every frame). The optional component world.natural.bend { radius, strength, offset, enabled } forces, adjusts or (enabled: false) turns off the bend of an entity."
             },
             "interactionRadius": {
               "type": "number",
@@ -21064,7 +21089,7 @@
               "minimum": 0.1,
               "maximum": 10,
               "default": 1.4,
-              "description": "Seconds for recent character contacts to straighten after departure; bounded to eight contact segments."
+              "description": "Seconds for recent contacts to straighten after the body left or moved on (a body standing still keeps its stroke held); bounded to sixteen contact segments."
             },
             "fadeDistance": {
               "type": "number",
