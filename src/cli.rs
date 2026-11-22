@@ -3,12 +3,12 @@
 //! it in process.
 //!
 //!   gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>]
-//!                   [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
+//!                   [--target <gateway>] [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]
 
 use crate::build::{build, BuildOptions};
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
+pub const USAGE: &str = "usage: gripforge-build [<project.gripforge | folder>] [--out <dir>] [--kits-path <dir>] [--sdk <dir>] [--sdk-rev <rev>] [--target <gateway>] [--check | --resolve] [--dev] [--lenient] [--json] [--compress-textures | --no-compress-textures] [--compress-textures-url <url>]";
 
 /// What a command line asks.
 #[derive(Debug, Default, PartialEq)]
@@ -25,6 +25,8 @@ pub struct Args {
     pub json: bool,
     pub compress_textures: bool,
     pub compress_textures_url: Option<String>,
+    /// The gateway the game is built for (`bevy-web` by default): which dependencies of the kits are needed.
+    pub target: Option<String>,
     pub help: bool,
     pub version: bool,
 }
@@ -40,6 +42,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--kits-path" => a.kits_path = Some(value(x)?),
             "--sdk" => a.sdk = Some(value(x)?),
             "--sdk-rev" => a.sdk_rev = Some(value(x)?),
+            "--target" => a.target = Some(value(x)?),
             "--check" => a.check = true,
             "--resolve" => a.resolve = true,
             "--dev" => a.dev = true,
@@ -100,6 +103,7 @@ pub fn main(argv: &[String], out: &mut dyn FnMut(&str), err: &mut dyn FnMut(&str
         dev: a.dev,
         compress_textures: a.compress_textures,
         compress_textures_url: a.compress_textures_url,
+        target: a.target,
     });
     let name = r.project_name.clone().unwrap_or_else(|| "project".into());
     if a.json {

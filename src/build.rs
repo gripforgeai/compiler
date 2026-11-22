@@ -46,6 +46,9 @@ pub struct BuildOptions {
     pub compress_textures: bool,
     /// The route (default [`crate::textures::DEFAULT_URL`]).
     pub compress_textures_url: Option<String>,
+    /// The gateway the game is built for (`bevy-web`, `bevy`, `godot`…): which dependencies of the kits are needed
+    /// (default [`crate::core::DEFAULT_TARGET`]).
+    pub target: Option<String>,
 }
 
 /// What a build answers.
@@ -108,7 +111,8 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     let t0 = Instant::now();
     let op = if o.check { "check" } else { "code" };
     let answer = crate::core::run(
-        &json!({ "op": op, "project": project, "files": files, "kits": kits, "lenient": o.lenient }),
+        &json!({ "op": op, "project": project, "files": files, "kits": kits, "lenient": o.lenient,
+            "target": o.target.as_deref().unwrap_or(crate::core::DEFAULT_TARGET) }),
     );
     steps.push(json!({ "name": if o.check { "check" } else { "check+generate" }, "ms": t0.elapsed().as_millis() as u64, "errors": answer["errors"].as_u64().unwrap_or(0) }));
     let issues: Vec<Json> = answer["issues"].as_array().cloned().unwrap_or_default();

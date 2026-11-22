@@ -127,7 +127,11 @@ fn a_kit_needed_and_not_listed_refuses_the_build_with_kit_required() {
         let r = built(&d, check, None);
         assert!(!r.ok, "check={check}");
         assert_eq!(required(&r), vec![ENGINE_NEEDS_SCENE.to_string()]);
-        let i = r.issues.iter().find(|i| i["code"] == "kit_required").unwrap();
+        let i = r
+            .issues
+            .iter()
+            .find(|i| i["code"] == "kit_required")
+            .unwrap();
         assert_eq!(i["level"], "error");
         assert!(i["fix"].as_str().unwrap().contains("core.scene"));
     }
@@ -158,8 +162,12 @@ fn every_lack_is_said_at_once() {
     let r = built(&d, true, None);
     let m = required(&r);
     assert_eq!(m.len(), 2, "{m:?}");
-    assert!(m.iter().any(|x| x.contains("game.engine a besoin de core.scene (cible bevy-web)")));
-    assert!(m.iter().any(|x| x.contains("game.engine a besoin de core.render (cible bevy-web)")));
+    assert!(m
+        .iter()
+        .any(|x| x.contains("game.engine a besoin de core.scene (cible bevy-web)")));
+    assert!(m
+        .iter()
+        .any(|x| x.contains("game.engine a besoin de core.render (cible bevy-web)")));
 }
 
 /// Criterion 3: a recommendation absent blocks nothing and is never added to the built game.
@@ -190,7 +198,12 @@ fn the_target_says_which_dependencies_are_needed() {
     );
     let (mut out, mut err) = (String::new(), String::new());
     let code = cli(
-        &[d.to_string_lossy().into_owned(), "--check".into(), "--target".into(), "godot".into()],
+        &[
+            d.to_string_lossy().into_owned(),
+            "--check".into(),
+            "--target".into(),
+            "godot".into(),
+        ],
         &mut |s| out.push_str(s),
         &mut |s| err.push_str(s),
     );

@@ -7,7 +7,9 @@
 //!   `validate_project`, the same validator as dev.builder and the MCP), then **strictly**: a build accepts no
 //!   guess, so every warning of the tolerant validator is an error here (`promoted: true`), but for the few that only
 //!   say a node is read and not played ([`LENIENT`]); every installed or required kit must have its kit.api.json in
-//!   the catalog (`kit_unknown`: no accessor can be generated without it). Each issue says the file, the scene, the
+//!   the catalog (`kit_unknown`: no accessor can be generated without it); every kit a listed kit needs for the
+//!   `target` (default [`DEFAULT_TARGET`]) is listed too (`kit_required`, the check of the gateways and dev.builder,
+//!   `gripforge_scene_format::kits`). Each issue says the file, the scene, the
 //!   element (node path), the property (field), what is wrong and what is expected.
 //! - `{ "op": "resolve", project, files, kits }`: the project resolved and the tolerant validator's issues, nothing
 //!   promoted ([`resolve`]): what the development mode of the kits repository makes of the same project.
@@ -21,7 +23,7 @@
 
 use gripforge_scene_format::expand::{expand_project, installed_of};
 use gripforge_scene_format::issue::{Issue, Level};
-use gripforge_scene_format::{project, requires, Registry};
+use gripforge_scene_format::{kits as kit_needs, project, requires, Registry};
 use serde_json::{json, Map, Value as Json};
 
 use crate::strict;
@@ -37,6 +39,9 @@ pub const LENIENT: &[&str] = &[
     "light_not_placed",
     "camera_not_placed",
 ];
+/// The gateway a build is checked for when none is given (`target`): the official web player. A dependency of a kit
+/// that names other targets (`targets: ["godot"]`) is not needed for it (module-kits `docs/dependances.md`).
+pub const DEFAULT_TARGET: &str = "bevy-web";
 /// The version of this core (the package's).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -192,6 +197,23 @@ pub fn check(req: &Json) -> (Vec<Json>, Vec<Json>) {
                 "message": format!("the kit {id}{} is not in the project: no kit.api.json for it among the kits of the project, so no accessor to call it", version_of(&id)),
                 "fix": format!("install the kits of the project ({}), or give the folder of the kits with --kits-path <dir> (<kit>/kit.api.json); check the id {id} (the kits are named like core.light)", crate::project::INSTALL_KITS) }));
         }
+    }
+    // The kits are fixed at the start: every kit a listed kit needs (for the target) is listed too, else the one
+    // kit_required error of the gateways and dev.builder (gripforge_scene_format::kits, one copy), never a guess.
+    let target = req
+        .get("target")
+        .and_then(Json::as_str)
+        .unwrap_or(DEFAULT_TARGET);
+    let apis: Map<String, Json> = kits
+        .iter()
+        .filter_map(|a| Some((a.get("id")?.as_str()?.to_string(), a.clone())))
+        .collect();
+    for i in kit_needs::check_required(
+        &kit_needs::installed_ids(&project),
+        &Json::Object(apis),
+        target,
+    ) {
+        out.push(located(&i, &by_file, false));
     }
     (out, scenes)
 }

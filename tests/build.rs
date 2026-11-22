@@ -413,7 +413,7 @@ fn the_scene_files_of_an_older_project() {
         read_json(&room_dir().join("project.gripforge"), "file_not_json").unwrap()["id"],
         "dev_builder_room"
     );
-    assert_eq!(kit_catalog(Some(&kits())).unwrap().len(), 4);
+    assert_eq!(kit_catalog(Some(&kits())).unwrap().len(), 5);
 }
 
 #[test]

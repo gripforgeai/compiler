@@ -1,0 +1,107 @@
+{
+  "schema": "gripforge.kit-api/1",
+  "id": "core.scene",
+  "version": "1.1.0",
+  "requires": ["game.engine"],
+  "provides": [
+    {
+      "id": "core.scene",
+      "version": "1.1.0",
+      "description": "The native scenes of a Bevy game: load(scene), show(scene), unload(scene), setVisible(scene, visible), setInert(scene, inert), state(scene), inert(scene), progress(scene). Answers the scene orders of game.engine (game.engine.scene.*) and tells it the scenes the game puts in (game.engine.scenes.nativeEntered / nativeLeft)."
+    }
+  ],
+  "configSchema": {"type":"object","properties":{},"additionalProperties":false},
+  "defaults": {},
+  "events": {
+    "emits": [],
+    "listens": [
+      {"topic":"game.engine.scene.loading","description":"A scene starts loading (payload to): load(to)."},
+      {
+        "topic": "game.engine.scene.entered",
+        "description": "A scene is entered (payload scene): load(scene), then show(scene) once loaded."
+      },
+      {
+        "topic": "game.engine.scene.unloaded",
+        "description": "A scene is unloaded (payload scene, kept): unload(scene) unless kept."
+      },
+      {
+        "topic": "game.engine.scene.state",
+        "description": "The state of a loaded scene, game.engine's (payload scene, visible, paused): setVisible(scene, visible), then setInert(scene, paused)."
+      },
+      {
+        "topic": "game.engine.scene.failed",
+        "description": "A load failed and game.engine retries (payload scene, action retry): load(scene) again."
+      }
+    ]
+  },
+  "engine": {"role":"service"},
+  "services": {
+    "core.scene": {
+      "description": "The native scenes of a Bevy game, loaded in the background by the engine's own asset server. Each method can be served by the game in its language (provide_<method>); a reading answers typed, in place.",
+      "methods": [
+        {
+          "name": "load",
+          "args": ["scene"],
+          "description": "Loads the native scene of the scene document scene (its native path) and its models in the background, without showing it; a scene the game already put in is only observed. Progress goes to game.engine (game.engine.scenes.report, then game.engine.scene.progress)."
+        },
+        {
+          "name": "show",
+          "args": ["scene"],
+          "description": "Spawns scene in the current scene of the engine once it is loaded (at once when it already is), freeing the scene of the kits it replaces."
+        },
+        {
+          "name": "unload",
+          "args": ["scene"],
+          "description": "Frees what core.scene spawned and loaded for scene; a scene the game put in is left as the game made it."
+        },
+        {
+          "name": "setVisible",
+          "args": ["scene","visible"],
+          "description": "Hides or shows again a scene core.scene spawned (a scene kept below another)."
+        },
+        {
+          "name": "setInert",
+          "args": ["scene","inert"],
+          "description": "Makes a loaded scene inert (it stays loaded, visible or not, and no longer runs: no logic, physics, input nor animation) or wakes it without reloading. On Bevy: the marker InertScene on its entities (Without<InertScene> in the game's systems), its AnimationPlayers paused, and Bevy's Disabled when it is hidden as well. game.engine's paused (game.engine.scene.state) is this state."
+        },
+        {"name":"inert","args":["scene"],"description":"Whether scene is inert (setInert)."},
+        {
+          "name": "state",
+          "args": ["scene"],
+          "description": "Where scene stands: idle, loading, ready (loaded, not shown), shown, observed (put in by the game), failed."
+        },
+        {
+          "name": "progress",
+          "args": ["scene"],
+          "description": "How far the load of scene is, 0 to 1 (Bevy tells only under way or loaded: 0 or 1)."
+        },
+        {
+          "name": "debug",
+          "args": [],
+          "description": "What the debugger shows of the native scenes (debug.expose@1): each scene with its state, visible and inert, the scenes of the game observed, the current one. JSON, read by debug.inspector only (an open panel, a snapshot). On the blank player the presentation module pushes the same entry instead (debug.inspector.publish)."
+        }
+      ]
+    }
+  },
+  "site": "site",
+  "expose": [
+    {
+      "id": "core.scene.scenes",
+      "tab": {"id":"scene","icon":"listTree"},
+      "for": ["debug"],
+      "label": "Native scenes",
+      "category": "scenes",
+      "kind": "info",
+      "description": "The native scenes and their states, the loadings under way: read through core.scene.debug on Bevy native, pushed by the presentation module on the blank player (debug.inspector.publish), only while the debugger looks.",
+      "call": "core.scene.debug"
+    },
+    {
+      "id": "core.scene.events",
+      "tab": {"id":"scene","icon":"listTree"},
+      "for": ["debug"],
+      "label": "Recent scene events",
+      "category": "events",
+      "topics": ["game.engine.scene.entered","game.engine.scene.unloaded","game.engine.scene.state","core.scene.put","core.scene.remove"]
+    }
+  ]
+}

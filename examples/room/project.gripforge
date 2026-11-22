@@ -3,6 +3,7 @@
   "name": "Dev builder room",
   "requires": [
     "game.engine",
+    "core.scene",
     "dev.builder",
     "core.light",
     "core.camera"
@@ -21,6 +22,9 @@
           "minLoadingMs": 0
         }
       }
+    },
+    {
+      "id": "core.scene"
     },
     {
       "id": "dev.builder"

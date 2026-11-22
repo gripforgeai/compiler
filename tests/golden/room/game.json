@@ -8,6 +8,7 @@
   "name": "Dev builder room",
   "requires": [
    "game.engine",
+   "core.scene",
    "core.light",
    "core.camera"
   ],
@@ -26,6 +27,11 @@
      }
     },
     "version": "1.24.1",
+    "enabled": true
+   },
+   {
+    "id": "core.scene",
+    "version": "1.1.0",
     "enabled": true
    },
    {
@@ -419,6 +425,7 @@
   "project": "dev_builder_room",
   "order": [
    "game.engine",
+   "core.scene",
    "core.light",
    "core.camera",
    "game.main"
@@ -426,6 +433,11 @@
   "kits": {
    "game.engine": {
     "version": "1.24.1",
+    "enabled": true,
+    "dependencies": {}
+   },
+   "core.scene": {
+    "version": "1.1.0",
     "enabled": true,
     "dependencies": {}
    },
