@@ -1,5 +1,7 @@
 # The game's code: `sources`
 
+> Français : [sources.fr.md](sources.fr.md).
+
 **The rule: `project.gripforge` is the only entry of a game.** The Rust files of the game's own code are declared by the
 project, in `sources`; the compiler takes no file by convention (no `index.rs`, no `src/` read because it is there).
 Decision of gripforgeai/gripforge#420, announced on gripforgeai/compiler#10 (the `index.rs` it took implicitly is gone).
@@ -117,4 +119,6 @@ nothing is written.
 ## See also
 
 - [README](../README.md): the command, its options, the kits of a project.
+- [The kits of a game](kit-loading.md): the build reads the project as `dev.builder` does and refuses a required kit
+  that is not listed (`kit_required`).
 - [CHANGELOG](../CHANGELOG.md): 0.1.2.

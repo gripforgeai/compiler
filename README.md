@@ -39,6 +39,7 @@ On Windows, unpack the `.zip` and run `gripforge-build.exe --version`.
 ```sh
 gripforge-build path/to/my-game              # check, then generate the Rust of the game into my-game/.build/
 gripforge-build path/to/my-game --check      # the strict check only, nothing written
+gripforge-build path/to/my-game --target godot   # the kits its kits need on Godot (default bevy-web, the web player)
 gripforge-build path/to/my-game --dev        # the module of the game's code only, for the development mode (.build/dev/game)
 gripforge-build path/to/my-game --resolve    # the project resolved (includes, variables, $var) and the tolerant issues, JSON
 gripforge-build path/to/my-game --json       # the report gripforge.build-report/1 on the standard output (for a tool or an AI)
@@ -53,6 +54,7 @@ gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of 
 | `--kits-path <dir>` | take the kits (`<kit>/kit.api.json` and `<kit>/access/rust/`) from this folder instead of the kits downloaded into the project: the `kits/` of the sources of the kits, for their demos (below); default: found in the project |
 | `--sdk <dir>` | a local SDK: the generated crate takes its SDK crates (`gripforge-kit-guest`, `gripforge-kit-access`) by path, from this repository's `sdk/` (crates at its top) or a checkout of the kits repository (under `core/`) |
 | `--sdk-rev <tag, commit or branch>` | without `--sdk`: the revision of this repository whose `sdk/` the generated crate takes by git (default the compiler's tag, `v<version>`) |
+| `--target <gateway>` | the gateway the game is built for (`bevy-web` by default, the official web player; `bevy`, `godot`…): which dependencies of the kits must be listed in `installed` (`kit_required`, [docs/kit-loading.md](docs/kit-loading.md)) |
 | `--check` | the strict check only |
 | `--dev` | the crate of the game's code for the development mode of the kits (`dev.builder` plays `project.gripforge` and poses the scenes): `<out>/dev/game`, the files of `sources` only, no `init_scene`, no `game.json`; refused without `sources` (`dev_without_sources`). [docs/sources.md](docs/sources.md#in-the-development-mode) |
 | `--resolve` | the project resolved by the common core (its included `.gripforge` files read beside it, the variables of its nodes, its `$var`) and the tolerant validator's issues, as JSON (`ok`, `project`, `resolveIssues`, `issues`); nothing written, nothing promoted |
@@ -94,7 +96,7 @@ my-game/
   game: an error that says which and what to write, at `--check` too. A `.rs` beside the project that `sources` does
   not list: the warning `source_undeclared` (not compiled).
 - The rule, every error code and **when each hook runs** (before the first scene, the development mode):
-  [docs/sources.md](docs/sources.md).
+  [docs/sources.md](docs/sources.md) (français : [docs/sources.fr.md](docs/sources.fr.md)).
 
 ```sh
 gripforge-build my-game --sdk path/to/module-kits
@@ -128,6 +130,21 @@ error kit_unknown — project.gripforge › property installed: the kit world.no
 ```
 
 A `kit.api.json` of another schema than `gripforge.kit-api/1` is refused with `kits_incompatible`.
+
+### Every kit listed: `kit_required`
+
+**The build reads `project.gripforge` as `dev.builder` does** (the same common core, the same lock) and **the kits are
+fixed at the start**: `installed` lists every kit of the game, the ones its kits need for the target included. A kit
+that needs a kit the list does not have **fails the build** (and `--check`) with the same `kit_required` message the
+gateways and `dev.builder` give at the start (`gripforge_scene_format::kits::check_required`, one copy), every lack at
+once. A recommendation is never required nor added.
+
+```text
+error kit_required — project.gripforge: kit_required: game.engine a besoin de core.scene (cible bevy-web) — ajoute-le dans "installed" du project.gripforge. Expected: ajoute core.scene dans "installed" du project.gripforge (docs/dependances.md)
+```
+
+The rule, the target, an example and the parity test: [docs/kit-loading.md](docs/kit-loading.md) (français :
+[docs/chargement-des-kits.md](docs/chargement-des-kits.md)).
 
 [`examples/room`](examples/room) is a project laid out this way: `project.gripforge` and its `kits/` (each with its
 `kit.api.json` and its `accessor/`).
@@ -224,6 +241,7 @@ kept as written, never read, never an error.
 | Code | When |
 |---|---|
 | `kit_unknown` | an installed or required kit has no `kit.api.json` in the project |
+| `kit_required` | a kit of `installed` needs, for the target (`--target`), a kit the list does not have ([docs/kit-loading.md](docs/kit-loading.md)) |
 | `kits_missing` | the project has no kits folder, or `--kits-path` names none |
 | `access_missing` | a kit of the built game has no `accessor/Cargo.toml` in its folder |
 | `access_mismatch` | the accessor in a kit's folder is not `gripforge-kit-access-<kit>` at the kit's version |

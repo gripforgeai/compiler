@@ -2,13 +2,23 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The build refuses a required kit that is not listed** (decision of Damien, « chargement des kits au démarrage »):
+  the build and `--check` call `kits::check_required` of the common core on the kits of `installed` with their
+  `kit.api.json`, and a kit that needs a kit the list does not have is the error `kit_required`, the same message the
+  gateways and `dev.builder` give at the start, every lack at once; nothing is written. New option `--target <gateway>`
+  (default `bevy-web`): which per-target dependencies count. **A project that built before can now be refused**: list
+  the kits its kits need (for example `core.scene` beside `game.engine` on the Bevy players). The example room lists
+  `core.scene` (its frozen `kit.api.json` and accessor added, see `PROVENANCE.md`). Parity test with `dev.builder`
+  (same lock, same refusal): `tests/kits_required.rs`. Doc: [docs/kit-loading.md](docs/kit-loading.md),
+  [docs/chargement-des-kits.md](docs/chargement-des-kits.md), [docs/sources.fr.md](docs/sources.fr.md).
+
 - **The kits a game starts with, checked once for everyone** (`crates/scene-format/src/kits.rs`, decision of Damien
   « chargement des kits au démarrage », module-kits `docs/dependances.md`): `kits::check_required(installed, apis,
   target)` gives one `kit_required` error per kit a listed kit needs and the project does not list (its `requires`,
   its dependencies for the target; never a recommendation nor an optional one; `anyOf` met by one of its kits; a
   capability met by a kit that `provides` it or by the host, `runtime.core`); `kits::required_message` makes the one
   message that names every lack. The web gateway (through module-kits `core/scene-format-wasm`), the native gateway,
-  dev.builder and gripforge-build call it; nothing changes yet for a user of `gripforge-build`.
+  dev.builder and gripforge-build call it (the build refuses with it: the entry above).
 
 - **The format of a project has one copy, here** (`crates/scene-format`, crate `gripforge-scene-format`; same decision):
   it is no longer a copy of module-kits `core/scene-format`, which imports it by git at a pinned commit (dev.builder,
