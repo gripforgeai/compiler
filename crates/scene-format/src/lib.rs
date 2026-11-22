@@ -13,6 +13,8 @@
 //!   one source for dev.builder at run time and for the Rust code the build writes ([`code`]).
 //! - [`code`]: the Rust code that poses each scene ahead of time (`init_scene.rs`), over the same resolution.
 //! - [`include`]: the project resolved first: its included `.gripforge` files, its nodes' variables, its `$var`.
+//! - [`kits`]: the kits a game starts with, checked against what each needs for its target (`kit_required`, one error
+//!   naming every lack): the one check of the gateways, dev.builder and the build.
 //! - [`project`]: the project file checked as a whole, and packed into the `game.json` envelope of the development mode.
 //! - [`ops`]: the edit commands of the site's scene patch (`insert`, `remove`, `transform`, `replace`, `update`) and
 //!   the debugging editor's file of patches, applied to the project with the smallest diff ([`jsontext`]).
@@ -34,6 +36,7 @@ pub mod expand;
 pub mod include;
 pub mod issue;
 pub mod jsontext;
+pub mod kits;
 pub mod lower;
 pub mod math;
 pub mod ops;

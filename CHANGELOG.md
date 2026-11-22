@@ -2,6 +2,14 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The kits a game starts with, checked once for everyone** (`crates/scene-format/src/kits.rs`, decision of Damien
+  « chargement des kits au démarrage », module-kits `docs/dependances.md`): `kits::check_required(installed, apis,
+  target)` gives one `kit_required` error per kit a listed kit needs and the project does not list (its `requires`,
+  its dependencies for the target; never a recommendation nor an optional one; `anyOf` met by one of its kits; a
+  capability met by a kit that `provides` it or by the host, `runtime.core`); `kits::required_message` makes the one
+  message that names every lack. The web gateway (through module-kits `core/scene-format-wasm`), the native gateway,
+  dev.builder and gripforge-build call it; nothing changes yet for a user of `gripforge-build`.
+
 - **The format of a project has one copy, here** (`crates/scene-format`, crate `gripforge-scene-format`; same decision):
   it is no longer a copy of module-kits `core/scene-format`, which imports it by git at a pinned commit (dev.builder,
   game.engine and the wasm of the development mode call it). `tools/sync-scene-format` and
