@@ -11,8 +11,9 @@
 //! - `requires`: `"<id>"` or `"<id>@<range>"`, a kit or a capability. Met by a kit of that id, by a kit that
 //!   `provides` it (`provides: [{ "id": … }]`), or by the host itself (`runtime.core`, the host's API).
 //! - `dependencies`: `{ kit, range, targets?, recommended?, optional?, reason }` or `{ anyOf: [{ kit, … }], reason }`.
-//!   A dependency is needed when it is neither `recommended` nor `optional` and, with `targets`, when the target is one
-//!   of them. `anyOf` is met by one of its kits present. A recommendation is never needed and never added.
+//!   A dependency is needed when it has no `recommended` (`true`: a suggestion; `false`: facultative, the kit takes its
+//!   default without it, e.g. world.zones of the locomotions) and is not `optional` and, with `targets`, when the target
+//!   is one of them. `anyOf` is met by one of its kits present. A recommendation is never needed and never added.
 //!
 //! The ranges are not read here: in development every range is `"*"` (module-kits `docs/decisions/versions-dev.md`);
 //! the published ranges are checked by the resolver of the CLI. A kit whose `kit.api.json` is not given (the module of
@@ -101,10 +102,10 @@ pub fn check_required(installed: &[&str], apis: &Json, target: &str) -> Vec<Issu
     out
 }
 
-/// Whether a dependency is needed for `target`: not a recommendation, not optional, and its `targets` (when written)
+/// Whether a dependency is needed for `target`: no `recommended` at all (true or false), not optional, and its `targets` (when written)
 /// name the target.
 fn needed(d: &Json, target: &str) -> bool {
-    if d.get("recommended").and_then(Json::as_bool) == Some(true)
+    if d.get("recommended").and_then(Json::as_bool).is_some()
         || d.get("optional").and_then(Json::as_bool) == Some(true)
     {
         return false;
@@ -175,7 +176,8 @@ mod tests {
                 "requires": ["core.ai@*"],
                 "dependencies": [
                     { "kit": "core.input.pointer_lock", "range": "*", "recommended": true, "reason": "r" },
-                    { "kit": "net.state", "range": "*", "optional": true, "reason": "r" }
+                    { "kit": "net.state", "range": "*", "optional": true, "reason": "r" },
+                    { "kit": "world.zones", "range": "*", "recommended": false, "reason": "r" }
                 ]
             },
             "core.ai": { "provides": [{ "id": "core.ai", "version": "1.0.0" }, { "id": "ai.brain" }] },
@@ -208,6 +210,13 @@ mod tests {
             "{m}"
         );
         assert_eq!(m.lines().count(), 2);
+    }
+
+    /// `recommended: false` is facultative like `recommended: true` (module-kits tools/kit-api isRequiredDependency, the
+    /// same rule): the third-person template without world.zones starts.
+    #[test]
+    fn recommended_false_is_facultative_never_needed() {
+        assert!(check_required(&["ai.combat", "core.ai"], &apis(), "bevy").is_empty());
     }
 
     /// A dependency of another target is not needed here.
