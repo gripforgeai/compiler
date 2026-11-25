@@ -413,3 +413,67 @@ fn the_code_of_a_project_poses_the_scenes_of_its_included_files() {
         "the included scene salle_room is written: {paths:?}"
     );
 }
+
+/// Two layers that each give `audio.cues.cues`: the second list replaces the first whole. Said, with what is lost; an
+/// object merges by key, a vector of plain numbers and a list that repeats the entries lose nothing and say nothing.
+#[test]
+fn a_list_that_drops_the_entries_of_a_layer_is_said() {
+    let layer = |cues: Json, extra: Json| {
+        let mut p =
+            json!({ "id": "l", "installed": [{ "id": "audio.cues", "config": { "cues": cues } }] });
+        for (k, v) in extra.as_object().unwrap() {
+            p["installed"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({ "id": k, "config": v }));
+        }
+        p
+    };
+    let wind = json!({ "event": "wind", "sound": "w" });
+    let gate = json!({ "event": "gate", "sound": "g" });
+    let list = vec![
+        (
+            "base/a.gripforge",
+            layer(
+                json!([wind.clone()]),
+                json!({ "core.audio": { "sounds": { "w": {} } }, "core.physics": { "gravity": [0, -9, 0] } }),
+            ),
+        ),
+        (
+            "base/b.gripforge",
+            layer(
+                json!([gate.clone()]),
+                json!({ "core.audio": { "sounds": { "g": {} } }, "core.physics": { "gravity": [0, -4, 0] } }),
+            ),
+        ),
+        (
+            "base/c.gripforge",
+            layer(json!([wind.clone(), gate.clone()]), json!({})),
+        ),
+    ];
+    let game = |second: &str| json!({ "id": "g", "includes": [{ "file": "base/a.gripforge" }, { "file": second }] });
+    let (out, issues) = resolve_project(&game("base/b.gripforge"), &files(&list));
+    assert_eq!(codes(&issues), vec!["include_list_replaced"], "{issues:?}");
+    assert!(
+        issues[0].message.contains("audio.cues.config.cues") && issues[0].message.contains("wind"),
+        "names the kit, the key and what is lost: {}",
+        issues[0].message
+    );
+    let sounds = out["installed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["id"] == "core.audio")
+        .unwrap()["config"]["sounds"]
+        .clone();
+    assert_eq!(
+        sounds,
+        json!({ "w": {}, "g": {} }),
+        "an object still merges by name"
+    );
+    let (_, issues) = resolve_project(&game("base/c.gripforge"), &files(&list));
+    assert!(
+        codes(&issues).is_empty(),
+        "nothing lost, nothing said: {issues:?}"
+    );
+}
