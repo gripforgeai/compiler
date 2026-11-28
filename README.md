@@ -1,5 +1,10 @@
 # gripforge-build
 
+> [!CAUTION]
+> **This repository is PUBLIC.** Everything pushed here, on any branch, even in a draft pull request, is readable by
+> anyone at once and may stay reachable after it is deleted. Read [CONTRIBUTING.md](CONTRIBUTING.md) before pushing.
+> 🇫🇷 **Ce dépôt est PUBLIC** : tout ce qui y est poussé est visible par tous, même en brouillon.
+
 **`gripforge project build`: generate the Rust of a GripForge game.**
 
 `gripforge-build` reads a GripForge project (`project.gripforge`) and the `kit.api.json` of the kits installed in it,
