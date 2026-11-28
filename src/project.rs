@@ -114,7 +114,8 @@ pub fn read_json(file: &Path, code: &str) -> Result<Json, BuildError> {
 /// The files the resolution of the project asks for (its `includes`, at any depth), read beside it: the resolution of
 /// core/scene-format (`include::resolve_with_files`) called again with the files it says `missing`, until it asks for
 /// nothing new, as the development mode calls it (devGame, core/gateway-web/dev-project.mjs `resolveProject` of the
-/// kits repository). A file that is not there is left out: the resolution says `include_missing` with the entry.
+/// kits repository). A path from a root alias (`#tests/…`) is read from the root (`path::on_disk`). A file that is not
+/// there is left out: the resolution says `include_missing` with the entry.
 pub fn included_files(project: &Json, dir: &Path) -> Result<Map<String, Json>, BuildError> {
     let mut files = Map::new();
     let mut tried = std::collections::BTreeSet::new();
@@ -132,7 +133,8 @@ pub fn included_files(project: &Json, dir: &Path) -> Result<Map<String, Json>, B
             return Ok(files);
         }
         for m in ask {
-            let file = dir.join(&m);
+            // A root alias (#tests/…) from the root of the repository or project, as every reader of a disk.
+            let file = gripforge_scene_format::path::on_disk(dir, &m);
             if file.exists() {
                 files.insert(m.clone(), read_json(&file, "file_not_json")?);
             }
@@ -179,7 +181,7 @@ pub fn scene_files(project: &Json, dir: &Path) -> Result<Map<String, Json>, Buil
         if files.contains_key(&path) || carried.contains_key(&path) {
             continue;
         }
-        let file = dir.join(&path);
+        let file = gripforge_scene_format::path::on_disk(dir, &path);
         if !file.exists() {
             continue; // the core says scene_file_missing, with the node that names it
         }
