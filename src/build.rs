@@ -7,6 +7,7 @@
 //!   .build/game.json        what the players load (no scene file read at run time)
 //!   .build/game/            the crate of the game's module, compiled by the game's own build
 //!   .build/build.json       the report (gripforge.build-report/1): issues, steps, times, files
+//!   (read)  .build/hud/<id>/  the asset HUD the project built itself (webui/): named by its slot in game.json (crate::hud)
 //!
 //! Never panics for a problem of the project: every problem is an issue of the result (file, scene, element,
 //! property, what is expected).
@@ -107,7 +108,7 @@ pub fn build(o: &BuildOptions) -> BuildResult {
 
     let t0 = Instant::now();
     let op = if o.check { "check" } else { "code" };
-    let answer = crate::core::run(
+    let mut answer = crate::core::run(
         &json!({ "op": op, "project": project, "files": files, "kits": kits, "lenient": o.lenient }),
     );
     steps.push(json!({ "name": if o.check { "check" } else { "check+generate" }, "ms": t0.elapsed().as_millis() as u64, "errors": answer["errors"].as_u64().unwrap_or(0) }));
@@ -163,6 +164,20 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     }
 
     let out = crate::project::absolute(&o.out.clone().unwrap_or_else(|| dir.join(".build")));
+    // The asset HUD the project builds itself (webui/ → .build/hud/<id>/): the folder of the slot that names it, as
+    // module-kits' build of a project and dev.builder do (crate::hud).
+    if !o.dev {
+        let own_hud = crate::hud::own_hud_files(&dir, &out, &mut answer["game"]);
+        if !own_hud.is_empty() {
+            r.artifacts.insert(
+                "ownHud".into(),
+                json!(own_hud
+                    .iter()
+                    .map(|(k, f)| json!({ "slot": k, "file": f }))
+                    .collect::<Vec<_>>()),
+            );
+        }
+    }
     let written = (|| -> std::io::Result<()> {
         std::fs::create_dir_all(&out)?;
         if o.dev {
