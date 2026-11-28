@@ -2,6 +2,14 @@
 
 ## [Unreleased] (0.1.2)
 
+- **The asset HUD a project brings itself** (`src/hud.rs`, module-kits `docs/design/dependances-npm-projet.md`, decision
+  of Damien 28/11): a slot of core.webui's `hud` config in `game.json` that names an asset (`"asset": "<id>@<range>"`)
+  without `file` gets `file` (relative to `game.json`) = the folder `<project>/.build/hud/<id>/` when the project built
+  it there from its npm interface (`webui/`), else the copy it carries beside the file that declares the slot
+  (`<its folder>/hud/<id>/`, included files too); the report lists them (`artifacts.ownHud`). The same rule, at parity, as
+  module-kits' build of a project (`tools/kit-modules/game-hud.mjs`) and dev.builder (`dev-hud.mjs`). npm never runs
+  here.
+
 - **The kits a game starts with, checked once for everyone** (`crates/scene-format/src/kits.rs`, decision of Damien
   « chargement des kits au démarrage », module-kits `docs/dependances.md`): `kits::check_required(installed, apis,
   target)` gives one `kit_required` error per kit a listed kit needs and the project does not list (its `requires`,

@@ -203,6 +203,7 @@ is a choice to make, not a surprise. HTTP client: `ureq` (rustls).
 | `.build/game.json` | what the player loads: the project packed, its scenes lowered for `game.engine` (no scene file read at run time), `dev.builder` left out, the game's module `game.main` last in the lock |
 | `.build/game/` | the crate of the game's module: `Cargo.toml`, `kit.api.json`, `module.json`, `src/lib.rs`, `src/module.rs` (hands the hooks to the module of the game when `sources` declares one), the files of `sources` by path from `src/lib.rs`, `src/init_scene.rs` and `src/init_scene/<scene>.rs` |
 | `.build/build.json` | the report: issues, steps and their times, files written (and `textures` with `--compress-textures`) |
+| `.build/hud/<id>/`, `hud/<id>/` | **read, never written here**: the asset HUD the project brings itself — first its build of its npm interface (`.build/hud/<id>/`, from `webui/`, built by Vite before: the CLI, or module-kits `build.mjs --project`), then the copy it carries beside the file that declares the slot (`hud/<id>/`, referenced, never copied); a slot of core.webui's `hud` config that names it (`"asset": "<id>@<range>"`) without `file` gets that folder in `game.json` (`file`, relative to `game.json`; the report lists them in `artifacts.ownHud`), the same rule as module-kits' build of a project and dev.builder |
 | `.build/textures/` | only with `--compress-textures`: `<path>.ktx2.glb`, the compressed copy of each GLB (the originals are never touched) |
 
 Never edit `.build/` by hand: change `project.gripforge` and generate again.
