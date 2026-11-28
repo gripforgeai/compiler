@@ -214,6 +214,8 @@ fn prefixed(mut sub: Json, prefix: &str, dir: &str, files: Files) -> Json {
             rename_scene_refs(n, prefix, &mut todo);
         }
     }
+    // Every sub-scene the file carries, its own scenes using it or not: a library of sub-scenes is for who includes it.
+    todo.extend(carried.keys().cloned());
     while let Some(f) = todo.pop() {
         let key = format!("{prefix}/{f}");
         if out.contains_key(&key) {

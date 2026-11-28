@@ -413,3 +413,22 @@ fn the_code_of_a_project_poses_the_scenes_of_its_included_files() {
         "the included scene salle_room is written: {paths:?}"
     );
 }
+
+/// A layer that only carries sub-scenes (a library of tiles): the project that includes it instances them by its prefix.
+#[test]
+fn a_library_of_sub_scenes_is_carried() {
+    let list = vec![(
+        "base/tiles.gripforge",
+        json!({ "id": "tiles", "data": { "scene_files": { "scenes/gate.gfscene": { "requires": ["game.engine"], "nodes": [{ "name": "Gate", "type": "group" }] } } } }),
+    )];
+    let game = json!({ "id": "g", "requires": ["game.engine"], "includes": [{ "file": "base/tiles.gripforge", "as": "tiles" }], "data": { "scenes": [
+        { "id": "track", "requires": ["game.engine"], "nodes": [{ "name": "A", "type": "scene", "scene": "tiles/scenes/gate.gfscene" }, { "name": "B", "type": "scene", "scene": "tiles/scenes/gate.gfscene" }] }] } });
+    let (out, issues) = resolve_project(&game, &files(&list));
+    assert!(codes(&issues).is_empty(), "{issues:?}");
+    assert!(
+        out["data"]["scene_files"]
+            .get("tiles/scenes/gate.gfscene")
+            .is_some(),
+        "carried: {out}"
+    );
+}
