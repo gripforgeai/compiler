@@ -2,10 +2,11 @@
 
 ## [Unreleased] (0.1.2)
 
-- **The asset HUD a project builds itself** (`src/hud.rs`, module-kits `docs/design/dependances-npm-projet.md`, decision
+- **The asset HUD a project brings itself** (`src/hud.rs`, module-kits `docs/design/dependances-npm-projet.md`, decision
   of Damien 28/11): a slot of core.webui's `hud` config in `game.json` that names an asset (`"asset": "<id>@<range>"`)
-  without `file` gets `file` = the folder `<project>/.build/hud/<id>/` (relative to `game.json`) when the project built
-  it there from its npm interface (`webui/`); the report lists them (`artifacts.ownHud`). The same rule, at parity, as
+  without `file` gets `file` (relative to `game.json`) = the folder `<project>/.build/hud/<id>/` when the project built
+  it there from its npm interface (`webui/`), else the copy it carries beside the file that declares the slot
+  (`<its folder>/hud/<id>/`, included files too); the report lists them (`artifacts.ownHud`). The same rule, at parity, as
   module-kits' build of a project (`tools/kit-modules/game-hud.mjs`) and dev.builder (`dev-hud.mjs`). npm never runs
   here.
 

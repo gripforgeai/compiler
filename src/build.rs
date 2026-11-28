@@ -164,10 +164,10 @@ pub fn build(o: &BuildOptions) -> BuildResult {
     }
 
     let out = crate::project::absolute(&o.out.clone().unwrap_or_else(|| dir.join(".build")));
-    // The asset HUD the project builds itself (webui/ → .build/hud/<id>/): the folder of the slot that names it, as
+    // The asset HUD the project brings itself (its build of webui/, its carried copy): the folder of the slot, as
     // module-kits' build of a project and dev.builder do (crate::hud).
     if !o.dev {
-        let own_hud = crate::hud::own_hud_files(&dir, &out, &mut answer["game"]);
+        let own_hud = crate::hud::own_hud_files(&file, &out, &mut answer["game"]);
         if !own_hud.is_empty() {
             r.artifacts.insert(
                 "ownHud".into(),
