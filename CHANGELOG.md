@@ -2,6 +2,17 @@
 
 ## [Unreleased] (0.1.2)
 
+- **A path of a project may start from the root** (`#kits/…`, `#tools/…`, `#core/…`, `#tests/…`; decision of Damien,
+  28/11, module-kits: no `../../../`): `crates/scene-format/src/path.rs` `ROOT_ALIASES` (the table of the kits
+  repository's package.json `imports`), `root_alias`, `root_alias_error` and `on_disk` (the one rule of a reader of a
+  disk: the nearest folder at or above the project whose package.json maps `#<name>/*` in `imports`, to its target, else
+  the project's folder). An include (`includes[].file`) or a scene file written with an alias starts from the root
+  whatever the file that names it; the resolution keeps the alias in the paths it asks for (`missing`), a relative path
+  inside a file reached by an alias stays under it, and an unknown alias or a climb above it is `include_missing` (the
+  hint names the aliases); a project path (`project_path_error`: a sub-scene, an asset) accepts a known alias.
+  `gripforge-build` reads them from the root (`project::included_files`, `scene_files`). A project without an alias
+  resolves byte for byte as before.
+
 - **The kits a game starts with, checked once for everyone** (`crates/scene-format/src/kits.rs`, decision of Damien
   « chargement des kits au démarrage », module-kits `docs/dependances.md`): `kits::check_required(installed, apis,
   target)` gives one `kit_required` error per kit a listed kit needs and the project does not list (its `requires`,

@@ -66,14 +66,22 @@ fn dir_of(path: &str) -> &str {
     path.rfind('/').map_or("", |i| &path[..=i])
 }
 
-/// `dir` + `file`, with `.` and `..` folded (leading `..` kept: the reader resolves them from the project's folder).
+/// `dir` + `file`, with `.` and `..` folded (leading `..` kept: the reader resolves them from the project's folder). A
+/// `file` that starts with a root alias (`#tests/…`, crate::path::ROOT_ALIASES) starts from the root, whatever `dir`;
+/// a `..` never folds the alias away (it stays, and [`crate::path::root_alias_error`] refuses the path).
 fn join(dir: &str, file: &str) -> String {
-    let whole = format!("{dir}{file}");
+    let whole = if file.starts_with('#') {
+        file.to_string()
+    } else {
+        format!("{dir}{file}")
+    };
     let mut out: Vec<&str> = Vec::new();
     for seg in whole.split('/') {
         match seg {
             "" | "." => {}
-            ".." if out.last().is_some_and(|s| *s != "..") => {
+            ".." if out.last().is_some_and(|s| *s != "..")
+                && !(out.len() == 1 && out[0].starts_with('#')) =>
+            {
                 out.pop();
             }
             s => out.push(s),
@@ -117,6 +125,18 @@ fn expand(
             continue;
         };
         let target = join(dir_of(path), file);
+        if let Some(why) = crate::path::root_alias_error(&target) {
+            issues.push(
+                Issue::error(
+                    "include_missing",
+                    format!("the included file {target} {why}"),
+                    "write the path relative to the file that includes it, or from the root with a root alias (#kits/, #tools/, #core/, #tests/)",
+                )
+                .in_file(path)
+                .at("", "includes"),
+            );
+            continue;
+        }
         if stack.contains(&target) || depth + 1 > max {
             issues.push(
                 Issue::error(
@@ -133,7 +153,7 @@ fn expand(
                 Issue::error(
                     "include_missing",
                     format!("the included file {target} is not found"),
-                    "write the path of the .gripforge relative to the file that includes it",
+                    "write the path of the .gripforge relative to the file that includes it, or from the root with a root alias (#kits/, #tools/, #core/, #tests/)",
                 )
                 .in_file(&target),
             );
@@ -199,7 +219,13 @@ fn prefixed(mut sub: Json, prefix: &str, dir: &str, files: Files) -> Json {
         if out.contains_key(&key) {
             continue;
         }
-        let Some(mut d) = carried.get(&f).cloned().or_else(|| files(&join(dir, &f))) else {
+        let Some(mut d) = carried.get(&f).cloned().or_else(|| {
+            let p = join(dir, &f);
+            crate::path::root_alias_error(&p)
+                .is_none()
+                .then(|| files(&p))
+                .flatten()
+        }) else {
             continue;
         };
         if let Some(n) = d.get_mut("nodes") {

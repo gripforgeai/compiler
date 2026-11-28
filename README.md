@@ -55,7 +55,7 @@ gripforge-build path/to/demo --kits-path path/to/module-kits/kits   # a demo of 
 | `--sdk-rev <tag, commit or branch>` | without `--sdk`: the revision of this repository whose `sdk/` the generated crate takes by git (default the compiler's tag, `v<version>`) |
 | `--check` | the strict check only |
 | `--dev` | the crate of the game's code for the development mode of the kits (`dev.builder` plays `project.gripforge` and poses the scenes): `<out>/dev/game`, the files of `sources` only, no `init_scene`, no `game.json`; refused without `sources` (`dev_without_sources`). [docs/sources.md](docs/sources.md#in-the-development-mode) |
-| `--resolve` | the project resolved by the common core (its included `.gripforge` files read beside it, the variables of its nodes, its `$var`) and the tolerant validator's issues, as JSON (`ok`, `project`, `resolveIssues`, `issues`); nothing written, nothing promoted |
+| `--resolve` | the project resolved by the common core (its included `.gripforge` files read beside it, or from the root for a path written `#kits/…`, `#tools/…`, `#core/…`, `#tests/…`, the variables of its nodes, its `$var`) and the tolerant validator's issues, as JSON (`ok`, `project`, `resolveIssues`, `issues`); nothing written, nothing promoted |
 | `--lenient` | the warnings of the tolerant validator stay warnings (like the development mode) |
 | `--json` | the JSON report instead of lines |
 | `--compress-textures` | sends the GLB without a compressed copy to the public texture route (see below); off by default |
