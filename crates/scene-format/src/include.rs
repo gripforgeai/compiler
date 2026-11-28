@@ -467,6 +467,8 @@ fn merge_project(acc: &mut Json, doc: &Json, master: bool, file: &str, issues: &
                     {
                         Some(Json::Object(x)) => {
                             if let Some(p) = kit.as_object() {
+                                let id = kit.get("id").and_then(Json::as_str).unwrap_or("");
+                                warn_lost(x, p, id, file, issues);
                                 merge(x, p);
                             }
                         }
@@ -493,6 +495,58 @@ fn merge_project(acc: &mut Json, doc: &Json, master: bool, file: &str, issues: &
             }
             _ if MASTER_KEYS.contains(&k.as_str()) => {}
             _ if acc.get(k) != Some(v) => issues.push(conflict(file, format!("the key {k}"))),
+            _ => {}
+        }
+    }
+}
+
+/// The entries a list of a kit's config loses: `merge` replaces a list whole (an object merges key by key), so a layer
+/// that gives the list again silently drops the entries of the one before. Said with the entries lost; a list of plain
+/// values (a vector) is not a list of entries.
+fn warn_lost(
+    old: &Map<String, Json>,
+    new: &Map<String, Json>,
+    at: &str,
+    file: &str,
+    issues: &mut Vec<Issue>,
+) {
+    for (k, v) in new {
+        match (old.get(k), v) {
+            (Some(Json::Object(a)), Json::Object(b)) => {
+                warn_lost(a, b, &format!("{at}.{k}"), file, issues)
+            }
+            (Some(Json::Array(a)), Json::Array(b)) => {
+                let lost: Vec<&Json> = a
+                    .iter()
+                    .filter(|e| e.is_object() && !b.contains(e))
+                    .collect();
+                if lost.is_empty() {
+                    continue;
+                }
+                let named: Vec<String> = lost
+                    .iter()
+                    .filter_map(|e| {
+                        ["id", "name", "tag", "entity", "event"]
+                            .iter()
+                            .find_map(|n| e.get(n)?.as_str())
+                    })
+                    .take(5)
+                    .map(str::to_string)
+                    .collect();
+                issues.push(
+                    Issue::warning(
+                        "include_list_replaced",
+                        format!(
+                            "{at}.{k} replaces the list given before it: {} of its {} entries are lost{}",
+                            lost.len(),
+                            a.len(),
+                            if named.is_empty() { String::new() } else { format!(" ({})", named.join(", ")) }
+                        ),
+                        "repeat the entries to keep, or give only the new ones where the kit takes an object by name",
+                    )
+                    .in_file(file),
+                );
+            }
             _ => {}
         }
     }
